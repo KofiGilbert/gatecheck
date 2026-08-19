@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1F4E79">
+<title>Gate Check • Order Search &amp; Seal Form</title>
+<style>
+  :root{
+    --blue:#1F4E79; --blue2:#2E6DA4; --bg:#F2F4F8; --card:#FFFFFF;
+    --ink:#1A2330; --mut:#6B7686; --line:#D8DEE8;
+    --gold:#FFF2CC; --green:#1E7B45; --red:#C0392B;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; font-size:16px}
+  header{background:var(--blue);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:20}
+  header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.3px}
+  header .sub{font-size:12px;opacity:.85;margin-top:2px}
+  nav{display:flex;background:var(--blue);position:sticky;top:58px;z-index:19}
+  nav button{flex:1;background:none;border:none;color:#CBDCEE;padding:11px 2px 13px;
+    font-size:13.5px;font-weight:600;border-bottom:3px solid transparent}
+  nav button.on{color:#fff;border-bottom-color:#FFD24D}
+  main{padding:14px;max-width:640px;margin:0 auto;padding-bottom:60px}
+  section{display:none}
+  section.on{display:block}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(20,40,80,.06)}
+  h2{font-size:15px;margin:0 0 10px;color:var(--blue)}
+  label.f{display:block;font-size:12.5px;font-weight:700;color:var(--mut);margin:10px 0 4px;
+    text-transform:uppercase;letter-spacing:.4px}
+  select{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:9px;font-size:16px;
+    background:#fff;color:var(--ink)}
+  input[type=text],input[type=search],textarea{
+    width:100%;padding:12px;border:1.5px solid var(--line);border-radius:9px;font-size:16px;
+    background:#fff;color:var(--ink)}
+  input:focus,textarea:focus{outline:none;border-color:var(--blue2)}
+  .big-search{font-size:24px !important;text-align:center;letter-spacing:2px;font-weight:700}
+  .btn{display:inline-block;border:none;border-radius:10px;padding:13px 18px;font-size:15.5px;
+    font-weight:700;background:var(--blue);color:#fff;width:100%;margin-top:10px}
+  .btn.sec{background:#E8EDF5;color:var(--blue)}
+  .btn.grn{background:var(--green)}
+  .btn.red{background:#FBE9E7;color:var(--red)}
+  .btn:disabled{opacity:.45}
+  .row2{display:flex;gap:10px}
+  .row2>*{flex:1}
+  .hint{font-size:12.5px;color:var(--mut);line-height:1.45;margin-top:6px}
+  .pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;margin-right:5px}
+  .pill.live{background:#E4F4EA;color:var(--green)}
+  .pill.drop{background:#FDEBD0;color:#9C640C}
+  .pill.zone{background:#E3EBF6;color:var(--blue)}
+  .pill.star{background:#FFF3C4;color:#8A6D00}
+  .kv{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);
+    padding:7px 0;font-size:14.5px}
+  .kv:last-child{border-bottom:none}
+  .kv .k{color:var(--mut);font-weight:600}
+  .kv .v{font-weight:700;text-align:right;max-width:60%}
+  .ordercard{border-left:5px solid var(--blue2)}
+  .empty{color:var(--mut);text-align:center;padding:26px 8px;font-size:14px}
+  .choice{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .choice button{border:1.5px solid var(--line);background:#fff;border-radius:9px;
+    padding:10px 14px;font-size:14.5px;font-weight:700;color:var(--ink);flex:1;min-width:70px}
+  .choice button.sel{background:var(--blue);border-color:var(--blue);color:#fff}
+  .chk{display:flex;align-items:center;gap:10px;padding:11px 4px;font-size:15px;font-weight:600}
+  .chk input{width:22px;height:22px}
+  #sigwrap{border:1.5px dashed #9FB2CC;border-radius:10px;background:#FBFCFE;position:relative}
+  #sig{width:100%;height:160px;display:block;border-radius:10px;touch-action:none}
+  #sigclear{position:absolute;top:6px;right:6px;width:auto;margin:0;padding:6px 12px;font-size:12.5px}
+  .banner{background:#B8B8B8;color:#111;text-align:center;font-weight:800;font-size:13px;
+    padding:7px;border-radius:6px;letter-spacing:.5px;margin-bottom:8px}
+  .histitem{display:flex;justify-content:space-between;align-items:center;gap:8px;
+    border-bottom:1px solid var(--line);padding:10px 2px}
+  .histitem:last-child{border-bottom:none}
+  .histitem .t1{font-weight:700;font-size:15px}
+  .histitem .t2{font-size:12.5px;color:var(--mut)}
+  .histbtns button{width:auto;padding:8px 12px;font-size:13px;margin:0 0 0 6px}
+  .schedday{font-weight:800;color:var(--blue);font-size:14px;margin:12px 0 4px}
+  .schedrow{display:flex;justify-content:space-between;font-size:13.5px;padding:6px 2px;
+    border-bottom:1px solid #EDF1F7}
+  .schedrow b{font-variant-numeric:tabular-nums}
+  .ycwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+  table.yct{border-collapse:collapse;width:100%;min-width:940px}
+  .yct th{background:var(--blue);color:#fff;font-size:11.5px;padding:9px 6px;text-transform:uppercase;letter-spacing:.3px}
+  .yct td{border:1px solid var(--line);padding:0;vertical-align:middle}
+  .yct td input,.yct td select{border:none;background:transparent;width:100%;padding:11px 8px;font-size:15px;border-radius:0}
+  .yct td input:focus,.yct td select:focus{outline:2px solid var(--blue2);outline-offset:-2px}
+  .yct tr.esc td{background:#FDECEA}
+  .yct .escmsg{color:#C0392B;font-weight:800;font-size:11.5px;padding:5px 8px 0;line-height:1.3}
+  .yct .okmsg{color:#1E7B45;font-weight:700;font-size:12.5px;text-align:center}
+  .yct .delx{background:none;border:none;color:#C0392B;font-size:17px;padding:9px}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#123;color:#fff;
+    padding:11px 20px;border-radius:99px;font-size:14px;opacity:0;transition:.3s;z-index:99;
+    pointer-events:none;max-width:88%;text-align:center}
+  .toast.show{opacity:.96}
+  #preview img{width:100%;border:1px solid var(--line);border-radius:8px}
+  .warn{background:#FFF6E5;border:1px solid #F5D488;border-radius:9px;padding:10px;
+    font-size:13px;color:#7A5A00;margin-top:8px;line-height:1.4}
+</style>
+</head>
+<body>
+<header>
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Gate Check</h1>
+    <div style="text-align:right">
+      <span id="whoami" style="font-size:12px;opacity:.85"></span>
+      <button onclick="go('settings')" title="Settings" style="background:#ffffff22;border:none;
+        color:#fff;border-radius:7px;padding:5px 10px;font-size:14px;margin-left:8px">⚙️</button>
+      <button id="signout" onclick="doSignOut()" style="display:none;background:#ffffff22;border:none;
+        color:#fff;border-radius:7px;padding:5px 10px;font-size:12px;margin-left:8px">Sign out</button>
+    </div>
+  </div>
+  <div class="sub" id="datastat">No schedule loaded yet</div>
+</header>
+<nav>
+  <button id="nav-search" class="on" onclick="go('search')">Search</button>
+  <button id="nav-sched" onclick="go('sched')">Schedule</button>
+  <button id="nav-form" onclick="go('form')">Seal Form</button>
+  <button id="nav-yard" onclick="go('yard')">Yard</button>
+  <button id="nav-hist" onclick="go('hist')">Saved</button>
+</nav>
+<main>
+
+<!-- ============ SEARCH ============ -->
+<section id="sec-search" class="on">
+  <div class="card">
+    <h2>Find an order</h2>
+    <input id="q" class="big-search" type="search" inputmode="numeric" placeholder="Order # e.g. 8055968"
+           autocomplete="off">
+    <div class="hint">Type at least 4 digits — matches appear instantly. You can also search part of a vendor or carrier name.</div>
+  </div>
+  <div id="results"></div>
+</section>
+
+<!-- ============ SCHEDULE ============ -->
+<section id="sec-sched">
+  <div class="card">
+    <h2>Load today's schedule</h2>
+    <div class="hint" style="margin-bottom:8px">
+      Import a <b>photo of the printed sheet</b>, the <b>.xlsx spreadsheet</b>, or the
+      <b>.json</b> file from Claude. New days are <b>added</b> to what's already here —
+      same order numbers get updated, nothing is lost.
+    </div>
+    <input type="file" id="file" accept=".json,.csv,.xlsx,.xlsm,image/*" style="display:none">
+    <button class="btn" onclick="document.getElementById('file').click()">📷 Import photo / spreadsheet / file</button>
+    <div class="warn">📷 <b>Photo tips:</b> lay the sheet flat, shoot straight down, good light,
+      whole page in frame. The app reads it on your phone and shows everything it found for you
+      to check before adding. A blurry or angled photo will miss rows — the .xlsx or .json from
+      Claude is always 100% accurate. Photo reading works fully offline and takes about a minute.</div>
+    <div id="ocrstatus" style="display:none" class="warn"></div>
+    <button class="btn sec" onclick="toggle('pastebox')">✏️ Or paste data</button>
+    <div id="pastebox" style="display:none">
+      <textarea id="paste" rows="5" placeholder='Paste the JSON from Claude here'></textarea>
+      <button class="btn sec" onclick="importPaste()">Add pasted data</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Loaded orders <span id="cnt" style="color:var(--mut);font-weight:600"></span></h2>
+    <div id="sched"></div>
+    <button class="btn red" onclick="clearAll()">🗑 Clear all schedule data</button>
+  </div>
+</section>
+
+<!-- ============ SEAL FORM ============ -->
+<section id="sec-form">
+  <div class="card" style="text-align:center;padding:10px">
+    <div style="font-weight:800;font-size:17px">Seal Verification Form</div>
+    <div class="banner">*** DRIVER MUST SLIDE TANDEMS BACK ***</div>
+    <div class="hint" id="formsrc">Not linked to an order — search an order and tap "Fill Seal Form" to auto-populate.</div>
+  </div>
+
+  <div class="card">
+    <h2>Load details (auto-filled)</h2>
+    <div class="row2">
+      <div><label class="f">Date In</label><input type="text" id="f_datein" placeholder="MM/DD/YY"></div>
+      <div><label class="f">Time In</label><input type="text" id="f_timein" placeholder="HHMM"></div>
+    </div>
+    <label class="f">Appt Time</label><input type="text" id="f_appt" placeholder="e.g. 730">
+    <label class="f">PO Number</label>
+    <div class="row2">
+      <select id="f_pomode" onchange="poMode()" style="flex:0.5">
+        <option value="po">PO</option>
+        <option value="na">N/A — no PO</option>
+      </select>
+      <input type="text" id="f_po" inputmode="numeric" style="flex:1.5" placeholder="80xxxxx">
+    </div>
+    <div class="hint">Driver has no PO? Pick <b>N/A</b> and fill the form manually.</div>
+    <label class="f">Trailer Number</label><input type="text" id="f_trailer">
+    <label class="f">Carrier Name</label><input type="text" id="f_carrier">
+    <label class="f">Vendor (reference)</label><input type="text" id="f_vendor">
+  </div>
+
+  <div class="card">
+    <h2>Driver — hand the phone to the driver</h2>
+    <div class="row2">
+      <div><label class="f">Initials</label><input type="text" id="f_initials" maxlength="5" style="text-transform:uppercase"></div>
+      <div><label class="f">Driver Name (print)</label><input type="text" id="f_driver"></div>
+    </div>
+    <label class="f">Driver Signature</label>
+    <div id="sigwrap">
+      <canvas id="sig"></canvas>
+      <button class="btn sec" id="sigclear" onclick="clearSig()">Clear</button>
+    </div>
+    <div class="hint" style="font-style:italic">"The above load has been in my control and has not been tampered with during transit."</div>
+    <div class="chk"><input type="checkbox" id="f_photoid"><label for="f_photoid">Driver's Photo ID has been checked</label></div>
+  </div>
+
+  <div class="card">
+    <h2>Refer &amp; Fuel</h2>
+    <div class="row2">
+      <div><label class="f">Refer Setting</label><input type="text" id="f_reefset"></div>
+      <div><label class="f">Refer Actual</label><input type="text" id="f_reefact"></div>
+    </div>
+    <label class="f">Fuel Level (circle one) — <i>N/A for dry loads</i></label>
+    <div class="choice" id="c_fuel"></div>
+    <label class="f">Verified by</label><input type="text" id="f_verified">
+    <div class="hint">Auto-filled with your first name from Settings (⚙ top-right).</div>
+  </div>
+
+  <div class="card">
+    <h2>Seal</h2>
+    <label class="f">Seal Type (circle one)</label>
+    <div class="choice" id="c_sealtype"></div>
+    <label class="f">Seal Number on Trailer</label><input type="text" id="f_sealtrailer">
+    <label class="f">Seal Number on BOL</label><input type="text" id="f_sealbol">
+    <label class="f">Seal Condition (circle one)</label>
+    <div class="choice" id="c_sealcond"></div>
+    <div class="chk"><input type="checkbox" id="f_locked"><label for="f_locked">Trailer was locked upon arrival <i>(LTL loads only!)</i></label></div>
+  </div>
+
+  <div class="card">
+    <button class="btn" onclick="previewForm()">👁 Preview &amp; check form</button>
+    <div class="hint" style="text-align:center">Preview first — the save and email buttons appear under the preview.</div>
+    <div id="preview"></div>
+    <div id="actions" style="display:none">
+      <button class="btn grn" onclick="saveForm()">✅ Save completed form</button>
+      <button class="btn" onclick="emailForm()">📧 Email to receiving office</button>
+      <button class="btn sec" onclick="shareForm()">📤 Share another way (AirDrop / apps)</button>
+    </div>
+    <button class="btn red" onclick="resetForm(true)">Start a new blank form</button>
+  </div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section id="sec-hist">
+  <div class="card">
+    <h2>Saved forms</h2>
+    <div id="hist"></div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ YARD CHECK ============ -->
+<section id="sec-yard">
+  <div class="card" style="text-align:center;padding:10px">
+    <div style="font-weight:800;font-size:16px">F-US399-QS-36 Trailer Inspection Log</div>
+    <div class="hint">Air temperature critical limits: <b>Freezer 0° or less</b> · <b>Cooler 34.0°–40.0°</b> ·
+      escalate on DEF or fuel ¼ or less. Temps must be to the tenth (e.g. -10.0).</div>
+  </div>
+  <div class="card">
+    <div class="row2">
+      <div><label class="f">Date</label><input type="date" id="yc_date"></div>
+      <div><label class="f">Time (check slot)</label>
+        <select id="yc_time"><option>0000</option><option>0200</option><option>0400</option><option>0600</option>
+        <option>0800</option><option>1000</option><option>1200</option><option>1400</option><option>1600</option>
+        <option>1800</option><option>2000</option><option>2200</option></select></div>
+    </div>
+    <label class="f">Name</label><input type="text" id="yc_name" placeholder="Officer name">
+  </div>
+  <div id="ycrows"></div>
+  <div class="card">
+    <input type="file" id="ycfile" accept="image/*" style="display:none">
+    <button class="btn" onclick="document.getElementById('ycfile').click()">📷 Import trailer list from photo</button>
+    <div class="hint" style="text-align:center;margin-bottom:4px">Photograph the printed Trailer Inspection Log —
+      the app fills in the trailer numbers and products for you.</div>
+    <div id="ycocrstatus"></div>
+    <button class="btn sec" onclick="ycAdd()">➕ Add trailer</button>
+    <button class="btn sec" onclick="ycCopyLast()">📋 Same trailers as last check</button>
+    <div class="hint" id="ycsum" style="text-align:center;margin-top:8px;font-size:14px"></div>
+  </div>
+  <div class="card">
+    <button class="btn" onclick="ycPreview()">👁 Preview &amp; check log</button>
+    <div class="hint" style="text-align:center">Preview first — save and email appear under the preview.</div>
+    <div id="ycpreview"></div>
+    <div id="ycactions" style="display:none">
+      <button class="btn grn" onclick="ycSave()">✅ Save yard check</button>
+      <button class="btn" onclick="ycEmail()">📧 Email to receiving office</button>
+      <button class="btn sec" onclick="ycShare()">📤 Share another way</button>
+    </div>
+    <button class="btn red" onclick="ycNew()">Start a new blank yard check</button>
+  </div>
+  <div class="card">
+    <h2>Past yard checks</h2>
+    <div id="ychist"></div>
+  </div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section id="sec-settings">
+  <div class="card">
+    <h2>Officer</h2>
+    <label class="f">Your first name</label>
+    <input type="text" id="set_offname" placeholder="e.g. Kofi">
+    <div class="hint">Auto-fills "Verified by" on every form you complete while signed in — no retyping.</div>
+  </div>
+  <div class="card">
+    <h2>Receiving office email</h2>
+    <input type="text" id="set_email" inputmode="email" autocomplete="email" placeholder="receiving@yourcompany.com">
+    <div class="hint">Where completed forms go. Shared with the whole team once you're signed in.</div>
+    <label class="f">CC (copies)</label>
+    <input type="text" id="set_cc" inputmode="email" placeholder="person1@company.com, person2@company.com">
+    <div class="hint">Everyone listed here gets a copy of every form. Add more addresses separated by
+      commas. Shared with the whole team.</div>
+    <label class="f">Auto-send service link</label>
+    <input type="text" id="set_mailer" placeholder="https://script.google.com/macros/s/…/exec">
+    <div class="hint"><b>With this filled in, the Email button sends automatically</b> from your team's
+      shared sender account — no mail app opens at all. Paste the Web App link from the one-time
+      setup (Claude gives you the steps). Shared with the whole team.
+      If it's empty, the Email button falls back to opening your mail app instead.</div>
+  </div>
+  <button class="btn sec" onclick="go('form')">← Back to Seal Form</button>
+</section>
+
+<!-- ============ OCR REVIEW OVERLAY ============ -->
+<div id="review" style="display:none;position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:50;overflow:auto">
+  <div style="background:#fff;margin:14px;border-radius:14px;padding:14px;max-width:680px;margin-left:auto;margin-right:auto">
+    <h2 style="color:var(--blue);margin:0 0 6px">Check what the photo says</h2>
+    <div class="hint" id="revmsg" style="margin-bottom:8px"></div>
+    <label class="f">Schedule date for these orders</label>
+    <input type="date" id="revdate" style="width:100%;padding:11px;border:1.5px solid var(--line);border-radius:9px;font-size:16px">
+    <div id="revrows" style="margin-top:10px"></div>
+    <button class="btn grn" onclick="confirmReview()">✅ Add these orders</button>
+    <button class="btn red" onclick="closeReview()">Cancel</button>
+  </div>
+</div>
+<!-- ============ LOGIN OVERLAY ============ -->
+<div id="login" style="display:none;position:fixed;inset:0;background:#1F4E79;z-index:100;
+  align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:380px">
+    <div style="font-size:22px;font-weight:800;color:var(--blue);margin-bottom:2px">Gate Check</div>
+    <div class="hint" style="margin-bottom:14px">Team sign in — use the email and password your admin gave you.</div>
+    <label class="f">Email</label>
+    <input type="text" id="lg_email" inputmode="email" autocomplete="username" placeholder="you@company.com">
+    <label class="f">Password</label>
+    <input type="password" id="lg_pass" autocomplete="current-password"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="loginerr" style="color:var(--red);font-size:13.5px;margin-top:8px;min-height:18px"></div>
+    <button class="btn" id="lg_btn" onclick="doLogin()">Sign in</button>
+    <button class="btn sec" onclick="doReset()">Forgot password</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<canvas id="paper" width="1275" height="1650" style="display:none"></canvas>
+<script src="js/app.js"></script>
+
+<script src="vendor/fflate.js"></script>
+<script src="vendor/tesseract.min.js"></script>
+<script src="js/import.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/cloud.js"></script>
+<script src="js/yard.js"></script>
+</body>
