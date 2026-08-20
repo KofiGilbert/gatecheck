@@ -141,61 +141,17 @@ function orderCardHTML(o, withBtn){
     + (withBtn?'<button class="btn" onclick="fillFromOrder(\''+esc(o.order)+'\',\''+esc(o.date)+'\')">📝 Fill Seal Form</button>':'')
     + '</div>';
 }
-/* ---- recent lookups (per device) ---- */
-function recentKey(o){ return String(o||'').replace(/[^A-Za-z0-9_-]/g,''); }
-function recentGet(){ try{ return JSON.parse(sget('gc_recent')||'[]'); }catch(e){ return []; } }
-function recentAdd(order,date){
-  order = String(order||'').trim(); if(!order) return;
-  var o = DB.orders.filter(function(x){ return x.order===order; })[0] || {};
-  var list = recentGet().filter(function(r){ return r && r.order!==order; });
-  list.unshift({ order:order, date:date||o.date||'', vendor:o.vendor||'' });
-  sset('gc_recent', JSON.stringify(list.slice(0,6)));
-}
-function recentPick(order){ var i=$('q'); i.value=order; doSearch(); i.focus(); }
-
-function _todayISO(){
-  var d=new Date();
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-}
-/* the space under the search box is the most valuable on the screen, so it
-   carries the shift's context instead of "waiting for an order number" */
-function searchEmptyHTML(){
-  if(!DB.orders.length)
-    return '<div class="empty">No schedule loaded yet.<br>Go to the <b>Schedule</b> tab and import today\'s file.</div>';
-  var t=_todayISO();
-  var dates = DB.orders.map(function(o){ return o.date; }).filter(Boolean).sort();
-  var day = dates.indexOf(t)>=0 ? t : (dates.filter(function(d){ return d>=t; })[0] || dates[dates.length-1] || '');
-  var set = day ? DB.orders.filter(function(o){ return o.date===day; }) : [];
-  var inyard = set.filter(function(o){ return String(o.in_yard).toUpperCase()==='Y'; }).length;
-  var label = day===t ? 'due today' : (day ? 'due '+fmtDate(day).replace(/\/\d{4}$/,'') : 'orders');
-  var rec = recentGet().filter(function(r){ return r && r.order; });
-  var h = '<div class="es">'
-    + '<div class="es-row">'
-    +   '<div class="es-stat"><b>'+set.length+'</b><span>'+esc(label)+'</span></div>'
-    +   '<div class="es-stat"><b>'+inyard+'</b><span>in yard</span></div>'
-    + '</div>';
-  if(rec.length){
-    h += '<div class="es-h">Recent lookups</div><div class="es-chips">'
-      + rec.map(function(r){
-          return '<button class="chip" onclick="recentPick(\''+recentKey(r.order)+'\')">'
-            + esc(r.order) + (r.vendor?'<em>'+esc(r.vendor)+'</em>':'') + '</button>';
-        }).join('') + '</div>';
-  } else {
-    h += '<div class="es-note">Type an order number above to look it up.</div>';
-  }
-  return h+'</div>';
-}
-
 $('q').addEventListener('input', doSearch);
 function doSearch(){
   var q = $('q').value.trim().toUpperCase();
   var out = $('results');
-  if(q.length<3){ out.innerHTML = searchEmptyHTML(); return; }
+  if(q.length<3){ out.innerHTML = DB.orders.length? '<div class="empty">Waiting for an order number…</div>'
+      :'<div class="empty">No schedule loaded yet.<br>Go to the <b>Schedule</b> tab and import today\'s file.</div>';
+    return; }
   var hits = DB.orders.filter(function(o){
     return o.order.indexOf(q)>=0 || o.vendor.toUpperCase().indexOf(q)>=0
         || (o.carrier||'').toUpperCase().indexOf(q)>=0;
   }).slice(0,12);
-  if(hits.length===1) recentAdd(hits[0].order, hits[0].date);
   out.innerHTML = hits.length ? hits.map(function(o){return orderCardHTML(o,true);}).join('')
     : '<div class="empty">❌ No match for “'+esc(q)+'”.<br>Check the number, or the sheet may not be imported yet.</div>';
 }
@@ -244,7 +200,6 @@ function setPick(k,v){
 function fillFromOrder(order,date){
   var o = DB.orders.find(function(x){ return x.order===order && x.date===date; });
   if(!o) return;
-  recentAdd(o.order, o.date);
   resetForm(false);
   $('f_po').value = o.order;
   var _d=new Date(), _iso=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
