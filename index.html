@@ -119,6 +119,7 @@
       repeating-linear-gradient(135deg, rgba(255,255,255,.022) 0 2px, transparent 2px 6px),
       radial-gradient(120% 80% at 50% -10%, var(--gc-bg-glow) 0%, var(--gc-bg-glow-0) 60%),
       linear-gradient(180deg, var(--gc-bg-1) 0%, var(--gc-bg-2) 100%);
+    background-color:var(--gc-bg-1);
     animation:gc-fade 180ms linear both;
   }
   #login .gc-shell{margin:auto;width:100%;max-width:400px}
@@ -242,7 +243,8 @@
   @media (prefers-reduced-motion: reduce){
     #login,#login *{
       animation-duration:.01ms !important; animation-iteration-count:1 !important;
-      transition-duration:.01ms !important; scroll-behavior:auto !important;
+      animation-delay:0s !important; transition-duration:.01ms !important;
+      transition-delay:0s !important; scroll-behavior:auto !important;
     }
     #login .gc-cta:disabled .gc-busy::after{animation:none;border-top-color:rgba(255,255,255,.35)}
   }
