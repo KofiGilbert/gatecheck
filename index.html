@@ -280,6 +280,45 @@
 </style>
 </head>
 <body>
+<!-- ============ LOGIN OVERLAY ============ -->
+<div id="login" class="gc-checking" style="display:flex">
+  <img class="gc-brand" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
+  <div class="gc-foot" id="lg_foot">Checkpoint v1.0 &#183; NPG SECURITY SERVICES</div>
+  <div class="gc-visual" role="img"
+       aria-label="A Martin Brower team member in a hi-vis vest checking a load against a clipboard"></div>
+  <div class="gc-panel">
+    <div class="gc-checking-note" role="status">Checking your sign in</div>
+    <div class="gc-form-wrap">
+      <span class="gc-product">Checkpoint</span>
+      <h1>Sign into your account</h1>
+      <div role="status" aria-live="polite" aria-atomic="true"><div id="loginerr"></div></div>
+      <form id="lg_form" novalidate onsubmit="doLogin();return false">
+        <div class="gc-row">
+          <label class="gc-label" for="lg_email">Work email</label>
+          <input class="gc-field" type="email" id="lg_email" name="email" required
+            autocomplete="username" inputmode="email" enterkeyhint="next"
+            autocapitalize="none" autocorrect="off" spellcheck="false"
+            aria-describedby="loginerr" placeholder="you@martinbrower.com">
+        </div>
+        <div class="gc-row">
+          <label class="gc-label" for="lg_pass">Password</label>
+          <div class="gc-pwrap">
+            <input class="gc-field" type="password" id="lg_pass" name="password" required
+              autocomplete="current-password" enterkeyhint="go" aria-describedby="loginerr">
+            <button type="button" class="gc-reveal" id="lg_reveal" aria-controls="lg_pass"
+              aria-pressed="false" aria-label="Show password">Show</button>
+          </div>
+          <div class="gc-caps" id="lg_caps">Caps Lock is on.</div>
+        </div>
+        <button type="submit" class="gc-cta" id="lg_btn">
+          <span class="gc-idle">Login</span><span class="gc-busy">Signing in&#8230;</span>
+        </button>
+      </form>
+      <button type="button" class="gc-link" onclick="doReset()">Forgot password?</button>
+      <p class="gc-note">Don&rsquo;t have an account? Ask your DC admin to set one up.</p>
+    </div>
+  </div>
+</div>
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center">
     <h1>Checkpoint</h1>
@@ -513,45 +552,6 @@
     <div id="revrows" style="margin-top:10px"></div>
     <button class="btn grn" onclick="confirmReview()">✅ Add these orders</button>
     <button class="btn red" onclick="closeReview()">Cancel</button>
-  </div>
-</div>
-<!-- ============ LOGIN OVERLAY ============ -->
-<div id="login" class="gc-checking" style="display:flex">
-  <img class="gc-brand" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
-  <div class="gc-foot" id="lg_foot">Checkpoint v1.0 &#183; NPG SECURITY SERVICES</div>
-  <div class="gc-visual" role="img"
-       aria-label="A Martin Brower team member in a hi-vis vest checking a load against a clipboard"></div>
-  <div class="gc-panel">
-    <div class="gc-checking-note" role="status">Checking your sign in</div>
-    <div class="gc-form-wrap">
-      <span class="gc-product">Checkpoint</span>
-      <h1>Sign into your account</h1>
-      <div role="status" aria-live="polite" aria-atomic="true"><div id="loginerr"></div></div>
-      <form id="lg_form" novalidate onsubmit="doLogin();return false">
-        <div class="gc-row">
-          <label class="gc-label" for="lg_email">Work email</label>
-          <input class="gc-field" type="email" id="lg_email" name="email" required
-            autocomplete="username" inputmode="email" enterkeyhint="next"
-            autocapitalize="none" autocorrect="off" spellcheck="false"
-            aria-describedby="loginerr" placeholder="you@martinbrower.com">
-        </div>
-        <div class="gc-row">
-          <label class="gc-label" for="lg_pass">Password</label>
-          <div class="gc-pwrap">
-            <input class="gc-field" type="password" id="lg_pass" name="password" required
-              autocomplete="current-password" enterkeyhint="go" aria-describedby="loginerr">
-            <button type="button" class="gc-reveal" id="lg_reveal" aria-controls="lg_pass"
-              aria-pressed="false" aria-label="Show password">Show</button>
-          </div>
-          <div class="gc-caps" id="lg_caps">Caps Lock is on.</div>
-        </div>
-        <button type="submit" class="gc-cta" id="lg_btn">
-          <span class="gc-idle">Login</span><span class="gc-busy">Signing in&#8230;</span>
-        </button>
-      </form>
-      <button type="button" class="gc-link" onclick="doReset()">Forgot password?</button>
-      <p class="gc-note">Don&rsquo;t have an account? Ask your DC admin to set one up.</p>
-    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

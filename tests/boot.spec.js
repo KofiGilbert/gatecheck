@@ -12,6 +12,20 @@ async function bootWithSlowAuth(page, opts) {
   await page.waitForFunction(() => typeof window.doLogin === 'function');
 }
 
+test('overlay element exists before the app shell does', async ({ page }) => {
+  // #login used to sit near the end of <body>, so during HTML parsing there was a
+  // frame where <header> existed and the overlay did not.
+  await page.route('**/firebasejs/**', r => r.fulfill({ contentType:'application/javascript', body:'' }));
+  await page.addInitScript(H.FB_STUB, { authDelay: 1200 });
+  await page.goto('/index.html', { waitUntil: 'commit' });
+  const order = await page.evaluate(() => {
+    const kids = [...document.body.children].map(e => e.id || e.tagName.toLowerCase());
+    return { login: kids.indexOf('login'), header: kids.indexOf('header') };
+  });
+  expect(order.login, '#login must be present').toBeGreaterThanOrEqual(0);
+  expect(order.login, '#login must be parsed before <header>').toBeLessThan(order.header);
+});
+
 test('app shell is never visible before auth resolves', async ({ page }) => {
   await bootWithSlowAuth(page);
   const s = await page.evaluate(() => {
