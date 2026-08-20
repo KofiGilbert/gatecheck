@@ -20,6 +20,7 @@ test('app shell is never visible before auth resolves', async ({ page }) => {
     return {
       settled: !!(window.__fb && window.__fb.settled),
       display: getComputedStyle(lg).display,
+      opacity: parseFloat(getComputedStyle(lg).opacity),
       covers: r.width >= window.innerWidth && r.height >= window.innerHeight,
       checking: lg.classList.contains('gc-checking'),
       formVisibility: getComputedStyle(document.querySelector('#login .gc-form-wrap')).visibility,
@@ -28,6 +29,8 @@ test('app shell is never visible before auth resolves', async ({ page }) => {
   });
   expect(s.settled, 'auth should still be pending').toBe(false);
   expect(s.display).not.toBe('none');
+  // display alone is not enough: a fade-in leaves the app readable through the overlay
+  expect(s.opacity, 'overlay must be fully opaque, not fading in').toBeGreaterThanOrEqual(0.99);
   expect(s.covers, 'overlay must cover the viewport').toBe(true);
   expect(s.checking).toBe(true);
   expect(s.formVisibility, 'form must not flash before the state is known').toBe('hidden');
