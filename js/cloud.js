@@ -23,11 +23,16 @@ function loginInert(on){
   }
 }
 function showLogin(){
-  var o=$('login'); if(o.style.display==='flex') return;
-  o.style.display='flex'; loginInert(true);
-  var e=$('lg_email'); if(e && !e.value) setTimeout(function(){ e.focus(); },60);
+  var o=$('login');
+  /* the overlay is already up in its "checking" state on first paint, so
+     "was hidden" means hidden OR still checking */
+  var wasHidden = o.style.display==='none' || o.classList.contains('gc-checking');
+  o.style.display='flex'; o.classList.remove('gc-checking'); loginInert(true);
+  if(wasHidden){ var e=$('lg_email'); if(e && !e.value) setTimeout(function(){ e.focus(); },60); }
 }
-function hideLogin(){ $('login').style.display='none'; loginInert(false); }
+function hideLogin(){
+  var o=$('login'); o.style.display='none'; o.classList.remove('gc-checking'); loginInert(false);
+}
 /* kind: undefined|'err' => error styling, 'ok' => success styling */
 function loginErr(m, kind){
   var e=$('loginerr'); if(!e) return;
@@ -61,7 +66,17 @@ function authErrText(e, ctx){
 }
 
 function cloudInit(){
+  /* the overlay covers the app from first paint; keep the app behind it
+     unreachable while we wait for Firebase to report an auth state */
+  var _lg = $('login');
+  if(_lg && _lg.classList.contains('gc-checking')) loginInert(true);
+  /* if auth never reports back, fall through to the form rather than
+     leaving the officer staring at a spinner */
+  setTimeout(function(){
+    if(!CLOUD.user && _lg && _lg.classList.contains('gc-checking')) showLogin();
+  }, 8000);
   if(FIREBASE_CONFIG.__PLACEHOLDER__ || typeof firebase==='undefined'){
+    hideLogin();
     $('datastat').textContent = 'Single-device mode (team login not set up yet)';
     setTimeout(stat, 400); // let normal stat() take over once data loads
     return;

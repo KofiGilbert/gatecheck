@@ -1,9 +1,9 @@
 const FB_STUB = (opts) => {
-  window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false }, opts||{});
+  window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false, authDelay:0 }, opts||{});
   const listeners = [];
   const err = (code) => { const e = new Error('stub'); e.code = code; return e; };
   const authObj = {
-    onAuthStateChanged(cb){ listeners.push(cb); setTimeout(()=>{ cb(window.__fb.user); window.__fb.settled = true; },0); return ()=>{}; },
+    onAuthStateChanged(cb){ listeners.push(cb); setTimeout(()=>{ cb(window.__fb.user); window.__fb.settled = true; }, window.__fb.authDelay||0); return ()=>{}; },
     signInWithEmailAndPassword(em){
       if(window.__fb.pending) return new Promise(()=>{});
       if(window.__fb.authError) return Promise.reject(err(window.__fb.authError));
@@ -93,4 +93,4 @@ async function pseudo(page, selector, which, props){
     return out;
   }, { which, props });
 }
-module.exports = { gotoApp, parseRGB, lum, ratio, over, effectiveBg, styleOf, pseudo };
+module.exports = { FB_STUB, gotoApp, parseRGB, lum, ratio, over, effectiveBg, styleOf, pseudo };

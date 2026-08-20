@@ -121,10 +121,25 @@
     background:linear-gradient(90deg, rgba(0,14,25,.20) 0%, rgba(0,14,25,0) 38%);
   }
   #login .gc-panel{
-    flex:1 1 48%; min-width:0; display:flex;
+    flex:1 1 48%; min-width:0; display:flex; position:relative;
     overflow-y:auto; -webkit-overflow-scrolling:touch; background:var(--mb-panel);
     padding:max(32px,env(safe-area-inset-top)) max(28px,env(safe-area-inset-right))
             max(32px,env(safe-area-inset-bottom)) max(28px,env(safe-area-inset-left));
+  }
+  /* until Firebase reports an auth state, show a neutral splash: never the app
+     behind the overlay, and never a login form that is about to disappear */
+  #login .gc-checking-note{display:none}
+  #login.gc-checking .gc-form-wrap,
+  #login.gc-checking .gc-foot{visibility:hidden}
+  #login.gc-checking .gc-checking-note{
+    display:flex;align-items:center;justify-content:center;gap:12px;
+    position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);
+    font-size:14px;font-weight:600;letter-spacing:.2px;color:var(--mb-muted);
+  }
+  #login.gc-checking .gc-checking-note::before{
+    content:"";width:18px;height:18px;border-radius:50%;flex:0 0 auto;
+    border:2px solid var(--mb-hair);border-top-color:var(--mb-ink);
+    animation:gc-spin 700ms linear infinite;
   }
   #login .gc-form-wrap{
     margin:auto; width:100%; max-width:400px;
@@ -503,12 +518,13 @@
   </div>
 </div>
 <!-- ============ LOGIN OVERLAY ============ -->
-<div id="login" style="display:none">
+<div id="login" class="gc-checking" style="display:flex">
   <img class="gc-brand" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
   <div class="gc-foot" id="lg_foot">Checkpoint v1.0 &#183; NPG SECURITY SERVICES</div>
   <div class="gc-visual" role="img"
        aria-label="A Martin Brower team member in a hi-vis vest checking a load against a clipboard"></div>
   <div class="gc-panel">
+    <div class="gc-checking-note" role="status">Checking your sign in</div>
     <div class="gc-form-wrap">
       <span class="gc-product">Checkpoint</span>
       <h1>Sign into your account</h1>
