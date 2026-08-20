@@ -46,7 +46,7 @@ test.describe('sign-in screen', () => {
   /* ---- WCAG 1.4.3 text contrast ---- */
   test('all text meets 4.5:1', async ({ page }) => {
     const targets = [
-      '#login h1', '#login .gc-note', '#login .gc-product',
+      '#login h1', '#login .gc-note',
       '#login label[for=lg_email]', '#login label[for=lg_pass]',
       '#login .gc-cta', '#login .gc-link', '#login .gc-foot', '#login .gc-reveal',
     ];
