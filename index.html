@@ -171,8 +171,10 @@
 
   #login .gc-row{margin-top:22px}
   #login .gc-row + .gc-row{margin-top:16px}
-  #login .gc-label{display:block;font-size:12.5px;line-height:16px;font-weight:700;
-    letter-spacing:.5px;text-transform:uppercase;color:var(--mb-label);margin-bottom:7px}
+  #login .gc-vh{
+    position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;
+    overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;
+  }
   #login .gc-field{
     display:block;width:100%;min-height:52px;padding:14px 16px;
     border:1.5px solid var(--mb-field-bd);border-radius:8px;
@@ -288,17 +290,18 @@
       <div role="status" aria-live="polite" aria-atomic="true"><div id="loginerr"></div></div>
       <form id="lg_form" novalidate onsubmit="doLogin();return false">
         <div class="gc-row">
-          <label class="gc-label" for="lg_email">Work email</label>
+          <label class="gc-vh" for="lg_email">Email address</label>
           <input class="gc-field" type="email" id="lg_email" name="email" required
             autocomplete="username" inputmode="email" enterkeyhint="next"
             autocapitalize="none" autocorrect="off" spellcheck="false"
-            aria-describedby="loginerr" placeholder="you@martinbrower.com">
+            aria-describedby="loginerr" placeholder="Email address">
         </div>
         <div class="gc-row">
-          <label class="gc-label" for="lg_pass">Password</label>
+          <label class="gc-vh" for="lg_pass">Password</label>
           <div class="gc-pwrap">
             <input class="gc-field" type="password" id="lg_pass" name="password" required
-              autocomplete="current-password" enterkeyhint="go" aria-describedby="loginerr">
+              autocomplete="current-password" enterkeyhint="go" aria-describedby="loginerr"
+              placeholder="Password">
             <button type="button" class="gc-reveal" id="lg_reveal" aria-controls="lg_pass"
               aria-pressed="false" aria-label="Show password">Show</button>
           </div>
