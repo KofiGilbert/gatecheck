@@ -1,0 +1,12 @@
+{
+  "name": "gatecheck-tests",
+  "private": true,
+  "description": "Browser tests for Gate Check. Kept out of the repo root so Netlify does not treat this static site as a Node build.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed --project=chromium-mobile",
+    "report": "playwright show-report",
+    "setup": "npm install && playwright install chromium webkit"
+  },
+  "devDependencies": { "@playwright/test": "^1.62.1" }
+}
