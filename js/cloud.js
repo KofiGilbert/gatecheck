@@ -14,9 +14,51 @@ var FIREBASE_CONFIG = {
 
 var CLOUD = { ready:false, user:null, subs:[], db:null };
 
-function showLogin(){ $('login').style.display='flex'; }
-function hideLogin(){ $('login').style.display='none'; }
-function loginErr(m){ $('loginerr').textContent = m||''; }
+function loginInert(on){
+  var kids = document.body.children;
+  for(var i=0;i<kids.length;i++){
+    var el = kids[i];
+    if(el.id==='login' || el.tagName==='SCRIPT') continue;
+    if(on) el.setAttribute('inert',''); else el.removeAttribute('inert');
+  }
+}
+function showLogin(){
+  var o=$('login'); if(o.style.display==='flex') return;
+  o.style.display='flex'; loginInert(true);
+  var e=$('lg_email'); if(e && !e.value) setTimeout(function(){ e.focus(); },60);
+}
+function hideLogin(){ $('login').style.display='none'; loginInert(false); }
+/* kind: undefined|'err' => error styling, 'ok' => success styling */
+function loginErr(m, kind){
+  var e=$('loginerr'); if(!e) return;
+  e.textContent = m || '';
+  e.className = m ? (kind==='ok'?'ok':'') : '';
+}
+/* Firebase error code -> plain-language message with a next step */
+function authErrText(e, ctx){
+  var bad = "That email and password don't match. Check for typos \u2014 then try again, "
+          + 'or tap "Forgot your password?" below.';
+  var map = {
+    'auth/invalid-credential': bad,
+    'auth/wrong-password': bad,
+    'auth/user-not-found': bad,
+    'auth/missing-password': 'Enter your password to sign in.',
+    'auth/invalid-email': ctx==='reset'
+      ? "That doesn't look like a complete email address. Check it and tap \"Forgot your password?\" again."
+      : "That doesn't look like a complete email address. It needs an @ and a domain, like you@martinbrower.com.",
+    'auth/user-disabled': 'This account has been turned off. Ask your admin to turn it back on.',
+    'auth/too-many-requests': ctx==='reset'
+      ? 'Too many reset requests. Wait a few minutes, then try again.'
+      : 'Too many sign-in attempts. Wait about a minute and try again. Resetting your password also unlocks the account right away.',
+    'auth/network-request-failed': ctx==='reset'
+      ? "No connection. Gate Check can't send the reset email right now. Check your signal and try again."
+      : "No connection. Gate Check can't reach the server. Check your Wi-Fi or cell signal, then try again."
+  };
+  if(map[e.code]) return map[e.code];
+  return ctx==='reset'
+    ? "We couldn't send the reset email. Try again in a moment, or ask your admin to reset it for you."
+    : 'Something went wrong on our end. Try again in a moment. If it keeps happening, give your admin this code: '+(e.code||e.message);
+}
 
 function cloudInit(){
   if(FIREBASE_CONFIG.__PLACEHOLDER__ || typeof firebase==='undefined'){
@@ -50,25 +92,23 @@ function cloudInit(){
 }
 function doLogin(){
   var em=$('lg_email').value.trim(), pw=$('lg_pass').value;
-  if(!em||!pw){ loginErr('Enter your email and password.'); return; }
+  if(!em||!pw){ loginErr('Enter your email and password to sign in.'); return; }
   loginErr(''); $('lg_btn').disabled=true;
   firebase.auth().signInWithEmailAndPassword(em,pw)
-    .catch(function(e){
-      var m = {'auth/invalid-credential':'Wrong email or password.',
-               'auth/user-not-found':'No account with that email — ask your admin.',
-               'auth/wrong-password':'Wrong password.',
-               'auth/too-many-requests':'Too many tries — wait a minute and try again.',
-               'auth/network-request-failed':'No internet connection.'}[e.code] || e.message;
-      loginErr(m);
-    })
+    .catch(function(e){ loginErr(authErrText(e,'login')); })
     .finally(function(){ $('lg_btn').disabled=false; });
 }
 function doReset(){
   var em=$('lg_email').value.trim();
-  if(!em){ loginErr('Type your email first, then tap "Forgot password".'); return; }
+  if(!em){
+    loginErr('Type your email in the box above first, then tap "Forgot your password?".');
+    $('lg_email').focus(); return;
+  }
   firebase.auth().sendPasswordResetEmail(em)
-    .then(function(){ loginErr('Password reset email sent — check your inbox.'); })
-    .catch(function(e){ loginErr(e.message); });
+    .then(function(){
+      loginErr('Check your email. We sent a reset link to '+em+'. The link works for one hour.','ok');
+    })
+    .catch(function(e){ loginErr(authErrText(e,'reset')); });
 }
 function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
 
@@ -185,4 +225,36 @@ renderHist = function(){
       items[i].textContent += ' · by '+f.createdBy.split('@')[0];
   });
 };
+/* ---- sign-in screen affordances ---- */
+(function(){
+  var pw=$('lg_pass'), rv=$('lg_reveal'), caps=$('lg_caps'), foot=$('lg_foot');
+  if(rv && pw) rv.addEventListener('click', function(){
+    var show = pw.type==='password';
+    pw.type = show? 'text':'password';
+    rv.textContent = show? 'Hide':'Show';
+    rv.setAttribute('aria-pressed', show? 'true':'false');
+    rv.setAttribute('aria-label', show? 'Hide password':'Show password');
+    var n = pw.value.length;
+    pw.focus(); try{ pw.setSelectionRange(n,n); }catch(e){}
+  });
+  if(pw && caps){
+    var chk = function(ev){
+      var on = ev.getModifierState && ev.getModifierState('CapsLock');
+      caps.classList.toggle('on', !!on);
+    };
+    pw.addEventListener('keydown', chk);
+    pw.addEventListener('keyup', chk);
+    pw.addEventListener('blur', function(){ caps.classList.remove('on'); });
+  }
+  if(foot){
+    var base = foot.textContent;
+    var net = function(){
+      foot.textContent = navigator.onLine? base : 'No connection \u2014 check Wi-Fi or signal';
+    };
+    window.addEventListener('online', net);
+    window.addEventListener('offline', net);
+    net();
+  }
+})();
+
 cloudInit();
