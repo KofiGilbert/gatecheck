@@ -18,27 +18,28 @@ test.describe('layout, keyboard and regressions', () => {
   test('card is horizontally centred', async ({ page }) => {
     await H.gotoApp(page);
     const m = await page.evaluate(() => {
-      const c = document.querySelector('#login .gc-card').getBoundingClientRect();
-      const o = document.getElementById('login');
-      return { left: c.left, right: o.clientWidth - c.right };
+      const c = document.querySelector('#login .gc-form-wrap').getBoundingClientRect();
+      const p = document.querySelector('#login .gc-panel').getBoundingClientRect();
+      return { left: c.left - p.left, right: p.right - c.right };
     });
-    expect(Math.abs(m.left - m.right), 'card not centred').toBeLessThanOrEqual(2);
+    expect(Math.abs(m.left - m.right), 'form not centred in its panel').toBeLessThanOrEqual(2);
   });
 
   /* ---- WCAG 2.4.11: field must be reachable when the keyboard eats the viewport ---- */
   test('password field can be scrolled clear of a short viewport', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 300 });   // ~iPhone with keyboard up
     await H.gotoApp(page);
-    const overlay = page.locator('#login');
-    expect(await overlay.evaluate(el => getComputedStyle(el).overflowY)).toBe('auto');
-    const scrollable = await overlay.evaluate(el => el.scrollHeight > el.clientHeight);
-    expect(scrollable, 'overlay must scroll when content exceeds the viewport').toBe(true);
+    const panel = page.locator('#login .gc-panel');   // the scroll container
+    expect(await panel.evaluate(el => getComputedStyle(el).overflowY)).toBe('auto');
+    const scrollable = await panel.evaluate(el => el.scrollHeight > el.clientHeight);
+    expect(scrollable, 'panel must scroll when content exceeds the viewport').toBe(true);
 
     // nothing is clipped off the top (the align-items:center failure mode)
     const topClip = await page.evaluate(() => {
-      const el = document.getElementById('login');
+      const el = document.querySelector('#login .gc-panel');
       el.scrollTop = 0;
-      return document.querySelector('#login .gc-card').getBoundingClientRect().top;
+      const p = el.getBoundingClientRect();
+      return document.querySelector('#login .gc-form-wrap').getBoundingClientRect().top - p.top;
     });
     expect(topClip, 'card top is cut off and unreachable').toBeGreaterThanOrEqual(-1);
 
@@ -136,18 +137,18 @@ test.describe('layout, keyboard and regressions', () => {
     }
     expect(fails, 'dark-mode text contrast failures').toEqual([]);
     const b = await H.styleOf(page, '#lg_email', ['border-top-color']);
-    const card = await H.effectiveBg(page, '#login .gc-card');
+    const card = await H.effectiveBg(page, '#login .gc-panel');
     expect(H.ratio(H.parseRGB(b['border-top-color']), card), 'dark border contrast').toBeGreaterThanOrEqual(3);
   });
 
   test('reduced motion is respected', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await H.gotoApp(page);
-    const d = await H.styleOf(page, '#login .gc-card', ['animation-duration']);
+    const d = await H.styleOf(page, '#login .gc-form-wrap', ['animation-duration']);
     expect(parseFloat(d['animation-duration'])).toBeLessThan(0.05);
-    await page.locator('#login .gc-card').evaluate(el =>
+    await page.locator('#login .gc-form-wrap').evaluate(el =>
       Promise.all(el.getAnimations().map(a => a.finished.catch(()=>{}))));
-    const vis = await page.locator('#login .gc-card').evaluate(el => getComputedStyle(el).opacity);
+    const vis = await page.locator('#login .gc-form-wrap').evaluate(el => getComputedStyle(el).opacity);
     expect(parseFloat(vis), 'card must still be visible with reduced motion').toBe(1);
   });
 });

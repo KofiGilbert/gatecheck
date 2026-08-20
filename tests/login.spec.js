@@ -18,7 +18,7 @@ test.describe('sign-in screen', () => {
       expect(s['outline-style'], `${sel} outline-style`).not.toBe('none');
       expect(parseFloat(s['outline-width']), `${sel} outline-width`).toBeGreaterThanOrEqual(3);
       const ring = H.parseRGB(s['outline-color']);
-      const bg = await H.effectiveBg(page, '#login .gc-card');
+      const bg = await H.effectiveBg(page, '#login .gc-panel');
       expect(H.ratio(ring, bg), `${sel} focus ring contrast`).toBeGreaterThanOrEqual(3);
     }
   });
@@ -36,7 +36,7 @@ test.describe('sign-in screen', () => {
     for (const sel of ['#lg_email', '#lg_pass']) {
       const s = await H.styleOf(page, sel, ['border-top-color','background-color']);
       const border = H.parseRGB(s['border-top-color']);
-      const card = await H.effectiveBg(page, '#login .gc-card');
+      const card = await H.effectiveBg(page, '#login .gc-panel');
       const fill = H.over(H.parseRGB(s['background-color']), card);
       expect(H.ratio(border, card), `${sel} border vs card`).toBeGreaterThanOrEqual(3);
       expect(H.ratio(border, fill), `${sel} border vs own fill`).toBeGreaterThanOrEqual(3);
@@ -46,7 +46,7 @@ test.describe('sign-in screen', () => {
   /* ---- WCAG 1.4.3 text contrast ---- */
   test('all text meets 4.5:1', async ({ page }) => {
     const targets = [
-      '#login h1', '#login .gc-eyebrow', '#login .gc-sub',
+      '#login h1', '#login .gc-note', '#login .gc-sub',
       '#login label[for=lg_email]', '#login label[for=lg_pass]',
       '#login .gc-cta', '#login .gc-link', '#login .gc-foot', '#login .gc-reveal',
     ];
