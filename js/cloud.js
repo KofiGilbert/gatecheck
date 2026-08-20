@@ -1,4 +1,4 @@
-/* Gate Check — https://gatecheck-martinbrower.netlify.app */
+/* Checkpoint · https://gatecheck-martinbrower.netlify.app */
 
 /* =================== TEAM MODE: login + shared data (Firebase) =================== */
 /* Config is baked in at build time. Placeholder => app runs in local (single-device) mode. */
@@ -51,8 +51,8 @@ function authErrText(e, ctx){
       ? 'Too many reset requests. Wait a few minutes, then try again.'
       : 'Too many sign-in attempts. Wait about a minute and try again. Resetting your password also unlocks the account right away.',
     'auth/network-request-failed': ctx==='reset'
-      ? "No connection. Gate Check can't send the reset email right now. Check your signal and try again."
-      : "No connection. Gate Check can't reach the server. Check your Wi-Fi or cell signal, then try again."
+      ? "No connection. Checkpoint can't send the reset email right now. Check your signal and try again."
+      : "No connection. Checkpoint can't reach the server. Check your Wi-Fi or cell signal, then try again."
   };
   if(map[e.code]) return map[e.code];
   return ctx==='reset'
@@ -87,7 +87,7 @@ function cloudInit(){
       }
     });
   }catch(e){
-    toast('Cloud setup problem: '+e.message+' — running in single-device mode');
+    toast('Cloud setup problem: '+e.message+'. Running in single-device mode.');
   }
 }
 function doLogin(){
@@ -166,7 +166,7 @@ mergeOrders = function(arr){
     b.commit().then(function(){});
     done+=Math.min(400,list.length-i);
   }
-  toast('Imported '+list.length+' orders — shared with the whole team');
+  toast('Imported '+list.length+' orders, shared with the whole team.');
 };
 var _localClearAll = clearAll;
 clearAll = function(){
@@ -189,7 +189,7 @@ saveForm = function(){
   CLOUD.db.collection('forms').add(d)
     .then(function(){})
     .catch(function(e){ toast('Could not save: '+e.message); });
-  toast('Form saved ✔ — visible to the whole team');
+  toast('Form saved ✔. Visible to the whole team.');
 };
 var _localDelHist = delHist;
 delHist = function(i){

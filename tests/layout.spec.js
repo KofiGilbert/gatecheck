@@ -99,7 +99,7 @@ test.describe('layout, keyboard and regressions', () => {
     await page.fill('#lg_pass', 'good');
     await page.click('#lg_btn');
     await expect(page.locator('#login')).toBeHidden();
-    await expect(page.locator('header h1')).toHaveText('Gate Check');
+    await expect(page.locator('header h1')).toHaveText('Checkpoint');
     await expect(page.locator('#signout')).toBeVisible();
     // a .btn elsewhere in the app keeps its own styling
     await page.click('nav button:nth-child(2)');
@@ -127,7 +127,7 @@ test.describe('layout, keyboard and regressions', () => {
   test('dark mode keeps contrast', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await H.gotoApp(page);
-    const targets = ['#login h1','#login .gc-sub','#login label[for=lg_email]','#login .gc-cta','#login .gc-link'];
+    const targets = ['#login h1','#login .gc-product','#login label[for=lg_email]','#login .gc-cta','#login .gc-link'];
     const fails = [];
     for (const sel of targets) {
       const s = await H.styleOf(page, sel, ['color']);

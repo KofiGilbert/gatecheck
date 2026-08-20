@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#16436B" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0B121C" media="(prefers-color-scheme: dark)">
-<title>Gate Check • Order Search &amp; Seal Form</title>
+<title>Checkpoint · Martin Brower</title>
 <style>
   :root{
     --blue:#1F4E79; --blue2:#2E6DA4; --bg:#F2F4F8; --card:#FFFFFF;
@@ -130,10 +130,14 @@
     margin:auto; width:100%; max-width:400px;
     animation:gc-rise 260ms cubic-bezier(.2,.8,.24,1) 40ms both;
   }
-  #login .gc-logo{display:block;width:224px;max-width:64%;height:auto;margin:0 0 34px}
+  #login .gc-lockup{display:flex;align-items:center;gap:15px;margin:0 0 32px}
+  #login .gc-logo{display:block;flex:0 0 auto;width:168px;height:auto;margin:0}
+  #login .gc-product{
+    padding-left:15px;border-left:1px solid var(--mb-hair);
+    font-size:19px;line-height:23px;font-weight:800;letter-spacing:-.2px;color:var(--mb-ink);
+  }
   #login h1{margin:0;font-size:30px;line-height:37px;font-weight:800;
     letter-spacing:-.6px;color:var(--mb-ink)}
-  #login .gc-sub{margin:10px 0 0;font-size:15px;line-height:23px;font-weight:500;color:var(--mb-muted)}
 
   /* message region — icon is a pseudo-element because loginErr() writes textContent */
   #login #loginerr{display:none}
@@ -211,7 +215,9 @@
   @media (max-width: 899px){
     #login .gc-visual{display:none}
     #login .gc-panel{flex:1 1 100%}
-    #login .gc-logo{width:186px;margin-bottom:26px}
+    #login .gc-lockup{margin-bottom:26px;gap:13px}
+    #login .gc-logo{width:142px}
+    #login .gc-product{padding-left:13px;font-size:17px}
     #login h1{font-size:26px;line-height:32px}
   }
 
@@ -250,7 +256,7 @@
 <body>
 <header>
   <div style="display:flex;justify-content:space-between;align-items:center">
-    <h1>Gate Check</h1>
+    <h1>Checkpoint</h1>
     <div style="text-align:right">
       <span id="whoami" style="font-size:12px;opacity:.85"></span>
       <button onclick="go('settings')" title="Settings" style="background:#ffffff22;border:none;
@@ -276,7 +282,7 @@
     <h2>Find an order</h2>
     <input id="q" class="big-search" type="search" inputmode="numeric" placeholder="Order # e.g. 8055968"
            autocomplete="off">
-    <div class="hint">Type at least 4 digits — matches appear instantly. You can also search part of a vendor or carrier name.</div>
+    <div class="hint">Type at least 4 digits. Matches appear instantly. You can also search part of a vendor or carrier name.</div>
   </div>
   <div id="results"></div>
 </section>
@@ -287,14 +293,14 @@
     <h2>Load today's schedule</h2>
     <div class="hint" style="margin-bottom:8px">
       Import a <b>photo of the printed sheet</b>, the <b>.xlsx spreadsheet</b>, or the
-      <b>.json</b> file from Claude. New days are <b>added</b> to what's already here —
-      same order numbers get updated, nothing is lost.
+      <b>.json</b> file from Claude. New days are <b>added</b> to what's already here.
+      Same order numbers get updated, nothing is lost.
     </div>
     <input type="file" id="file" accept=".json,.csv,.xlsx,.xlsm,image/*" style="display:none">
     <button class="btn" onclick="document.getElementById('file').click()">📷 Import photo / spreadsheet / file</button>
     <div class="warn">📷 <b>Photo tips:</b> lay the sheet flat, shoot straight down, good light,
       whole page in frame. The app reads it on your phone and shows everything it found for you
-      to check before adding. A blurry or angled photo will miss rows — the .xlsx or .json from
+      to check before adding. A blurry or angled photo will miss rows. The .xlsx or .json from
       Claude is always 100% accurate. Photo reading works fully offline and takes about a minute.</div>
     <div id="ocrstatus" style="display:none" class="warn"></div>
     <button class="btn sec" onclick="toggle('pastebox')">✏️ Or paste data</button>
@@ -315,7 +321,7 @@
   <div class="card" style="text-align:center;padding:10px">
     <div style="font-weight:800;font-size:17px">Seal Verification Form</div>
     <div class="banner">*** DRIVER MUST SLIDE TANDEMS BACK ***</div>
-    <div class="hint" id="formsrc">Not linked to an order — search an order and tap "Fill Seal Form" to auto-populate.</div>
+    <div class="hint" id="formsrc">Not linked to an order. Search an order and tap "Fill Seal Form" to auto-populate.</div>
   </div>
 
   <div class="card">
@@ -329,7 +335,7 @@
     <div class="row2">
       <select id="f_pomode" onchange="poMode()" style="flex:0.5">
         <option value="po">PO</option>
-        <option value="na">N/A — no PO</option>
+        <option value="na">N/A (no PO)</option>
       </select>
       <input type="text" id="f_po" inputmode="numeric" style="flex:1.5" placeholder="80xxxxx">
     </div>
@@ -340,7 +346,7 @@
   </div>
 
   <div class="card">
-    <h2>Driver — hand the phone to the driver</h2>
+    <h2>Driver: hand the phone to the driver</h2>
     <div class="row2">
       <div><label class="f">Initials</label><input type="text" id="f_initials" maxlength="5" style="text-transform:uppercase"></div>
       <div><label class="f">Driver Name (print)</label><input type="text" id="f_driver"></div>
@@ -360,7 +366,7 @@
       <div><label class="f">Refer Setting</label><input type="text" id="f_reefset"></div>
       <div><label class="f">Refer Actual</label><input type="text" id="f_reefact"></div>
     </div>
-    <label class="f">Fuel Level (circle one) — <i>N/A for dry loads</i></label>
+    <label class="f">Fuel Level (circle one) <i>(N/A for dry loads)</i></label>
     <div class="choice" id="c_fuel"></div>
     <label class="f">Verified by</label><input type="text" id="f_verified">
     <div class="hint">Auto-filled with your first name from Settings (⚙ top-right).</div>
@@ -379,7 +385,7 @@
 
   <div class="card">
     <button class="btn" onclick="previewForm()">👁 Preview &amp; check form</button>
-    <div class="hint" style="text-align:center">Preview first — the save and email buttons appear under the preview.</div>
+    <div class="hint" style="text-align:center">Preview first. The save and email buttons appear under the preview.</div>
     <div id="preview"></div>
     <div id="actions" style="display:none">
       <button class="btn grn" onclick="saveForm()">✅ Save completed form</button>
@@ -421,7 +427,7 @@
   <div class="card">
     <input type="file" id="ycfile" accept="image/*" style="display:none">
     <button class="btn" onclick="document.getElementById('ycfile').click()">📷 Import trailer list from photo</button>
-    <div class="hint" style="text-align:center;margin-bottom:4px">Photograph the printed Trailer Inspection Log —
+    <div class="hint" style="text-align:center;margin-bottom:4px">Photograph the printed Trailer Inspection Log and
       the app fills in the trailer numbers and products for you.</div>
     <div id="ycocrstatus"></div>
     <button class="btn sec" onclick="ycAdd()">➕ Add trailer</button>
@@ -430,7 +436,7 @@
   </div>
   <div class="card">
     <button class="btn" onclick="ycPreview()">👁 Preview &amp; check log</button>
-    <div class="hint" style="text-align:center">Preview first — save and email appear under the preview.</div>
+    <div class="hint" style="text-align:center">Preview first. Save and email appear under the preview.</div>
     <div id="ycpreview"></div>
     <div id="ycactions" style="display:none">
       <button class="btn grn" onclick="ycSave()">✅ Save yard check</button>
@@ -451,7 +457,7 @@
     <h2>Officer</h2>
     <label class="f">Your first name</label>
     <input type="text" id="set_offname" placeholder="e.g. Kofi">
-    <div class="hint">Auto-fills "Verified by" on every form you complete while signed in — no retyping.</div>
+    <div class="hint">Auto-fills "Verified by" on every form you complete while signed in, so there is no retyping.</div>
   </div>
   <div class="card">
     <h2>Receiving office email</h2>
@@ -464,7 +470,7 @@
     <label class="f">Auto-send service link</label>
     <input type="text" id="set_mailer" placeholder="https://script.google.com/macros/s/…/exec">
     <div class="hint"><b>With this filled in, the Email button sends automatically</b> from your team's
-      shared sender account — no mail app opens at all. Paste the Web App link from the one-time
+      shared sender account, and no mail app opens at all. Paste the Web App link from the one-time
       setup (Claude gives you the steps). Shared with the whole team.
       If it's empty, the Email button falls back to opening your mail app instead.</div>
   </div>
@@ -489,9 +495,11 @@
        aria-label="A Martin Brower team member in a hi-vis vest checking a load against a clipboard"></div>
   <div class="gc-panel">
     <div class="gc-form-wrap">
-      <img class="gc-logo" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
+      <div class="gc-lockup">
+        <img class="gc-logo" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
+        <span class="gc-product">Checkpoint</span>
+      </div>
       <h1>Sign into your account</h1>
-      <p class="gc-sub">Gate Check — yard &amp; gate operations.</p>
       <div role="status" aria-live="polite" aria-atomic="true"><div id="loginerr"></div></div>
       <form id="lg_form" novalidate onsubmit="doLogin();return false">
         <div class="gc-row">
@@ -517,7 +525,7 @@
       </form>
       <button type="button" class="gc-link" onclick="doReset()">Forgot password?</button>
       <p class="gc-note">Don&rsquo;t have an account? Ask your DC admin to set one up.</p>
-      <div class="gc-foot" id="lg_foot">Gate Check v1.0 &#183; Martin Brower</div>
+      <div class="gc-foot" id="lg_foot">Checkpoint v1.0 &#183; Martin Brower</div>
     </div>
   </div>
 </div>

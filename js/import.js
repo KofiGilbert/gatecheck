@@ -1,4 +1,4 @@
-/* Gate Check — https://gatecheck-martinbrower.netlify.app */
+/* Checkpoint · https://gatecheck-martinbrower.netlify.app */
 
 /* =================== v2: XLSX import =================== */
 function colToIdx(ref){ // "BC12" -> 54
@@ -187,7 +187,7 @@ async function importPhoto(file){
     }
     if(bestCnt<1){
       ocrStatus(null);
-      toast('Could not find any order numbers in that photo — try a flatter, sharper shot, or import the .xlsx/.json file');
+      toast('Could not find any order numbers in that photo. Try a flatter, sharper shot, or import the .xlsx/.json file.');
       return;
     }
     ocrStatus('🔎 Reading photo at full quality…');
@@ -205,7 +205,7 @@ async function importPhoto(file){
     });
     if(!parsed.date) parsed.date=extra.date;
     if(!parsed.rows.length){
-      toast('No order rows recognized — try a sharper photo or the .xlsx/.json file'); return;
+      toast('No order rows recognized. Try a sharper photo or the .xlsx/.json file.'); return;
     }
     openReview(parsed);
   }catch(e){
@@ -299,7 +299,7 @@ function openReview(parsed){
   $('revdate').value = parsed.date || new Date().toISOString().slice(0,10);
   $('revmsg').innerHTML = 'The photo reader found <b>'+parsed.rows.length+' orders</b>'
     +(parsed.date? ' for <b>'+esc(fmtDate(parsed.date))+'</b>':'')
-    +'. <b>Compare with the paper sheet</b> — a blurry photo can miss rows or misread cases/pallets. '
+    +'. <b>Compare with the paper sheet</b>, because a blurry photo can miss rows or misread cases/pallets. '
     +'Tap any box to fix it, ✕ to remove a row. Missing rows? Cancel and retake the photo flatter, '
     +'or import the .xlsx/.json instead.';
   $('revrows').innerHTML = parsed.rows.map(function(r,i){
