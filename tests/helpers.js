@@ -1,5 +1,5 @@
 const FB_STUB = (opts) => {
-  window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false, authDelay:0 }, opts||{});
+  window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false, authDelay:0, orders:[] }, opts||{});
   const listeners = [];
   const err = (code) => { const e = new Error('stub'); e.code = code; return e; };
   const authObj = {
@@ -17,16 +17,23 @@ const FB_STUB = (opts) => {
     },
     signOut(){ window.__fb.user=null; listeners.forEach(cb=>cb(null)); return Promise.resolve(); },
   };
-  const chain = {
-    onSnapshot(cb){ setTimeout(()=>cb({ docs: [] }),0); return ()=>{}; },
-    orderBy(){ return chain; }, limit(){ return chain; },
-    doc(){ return { onSnapshot(cb){ setTimeout(()=>cb({ exists:false, data:()=>({}) }),0); return ()=>{}; } }; },
+  const mkChain = (name) => {
+    const chain = {
+      onSnapshot(cb){
+        const rows = name === 'orders' ? (window.__fb.orders || []) : [];
+        setTimeout(()=>cb({ docs: rows.map(r => ({ id: r.order || '', data: () => r })) }),0);
+        return ()=>{};
+      },
+      orderBy(){ return chain; }, limit(){ return chain; },
+      doc(){ return { onSnapshot(cb){ setTimeout(()=>cb({ exists:false, data:()=>({}) }),0); return ()=>{}; } }; },
+    };
+    return chain;
   };
   window.firebase = {
     initializeApp(){ return {}; },
     firestore(){ return {
       enablePersistence(){ return Promise.resolve(); },
-      collection(){ return chain; },
+      collection(n){ return mkChain(n); },
       batch(){ return { set(){}, delete(){}, commit(){ return Promise.resolve(); } }; },
     }; },
     auth(){ return authObj; },
