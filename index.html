@@ -130,11 +130,15 @@
     margin:auto; width:100%; max-width:400px;
     animation:gc-rise 260ms cubic-bezier(.2,.8,.24,1) 40ms both;
   }
-  #login .gc-lockup{display:flex;align-items:center;gap:15px;margin:0 0 32px}
-  #login .gc-logo{display:block;flex:0 0 auto;width:168px;height:auto;margin:0}
+  /* absolutely positioned, so it is out of the flex flow and pinned to the corner */
+  #login .gc-brand{
+    position:absolute;top:26px;right:28px;z-index:3;
+    display:block;width:158px;height:auto;
+  }
   #login .gc-product{
-    padding-left:15px;border-left:1px solid var(--mb-hair);
-    font-size:19px;line-height:23px;font-weight:800;letter-spacing:-.2px;color:var(--mb-ink);
+    display:block;margin:0 0 14px;
+    font-size:13px;line-height:16px;font-weight:800;letter-spacing:1.4px;
+    text-transform:uppercase;color:var(--mb-ink);
   }
   #login h1{margin:0;font-size:30px;line-height:37px;font-weight:800;
     letter-spacing:-.6px;color:var(--mb-ink)}
@@ -215,10 +219,16 @@
   @media (max-width: 899px){
     #login .gc-visual{display:none}
     #login .gc-panel{flex:1 1 100%}
-    #login .gc-lockup{margin-bottom:26px;gap:13px}
-    #login .gc-logo{width:142px}
-    #login .gc-product{padding-left:13px;font-size:17px}
+    #login .gc-brand{width:126px;top:20px;right:20px}
+    #login .gc-panel{padding-top:82px}
     #login h1{font-size:26px;line-height:32px}
+  }
+
+  /* short screen (landscape phone, or a keyboard shrinking the layout viewport):
+     brand chrome yields so the fields stay reachable */
+  @media (max-width: 899px) and (max-height: 560px){
+    #login .gc-brand{display:none}
+    #login .gc-panel{padding-top:18px;padding-bottom:18px}
   }
 
   @media (prefers-color-scheme: dark){
@@ -235,7 +245,7 @@
     #login .gc-cta:active{background:#255C8E}
     #login .gc-cta:disabled{background:#26557F}
     #login #loginerr::before,#login #loginerr.ok::before{color:#0B121C}
-    #login .gc-logo{filter:invert(1) brightness(1.9)}
+    #login .gc-brand{filter:invert(1) brightness(1.9)}
   }
 
   @keyframes gc-fade{ from{opacity:0} to{opacity:1} }
@@ -491,14 +501,12 @@
 </div>
 <!-- ============ LOGIN OVERLAY ============ -->
 <div id="login" style="display:none">
+  <img class="gc-brand" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
   <div class="gc-visual" role="img"
        aria-label="A Martin Brower team member in a hi-vis vest checking a load against a clipboard"></div>
   <div class="gc-panel">
     <div class="gc-form-wrap">
-      <div class="gc-lockup">
-        <img class="gc-logo" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
-        <span class="gc-product">Checkpoint</span>
-      </div>
+      <span class="gc-product">Checkpoint</span>
       <h1>Sign into your account</h1>
       <div role="status" aria-live="polite" aria-atomic="true"><div id="loginerr"></div></div>
       <form id="lg_form" novalidate onsubmit="doLogin();return false">
