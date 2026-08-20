@@ -210,8 +210,10 @@
     text-decoration:underline;text-underline-offset:3px;
   }
   #login .gc-note{margin:6px 0 0;font-size:14px;line-height:21px;color:var(--mb-muted)}
-  #login .gc-foot{margin-top:30px;padding-top:18px;border-top:1px solid var(--mb-divider);
-    font-size:12px;line-height:16px;font-weight:600;letter-spacing:.3px;color:var(--mb-muted)}
+  #login .gc-foot{
+    position:absolute;bottom:22px;right:28px;z-index:3;
+    font-size:12px;line-height:16px;font-weight:600;letter-spacing:.3px;color:var(--mb-muted);
+  }
   #login .gc-cta:focus-visible,#login .gc-reveal:focus-visible,#login .gc-link:focus-visible{
     outline:3px solid var(--mb-focus);outline-offset:2px}
 
@@ -220,14 +222,15 @@
     #login .gc-visual{display:none}
     #login .gc-panel{flex:1 1 100%}
     #login .gc-brand{width:126px;top:20px;right:20px}
-    #login .gc-panel{padding-top:82px}
+    #login .gc-foot{left:20px;right:20px;bottom:16px;text-align:center}
+    #login .gc-panel{padding-top:82px;padding-bottom:56px}
     #login h1{font-size:26px;line-height:32px}
   }
 
   /* short screen (landscape phone, or a keyboard shrinking the layout viewport):
      brand chrome yields so the fields stay reachable */
   @media (max-width: 899px) and (max-height: 560px){
-    #login .gc-brand{display:none}
+    #login .gc-brand,#login .gc-foot{display:none}
     #login .gc-panel{padding-top:18px;padding-bottom:18px}
   }
 
@@ -502,6 +505,7 @@
 <!-- ============ LOGIN OVERLAY ============ -->
 <div id="login" style="display:none">
   <img class="gc-brand" src="assets/mb-logo.png" alt="Martin Brower" width="880" height="226">
+  <div class="gc-foot" id="lg_foot">Checkpoint v1.0 &#183; NPG SECURITY SERVICES</div>
   <div class="gc-visual" role="img"
        aria-label="A Martin Brower team member in a hi-vis vest checking a load against a clipboard"></div>
   <div class="gc-panel">
@@ -533,7 +537,6 @@
       </form>
       <button type="button" class="gc-link" onclick="doReset()">Forgot password?</button>
       <p class="gc-note">Don&rsquo;t have an account? Ask your DC admin to set one up.</p>
-      <div class="gc-foot" id="lg_foot">Checkpoint v1.0 &#183; NPG SECURITY SERVICES</div>
     </div>
   </div>
 </div>
