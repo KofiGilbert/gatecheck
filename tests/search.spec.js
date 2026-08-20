@@ -35,7 +35,7 @@ test('search finds an order and offers the seal form', async ({ page }) => {
   await expect(card).toHaveCount(1);
   await expect(card).toContainText('ARMADA HUB 1');
   await expect(card).toContainText('Zone F');
-  await expect(card.locator('button')).toContainText('Fill Seal Form');
+  await expect(card.locator('button')).toContainText('Fill Seal Verification Form');
 });
 
 test('no match tells the officer what to do', async ({ page }) => {

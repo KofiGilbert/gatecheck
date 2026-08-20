@@ -9,9 +9,16 @@
 <title>Checkpoint · Martin Brower</title>
 <style>
   :root{
-    --blue:#1F4E79; --blue2:#2E6DA4; --bg:#F2F4F8; --card:#FFFFFF;
-    --ink:#1A2330; --mut:#6B7686; --line:#D8DEE8;
-    --gold:#FFF2CC; --green:#1E7B45; --red:#C0392B;
+    /* Martin Brower brand palette, taken from martinbrower.com */
+    --blue:#000E19;      /* MB black: header, nav, primary buttons, headings */
+    --blue2:#4C6C1A;     /* MB dark green: focus rings, secondary accent */
+    --lime:#BEF91B;      /* MB lime: the brand accent */
+    --bg:#F2EEE6;        /* MB beige */
+    --card:#FFFAF1;      /* MB warm white */
+    --ink:#000E19; --mut:#4C5763;
+    --line:#DCD6CA;      /* hairline dividers */
+    --bd:#7C899E;        /* control borders, 3.6:1 on the card */
+    --gold:#FFF2CC; --green:#4C6C1A; --red:#C0392B;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -22,7 +29,7 @@
   nav{display:flex;background:var(--blue);position:sticky;top:58px;z-index:19}
   nav button{flex:1;background:none;border:none;color:#CBDCEE;padding:11px 2px 13px;
     font-size:13.5px;font-weight:600;border-bottom:3px solid transparent}
-  nav button.on{color:#fff;border-bottom-color:#FFD24D}
+  nav button.on{color:#fff;border-bottom-color:var(--lime)}
   main{padding:14px;max-width:640px;margin:0 auto;padding-bottom:60px}
   section{display:none}
   section.on{display:block}
@@ -31,16 +38,16 @@
   h2{font-size:15px;margin:0 0 10px;color:var(--blue)}
   label.f{display:block;font-size:12.5px;font-weight:700;color:var(--mut);margin:10px 0 4px;
     text-transform:uppercase;letter-spacing:.4px}
-  select{width:100%;padding:12px;border:1.5px solid var(--line);border-radius:9px;font-size:16px;
-    background:#fff;color:var(--ink)}
+  select{width:100%;padding:12px;border:1.5px solid var(--bd);border-radius:9px;font-size:16px;
+    background:var(--card);color:var(--ink)}
   input[type=text],input[type=search],textarea{
-    width:100%;padding:12px;border:1.5px solid var(--line);border-radius:9px;font-size:16px;
-    background:#fff;color:var(--ink)}
+    width:100%;padding:12px;border:1.5px solid var(--bd);border-radius:9px;font-size:16px;
+    background:var(--card);color:var(--ink)}
   input:focus,textarea:focus{outline:none;border-color:var(--blue2)}
   .big-search{font-size:24px !important;text-align:center;letter-spacing:2px;font-weight:700}
   .btn{display:inline-block;border:none;border-radius:10px;padding:13px 18px;font-size:15.5px;
     font-weight:700;background:var(--blue);color:#fff;width:100%;margin-top:10px}
-  .btn.sec{background:#E8EDF5;color:var(--blue)}
+  .btn.sec{background:#EAE5DA;color:var(--blue)}
   .btn.grn{background:var(--green)}
   .btn.red{background:#FBE9E7;color:var(--red)}
   .btn:disabled{opacity:.45}
@@ -48,24 +55,23 @@
   .row2>*{flex:1}
   .hint{font-size:12.5px;color:var(--mut);line-height:1.45;margin-top:6px}
   .pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;margin-right:5px}
-  .pill.live{background:#E4F4EA;color:var(--green)}
+  .pill.live{background:#EDF7D9;color:#3F5A15}
   .pill.drop{background:#FDEBD0;color:#9C640C}
-  .pill.zone{background:#E3EBF6;color:var(--blue)}
+  .pill.zone{background:#E6E1D7;color:var(--blue)}
   .pill.star{background:#FFF3C4;color:#8A6D00}
   .kv{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);
     padding:7px 0;font-size:14.5px}
   .kv:last-child{border-bottom:none}
   .kv .k{color:var(--mut);font-weight:600}
   .kv .v{font-weight:700;text-align:right;max-width:60%}
-  .ordercard{border-left:5px solid var(--blue2)}
   .empty{color:var(--mut);text-align:center;padding:26px 8px;font-size:14px}
   .choice{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-  .choice button{border:1.5px solid var(--line);background:#fff;border-radius:9px;
+  .choice button{border:1.5px solid var(--bd);background:var(--card);border-radius:9px;
     padding:10px 14px;font-size:14.5px;font-weight:700;color:var(--ink);flex:1;min-width:70px}
   .choice button.sel{background:var(--blue);border-color:var(--blue);color:#fff}
   .chk{display:flex;align-items:center;gap:10px;padding:11px 4px;font-size:15px;font-weight:600}
   .chk input{width:22px;height:22px}
-  #sigwrap{border:1.5px dashed #9FB2CC;border-radius:10px;background:#FBFCFE;position:relative}
+  #sigwrap{border:1.5px dashed #98A7C0;border-radius:10px;background:var(--card);position:relative}
   #sig{width:100%;height:160px;display:block;border-radius:10px;touch-action:none}
   #sigclear{position:absolute;top:6px;right:6px;width:auto;margin:0;padding:6px 12px;font-size:12.5px}
   .banner{background:#B8B8B8;color:#111;text-align:center;font-weight:800;font-size:13px;
@@ -78,9 +84,9 @@
   .histbtns button{width:auto;padding:8px 12px;font-size:13px;margin:0 0 0 6px}
   .schedday{font-weight:800;color:var(--blue);font-size:14px;margin:12px 0 4px}
   .schedrow{display:flex;justify-content:space-between;font-size:13.5px;padding:6px 2px;
-    border-bottom:1px solid #EDF1F7}
+    border-bottom:1px solid var(--line)}
   .schedrow b{font-variant-numeric:tabular-nums}
-  .ycwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .ycwrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
   table.yct{border-collapse:collapse;width:100%;min-width:940px}
   .yct th{background:var(--blue);color:#fff;font-size:11.5px;padding:9px 6px;text-transform:uppercase;letter-spacing:.3px}
   .yct td{border:1px solid var(--line);padding:0;vertical-align:middle}
@@ -380,7 +386,7 @@
   <div class="card" style="text-align:center;padding:10px">
     <div style="font-weight:800;font-size:17px">Seal Verification Form</div>
     <div class="banner">*** DRIVER MUST SLIDE TANDEMS BACK ***</div>
-    <div class="hint" id="formsrc">Not linked to an order. Search an order and tap "Fill Seal Form" to auto-populate.</div>
+    <div class="hint" id="formsrc">Not linked to an order. Search an order and tap "Fill Seal Verification Form" to auto-populate.</div>
   </div>
 
   <div class="card">

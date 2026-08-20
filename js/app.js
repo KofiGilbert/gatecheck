@@ -138,7 +138,7 @@ function orderCardHTML(o, withBtn){
     + '<div class="kv"><span class="k">Open Cases</span><span class="v">'+o.cases.toLocaleString()+'</span></div>'
     + '<div class="kv"><span class="k">Pallets</span><span class="v">'+o.pallets+'</span></div>'
     + '<div class="kv"><span class="k">In Yard</span><span class="v">'+esc(o.in_yard||'N/A')+'</span></div>'
-    + (withBtn?'<button class="btn" onclick="fillFromOrder(\''+esc(o.order)+'\',\''+esc(o.date)+'\')">📝 Fill Seal Form</button>':'')
+    + (withBtn?'<button class="btn" onclick="fillFromOrder(\''+esc(o.order)+'\',\''+esc(o.date)+'\')">📝 Fill Seal Verification Form</button>':'')
     + '</div>';
 }
 $('q').addEventListener('input', doSearch);
@@ -227,7 +227,7 @@ function resetForm(msg){
   var pm=$('f_pomode'); if(pm){ pm.value='po'; $('f_po').disabled=false; }
   $('f_verified').value = getOfficerName();
   var ac=$('actions'); if(ac) ac.style.display='none';
-  $('formsrc').textContent = 'Not linked to an order. Search an order and tap "Fill Seal Form" to auto-populate.';
+  $('formsrc').textContent = 'Not linked to an order. Search an order and tap "Fill Seal Verification Form" to auto-populate.';
   $('preview').innerHTML='';
   if(msg) toast('New blank form');
 }
