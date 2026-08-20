@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#1F4E79">
+<meta name="theme-color" content="#16436B" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B121C" media="(prefers-color-scheme: dark)">
 <title>Gate Check • Order Search &amp; Seal Form</title>
 <style>
   :root{
@@ -96,6 +97,155 @@
   #preview img{width:100%;border:1px solid var(--line);border-radius:8px}
   .warn{background:#FFF6E5;border:1px solid #F5D488;border-radius:9px;padding:10px;
     font-size:13px;color:#7A5A00;margin-top:8px;line-height:1.4}
+
+  /* ===================== SIGN-IN SCREEN ===================== */
+  #login{
+    --gc-ink-hi:#0F1B2B; --gc-label:#4C5A6E; --gc-sub:#4C5A6E;
+    --gc-card:#FFFFFF;
+    --gc-field-bg:#F7F9FC; --gc-field-bd:#7E8BA1; --gc-field-ph:#5F6B7C; --gc-field-tx:#1A2330;
+    --gc-focus:#1F4E79; --gc-divider:#E4E9F0; --gc-hair:#DCE3ED;
+    --gc-cta:#1F4E79; --gc-cta-act:#173D5F; --gc-cta-busy:#2A5C8A; --gc-link:#1F4E79;
+    --gc-err-bg:#FDECEA; --gc-err-bar:#C0392B; --gc-err-tx:#8E2A20;
+    --gc-ok-bg:#E7F4EC;  --gc-ok-bar:#1E7B45;  --gc-ok-tx:#145C33;
+    --gc-caps:#8A6D00;
+    --gc-gold:#FFD24D; --gc-gold-2:#F0B429;
+    --gc-bg-1:#16436B; --gc-bg-2:#0E2A45; --gc-bg-glow:rgba(46,109,164,1); --gc-bg-glow-0:rgba(46,109,164,0);
+    --gc-onbg:#C7D8EA;
+    --gc-card-sh:0 24px 48px -16px rgba(4,12,26,.55), 0 4px 12px -2px rgba(4,12,26,.30);
+    position:fixed; inset:0; z-index:100; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:max(24px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
+            max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,.022) 0 2px, transparent 2px 6px),
+      radial-gradient(120% 80% at 50% -10%, var(--gc-bg-glow) 0%, var(--gc-bg-glow-0) 60%),
+      linear-gradient(180deg, var(--gc-bg-1) 0%, var(--gc-bg-2) 100%);
+    animation:gc-fade 180ms linear both;
+  }
+  #login .gc-shell{margin:auto;width:100%;max-width:400px}
+  #login .gc-card{
+    position:relative;background:var(--gc-card);border-radius:20px;padding:28px 24px 24px;
+    box-shadow:var(--gc-card-sh);overflow:hidden;
+    animation:gc-rise 260ms cubic-bezier(.2,.8,.24,1) 40ms both;
+  }
+  #login .gc-card::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:4px;
+    background:linear-gradient(90deg,var(--gc-gold),var(--gc-gold-2),var(--gc-gold));
+  }
+  #login .gc-badge{
+    width:52px;height:52px;border-radius:15px;display:grid;place-items:center;
+    background:linear-gradient(160deg,#2E6DA4,#1F4E79);
+    box-shadow:0 3px 8px -2px rgba(4,12,26,.45), inset 0 0 0 1.5px rgba(255,210,77,.5);
+    color:#fff;font-size:20px;font-weight:800;letter-spacing:.5px;
+  }
+  #login h1{margin:16px 0 0;font-size:26px;line-height:30px;font-weight:800;
+    letter-spacing:-.3px;color:var(--gc-ink-hi)}
+  #login .gc-eyebrow{margin-top:4px;font-size:12px;line-height:15px;font-weight:700;
+    letter-spacing:1.2px;text-transform:uppercase;color:var(--gc-label)}
+  #login .gc-sub{margin:12px 0 0;font-size:15px;line-height:23px;font-weight:500;color:var(--gc-sub)}
+
+  /* message region — icon is a pseudo-element because loginErr() writes textContent */
+  #login #loginerr{display:none}
+  #login #loginerr:not(:empty){
+    display:flex;gap:10px;align-items:flex-start;margin-top:20px;
+    padding:12px 14px;border-radius:10px;border-left:3px solid var(--gc-err-bar);
+    font-size:14px;line-height:21px;font-weight:600;
+    background:var(--gc-err-bg);color:var(--gc-err-tx);
+    animation:gc-msg 200ms cubic-bezier(.2,.8,.24,1) both;
+  }
+  #login #loginerr::before{
+    content:"!";flex:0 0 auto;width:18px;height:18px;border-radius:50%;margin-top:1px;
+    display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;
+    background:var(--gc-err-bar);
+  }
+  #login #loginerr.ok:not(:empty){background:var(--gc-ok-bg);border-left-color:var(--gc-ok-bar);color:var(--gc-ok-tx)}
+  #login #loginerr.ok::before{content:"\2713";background:var(--gc-ok-bar)}
+
+  #login .gc-row{margin-top:20px}
+  #login .gc-row + .gc-row{margin-top:16px}
+  #login .gc-label{display:block;font-size:13px;line-height:16px;font-weight:700;
+    letter-spacing:.6px;text-transform:uppercase;color:var(--gc-label);margin-bottom:6px}
+  #login .gc-field{
+    display:block;width:100%;min-height:52px;padding:14px 16px;
+    border:1.5px solid var(--gc-field-bd);border-radius:12px;
+    background:var(--gc-field-bg);color:var(--gc-field-tx);
+    font-family:inherit;font-size:17px;line-height:22px;font-weight:500;
+    scroll-margin-block:24px;
+    transition:border-color 120ms ease-out, background-color 120ms ease-out;
+  }
+  #login .gc-field::placeholder{color:var(--gc-field-ph);font-weight:400;opacity:1}
+  #login .gc-field:focus{outline:3px solid var(--gc-focus);outline-offset:2px;
+    border-color:var(--gc-focus);background:var(--gc-card)}
+  #login .gc-pwrap{position:relative}
+  #login .gc-pwrap .gc-field{padding-right:72px}
+  #login .gc-reveal{
+    position:absolute;right:2px;top:2px;bottom:2px;width:60px;
+    border:none;border-left:1px solid var(--gc-hair);border-radius:0 10px 10px 0;
+    background:transparent;color:var(--gc-link);font-family:inherit;
+    font-size:13px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+  }
+  #login .gc-caps{display:none;margin-top:8px;font-size:13px;line-height:18px;
+    font-weight:700;color:var(--gc-caps)}
+  #login .gc-caps.on{display:block}
+
+  #login .gc-cta{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    width:100%;min-height:54px;margin-top:24px;padding:14px 18px;
+    border:none;border-radius:12px;background:var(--gc-cta);color:#fff;font-family:inherit;
+    font-size:17px;line-height:22px;font-weight:800;letter-spacing:.2px;
+    box-shadow:0 1px 2px rgba(15,45,80,.28);
+    transition:background-color 90ms ease-out, transform 90ms ease-out, box-shadow 90ms ease-out;
+  }
+  #login .gc-cta:active{background:var(--gc-cta-act);transform:translateY(1px);box-shadow:none}
+  #login .gc-busy{display:none}
+  #login .gc-cta:disabled{opacity:1;background:var(--gc-cta-busy);cursor:progress;
+    transform:none;box-shadow:none}
+  #login .gc-cta:disabled .gc-idle{display:none}
+  #login .gc-cta:disabled .gc-busy{display:inline-flex;align-items:center;gap:10px}
+  #login .gc-cta:disabled .gc-busy::after{
+    content:"";width:16px;height:16px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+    animation:gc-spin 700ms linear infinite;
+  }
+  #login .gc-div{height:1px;background:var(--gc-divider);margin:20px 0 16px}
+  #login .gc-link{
+    display:block;width:100%;padding:14px 12px;border:none;border-radius:8px;
+    background:transparent;color:var(--gc-link);font-family:inherit;
+    font-size:15px;line-height:20px;font-weight:700;
+    text-decoration:underline;text-underline-offset:3px;
+  }
+  #login .gc-foot{margin-top:24px;text-align:center;font-size:12px;line-height:16px;
+    font-weight:600;letter-spacing:.3px;color:var(--gc-onbg)}
+  #login .gc-cta:focus-visible,#login .gc-reveal:focus-visible,#login .gc-link:focus-visible{
+    outline:3px solid var(--gc-focus);outline-offset:2px}
+
+  @media (prefers-color-scheme: dark){
+    #login{
+      --gc-bg-1:#0B121C; --gc-bg-2:#070C14; --gc-bg-glow:rgba(22,40,60,1); --gc-bg-glow-0:rgba(22,40,60,0);
+      --gc-card:#131D2B; --gc-ink-hi:#EDF2F9; --gc-label:#B9C7DA; --gc-sub:#A4B3C8;
+      --gc-field-bg:#0E1826; --gc-field-bd:#64768F; --gc-field-ph:#93A3BA; --gc-field-tx:#E1E9F4;
+      --gc-focus:#8FC0EE; --gc-divider:#263346; --gc-hair:#263346;
+      --gc-cta:#2F72AE; --gc-cta-act:#255C8E; --gc-cta-busy:#26557F; --gc-link:#8FC0EE;
+      --gc-err-bg:#2B1512; --gc-err-bar:#E4634F; --gc-err-tx:#FFB4A8;
+      --gc-ok-bg:#0F2619;  --gc-ok-bar:#35A96A;  --gc-ok-tx:#86DCA6;
+      --gc-caps:#F0C860; --gc-onbg:#8FA3BC;
+      --gc-card-sh:0 24px 48px -16px rgba(0,0,0,.75), 0 0 0 1px rgba(255,255,255,.06);
+    }
+    #login #loginerr::before,#login #loginerr.ok::before{color:#0B121C}
+    #login .gc-field:focus{background:var(--gc-field-bg)}
+  }
+
+  @keyframes gc-fade{ from{opacity:0} to{opacity:1} }
+  @keyframes gc-rise{ from{opacity:0;transform:translateY(12px) scale(.985)} to{opacity:1;transform:none} }
+  @keyframes gc-msg { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:none} }
+  @keyframes gc-spin{ to{transform:rotate(360deg)} }
+
+  @media (prefers-reduced-motion: reduce){
+    #login,#login *{
+      animation-duration:.01ms !important; animation-iteration-count:1 !important;
+      transition-duration:.01ms !important; scroll-behavior:auto !important;
+    }
+    #login .gc-cta:disabled .gc-busy::after{animation:none;border-top-color:rgba(255,255,255,.35)}
+  }
 </style>
 </head>
 <body>
@@ -335,19 +485,40 @@
   </div>
 </div>
 <!-- ============ LOGIN OVERLAY ============ -->
-<div id="login" style="display:none;position:fixed;inset:0;background:#1F4E79;z-index:100;
-  align-items:center;justify-content:center;padding:20px">
-  <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:380px">
-    <div style="font-size:22px;font-weight:800;color:var(--blue);margin-bottom:2px">Gate Check</div>
-    <div class="hint" style="margin-bottom:14px">Team sign in — use the email and password your admin gave you.</div>
-    <label class="f">Email</label>
-    <input type="text" id="lg_email" inputmode="email" autocomplete="username" placeholder="you@company.com">
-    <label class="f">Password</label>
-    <input type="password" id="lg_pass" autocomplete="current-password"
-      onkeydown="if(event.key==='Enter')doLogin()">
-    <div id="loginerr" style="color:var(--red);font-size:13.5px;margin-top:8px;min-height:18px"></div>
-    <button class="btn" id="lg_btn" onclick="doLogin()">Sign in</button>
-    <button class="btn sec" onclick="doReset()">Forgot password</button>
+<div id="login" style="display:none">
+  <div class="gc-shell">
+    <div class="gc-card">
+      <div class="gc-badge" aria-hidden="true">GC</div>
+      <h1>Gate Check</h1>
+      <div class="gc-eyebrow">Yard &amp; Gate Operations</div>
+      <p class="gc-sub">Use the email and password your admin set up for you.</p>
+      <div role="status" aria-live="polite" aria-atomic="true"><div id="loginerr"></div></div>
+      <form id="lg_form" novalidate onsubmit="doLogin();return false">
+        <div class="gc-row">
+          <label class="gc-label" for="lg_email">Work email</label>
+          <input class="gc-field" type="email" id="lg_email" name="email" required
+            autocomplete="username" inputmode="email" enterkeyhint="next"
+            autocapitalize="none" autocorrect="off" spellcheck="false"
+            aria-describedby="loginerr" placeholder="you@martinbrower.com">
+        </div>
+        <div class="gc-row">
+          <label class="gc-label" for="lg_pass">Password</label>
+          <div class="gc-pwrap">
+            <input class="gc-field" type="password" id="lg_pass" name="password" required
+              autocomplete="current-password" enterkeyhint="go" aria-describedby="loginerr">
+            <button type="button" class="gc-reveal" id="lg_reveal" aria-controls="lg_pass"
+              aria-pressed="false" aria-label="Show password">Show</button>
+          </div>
+          <div class="gc-caps" id="lg_caps">Caps Lock is on.</div>
+        </div>
+        <button type="submit" class="gc-cta" id="lg_btn">
+          <span class="gc-idle">Sign in</span><span class="gc-busy">Signing in&#8230;</span>
+        </button>
+      </form>
+      <div class="gc-div"></div>
+      <button type="button" class="gc-link" onclick="doReset()">Forgot your password?</button>
+    </div>
+    <div class="gc-foot" id="lg_foot">Gate Check v1.0 &#183; Martin Brower</div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
