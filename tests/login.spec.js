@@ -47,6 +47,7 @@ test.describe('sign-in screen', () => {
   test('all text meets 4.5:1', async ({ page }) => {
     const targets = [
       '#login h1', '#login .gc-note',
+      '#login label[for=lg_email]', '#login label[for=lg_pass]',
       '#login .gc-cta', '#login .gc-link', '#login .gc-foot', '#login .gc-reveal',
     ];
     const fails = [];
@@ -61,9 +62,9 @@ test.describe('sign-in screen', () => {
   });
 
   test('placeholders are the visible affordance and meet contrast', async ({ page }) => {
-    for (const sel of ['#lg_email', '#lg_pass']) {
+    for (const sel of ['#lg_email']) {
       const ph = await page.locator(sel).getAttribute('placeholder');
-      expect(ph, `${sel} needs a placeholder now that the label is hidden`).toBeTruthy();
+      expect(ph, `${sel} placeholder`).toBeTruthy();
       const c = await H.pseudo(page, sel, '::placeholder', ['color']);
       const fg = H.parseRGB(c.color);
       const bg = await H.effectiveBg(page, sel);
@@ -71,17 +72,19 @@ test.describe('sign-in screen', () => {
     }
   });
 
-  test('hidden labels still name the fields for assistive tech', async ({ page }) => {
-    for (const [sel, want] of [['#lg_email','Email address'], ['#lg_pass','Password']]) {
+  test('labels are visible, name the fields, and survive typing', async ({ page }) => {
+    for (const [sel, want] of [['#lg_email','Email'], ['#lg_pass','Password']]) {
       const lab = page.locator(`label[for="${sel.slice(1)}"]`);
       await expect(lab).toHaveCount(1);
       await expect(lab).toHaveText(want);
-      // visually hidden, but still in the accessibility tree
-      expect(await lab.evaluate(el => getComputedStyle(el).display)).not.toBe('none');
-      expect(await lab.evaluate(el => el.getBoundingClientRect().width)).toBeLessThan(3);
-      // clicking the label must still focus the field
-      await lab.evaluate(el => el.click());
+      await expect(lab).toBeVisible();
+      expect(await lab.evaluate(el => el.getBoundingClientRect().width),
+             `${sel} label must be visible, not clipped`).toBeGreaterThan(20);
+      await lab.click();
       expect(await page.evaluate(() => document.activeElement.id)).toBe(sel.slice(1));
+      // the point of a real label: it is still there once the field has content
+      await page.fill(sel, 'something');
+      await expect(lab).toBeVisible();
     }
   });
 
