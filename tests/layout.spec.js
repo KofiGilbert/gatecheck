@@ -99,10 +99,13 @@ test.describe('layout, keyboard and regressions', () => {
     await page.fill('#lg_pass', 'good');
     await page.click('#lg_btn');
     await expect(page.locator('#login')).toBeHidden();
-    await expect(page.locator('header h1')).toHaveText('Checkpoint');
-    await expect(page.locator('#signout')).toBeVisible();
+    await expect(page.locator('#menubtn')).toBeVisible();
+    // sign out moved into the slide-in menu
+    await page.click('#menubtn');
+    await expect(page.locator('.ditem:has-text("Sign out")')).toBeVisible();
+    await page.keyboard.press('Escape');
     // a .btn elsewhere in the app keeps its own styling
-    await page.click('nav button:nth-child(2)');
+    await page.click('#sec-home .tile[onclick*=\"sched\"]');
     const btn = page.locator('#sec-sched .btn').first();
     const s = await H.styleOf(page, '#sec-sched .btn', ['background-color','border-radius','min-height']);
     expect(s['border-radius']).toBe('10px');       // app default, not the login CTA's 12px

@@ -69,7 +69,8 @@ test('resolving signed in hides the overlay without flashing the form', async ({
   await expect(page.locator('#login')).toBeHidden();
   clearInterval(stop);
   expect(formEverVisible, 'signed-in users must never see the login form').toBe(false);
-  await expect(page.locator('#whoami')).toHaveText('kofi@martinbrower.com');
+  // the signed-in identity now lives in the slide-in menu
+  await expect(page.locator('#hdrmail')).toHaveText('kofi@martinbrower.com');
   expect(await page.evaluate(() =>
     [...document.body.children].filter(el => el.hasAttribute('inert')).length), 'inert released').toBe(0);
 });

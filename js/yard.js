@@ -45,32 +45,290 @@ function ycEval(row){
   return reasons;
 }
 
+/* ---------- slot board ----------
+   One tile per two-hour check. Status words, highest priority first:
+   Completed · Due now · Up next · Ready · Awaiting list · Missed.
+   "Ready" means the receiving office has loaded the trailer block for that slot.
+   It is informational only: an officer is never blocked from starting a check,
+   because a missed safety check is worse than an unloaded list. */
+DB.yardslots = [];
+try{ var _ys0 = sget('gc_yardslots'); if(_ys0) DB.yardslots = JSON.parse(_ys0); }catch(e){}
+function ycSlotsPersist(){ try{ sset('gc_yardslots', JSON.stringify(DB.yardslots.slice(0,200))); }catch(e){} }
+function ycTodayISO(){
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+var YC_LEGEND = [
+  ['done','Completed'], ['esc','Escalations'], ['ready','Ready to start'],
+  ['over','Overdue'], ['due','Due this hour'], ['next','Up next'],
+  ['wait','Awaiting list'], ['past','Not recorded']
+];
+var YC_WINDOW_MIN = 60;   /* one hour to complete, from the moment the office loads it */
+function ycSlotRecord(slot){
+  var t=ycSlotDate(slot);
+  return (DB.yardslots||[]).filter(function(r){ return r && r.date===t && r.slot===slot && r.loadedAt; })[0] || null;
+}
+function ycSlotLoaded(slot){ return !!ycSlotRecord(slot); }
+function ycSlotCheck(slot){
+  var t=ycSlotDate(slot);
+  return (DB.yardchecks||[]).filter(function(c){ return c && c.date===t && c.time===slot; })[0] || null;
+}
+function ycSlotDone(slot){ return !!ycSlotCheck(slot); }
+function ycMinsLeft(rec){
+  if(!rec || !rec.loadedAt) return null;
+  var ms = new Date(rec.loadedAt).getTime() + YC_WINDOW_MIN*60000 - Date.now();
+  return Math.ceil(ms/60000);
+}
+function ycHHMM(iso){
+  try{ var d=new Date(iso);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  catch(e){ return ''; }
+}
+function ycSlotTrailers(rec){
+  if(!rec) return 0;
+  if(typeof rec.count==='number') return rec.count;
+  return (rec.trailers && rec.trailers.length) || 0;
+}
+function ycCheckEscalations(chk){
+  if(!chk || !chk.rows) return 0;
+  return chk.rows.filter(function(r){ return r && (r.escalate||[]).length; }).length;
+}
+function ycCurrentSlotIndex(){ return Math.floor(new Date().getHours()/2) % 12; }
+/* An officer only ever sees their own shift: six checks, in the order they fall.
+   Morning runs 06:00-18:00, evening 18:00-06:00 and crosses midnight. */
+var YC_SHIFT_AM = ['0600','0800','1000','1200','1400','1600'];
+var YC_SHIFT_PM = ['1800','2000','2200','0000','0200','0400'];
+function ycIsMorning(d){ var h=(d||new Date()).getHours(); return h>=6 && h<18; }
+function ycShiftSlots(d){ return ycIsMorning(d)? YC_SHIFT_AM.slice() : YC_SHIFT_PM.slice(); }
+function ycShiftLabel(d){ return ycIsMorning(d)? 'Morning shift' : 'Evening shift'; }
+function _ycISO(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+/* On the evening shift 00/02/04 belong to tomorrow; after midnight 18/20/22
+   belonged to yesterday. Everything keys off the slot's real calendar date. */
+function ycSlotDate(slot){
+  var now=new Date(), h=now.getHours(), i=YC_SLOTS.indexOf(slot), d=new Date(now);
+  if(h>=18 && i<=2)      d.setDate(d.getDate()+1);
+  else if(h<6 && i>=9)   d.setDate(d.getDate()-1);
+  return _ycISO(d);
+}
+function ycSlotEnd(slot){
+  var p=ycSlotDate(slot).split('-'), i=YC_SLOTS.indexOf(slot);
+  return new Date(+p[0], +p[1]-1, +p[2], i*2+2, 0, 0, 0);
+}
+function ycNowHour(){ return new Date().getHours(); }
+function ycSlotWindowClosed(slot){ return Date.now() >= ycSlotEnd(slot).getTime(); }
+/* Card shape follows the reference: status word on top, the check time large in
+   the centre, and a KPI with a direction arrow in the darker band below.
+   Where a card has no honest KPI it shows a dash rather than an invented number. */
+function ycSlotStatus(slot){
+  var done = ycSlotCheck(slot);
+  if(done){
+    var who = (done.name||'').split(' ')[0];
+    var esc = ycCheckEscalations(done);
+    var n   = (done.rows||[]).length;
+    var rate = n? Math.round(esc/n*100) : 0;
+    return { cls: esc? 'esc':'done', top:'Completed',
+             arrow: esc? '\u2197':'\u2198', kpi: rate+'%',
+             kpiLabel:'escalation rate',
+             detail: ycHHMM(done.ts)+(who?' \u00b7 '+who:'')
+                   + (n? ' \u00b7 '+n+' trailers':'')
+                   + (esc? ' \u00b7 '+esc+' escalated':' \u00b7 all clear') };
+  }
+  var rec = ycSlotRecord(slot);
+  var sh = ycShiftSlots(), si = sh.indexOf(slot);
+  var cur = -1;
+  for(var k=0;k<sh.length;k++){ if(!ycSlotWindowClosed(sh[k])){ cur=k; break; } }
+  if(rec){
+    var t = ycSlotTrailers(rec), tl = t? (t+' trailers'):'';
+    var left = ycMinsLeft(rec);
+    if(left > 0){
+      var pct = Math.round(left/YC_WINDOW_MIN*100);
+      return { cls:'ready', top:'Ready to start', arrow:'\u2198', kpi:pct+'%',
+               kpiLabel:'of the hour left', mins:left,
+               bar: Math.max(0, Math.min(1, left/YC_WINDOW_MIN)),
+               detail: (tl? tl+' \u00b7 ':'')+left+' min left' };
+    }
+    var over = Math.round((-left)/YC_WINDOW_MIN*100);
+    return { cls:'over', top:'Overdue', arrow:'\u2197', kpi:over+'%',
+             kpiLabel:'past the hour', detail:(tl? tl+' \u00b7 ':'')+'still to be completed' };
+  }
+  if(ycSlotWindowClosed(slot))
+    return { cls:'past', top:'Not recorded', arrow:'\u2014', kpi:'\u2014',
+             kpiLabel:'no check on file', detail:'no check on file' };
+  if(si===cur)
+    return { cls:'due',  top:'Due this hour', arrow:'\u2014', kpi:'\u2014',
+             kpiLabel:'awaiting the list', detail:'awaiting the list' };
+  if(si===cur+1)
+    return { cls:'next', top:'Up next', arrow:'\u2014', kpi:'\u2014',
+             kpiLabel:'awaiting the list', detail:'awaiting the list' };
+  return { cls:'wait', top:'Awaiting list', arrow:'\u2014', kpi:'\u2014',
+           kpiLabel:'not loaded yet', detail:'not loaded yet' };
+}
+function ycActionable(){
+  return ycShiftSlots().filter(function(s){
+    var st=ycSlotStatus(s); return st.cls==='ready' || st.cls==='over';
+  }).length;
+}
+function renderYardSlots(){
+  var d=$('ycslotdate'); if(d) d.textContent = ycShiftLabel();
+  var host=$('ycslots'); if(!host) return;
+  host.innerHTML = ycShiftSlots().map(function(slot){
+    var st = ycSlotStatus(slot);
+    var hh = slot.slice(0,2);
+    var aria = hh+':00 \u2014 '+st.top+', '+st.detail;
+    return '<button class="slot '+st.cls+'" aria-label="'+esc(aria)+'"'
+      + ' title="'+esc(hh+':00 \u2014 '+st.detail)+'"'
+      + ' onclick="ycOpenSlot(\''+slot+'\')">'
+      + '<span class="top">'+esc(st.top)+'</span>'
+      + '<span class="hero"><b>'+hh+'</b></span>'
+      + (st.bar!=null? '<span class="bar" style="--p:'+st.bar.toFixed(3)+'"><s></s></span>':'')
+      + '<span class="band"><span class="arw" aria-hidden="true">'+st.arrow+'</span>'
+      +   '<span class="kpi">'+st.kpi+'</span></span>'
+      + '</button>';
+  }).join('');
+  var lg=$('yclegend');
+  if(lg) lg.innerHTML = YC_LEGEND.map(function(k){
+    return '<span class="lg '+k[0]+'"><i></i>'+esc(k[1])+'</span>';
+  }).join('');
+  ycUpdateBadge();
+}
+
+/* ---------- "it is available to start" notification ---------- */
+function ycSeenReady(){ try{ return JSON.parse(sget('gc_ycseen')||'[]'); }catch(e){ return []; } }
+function ycNotifyReady(){
+  var seen=ycSeenReady(), fresh=[];
+  ycShiftSlots().forEach(function(slot){
+    var rec=ycSlotRecord(slot); if(!rec) return;
+    if(ycSlotDone(slot)) return;
+    var key=ycSlotDate(slot)+'_'+slot;
+    if(seen.indexOf(key)<0){ fresh.push(slot); seen.push(key); }
+  });
+  if(fresh.length){
+    try{ sset('gc_ycseen', JSON.stringify(seen.slice(-60))); }catch(e){}
+    var n=fresh.length;
+    toast(n===1
+      ? 'Yard check '+fresh[0].slice(0,2)+' is ready to start. One hour to complete it.'
+      : n+' yard checks are ready to start.');
+  }
+  ycUpdateBadge();
+}
+function ycUpdateBadge(){
+  var b=$('yardbadge'); if(!b) return;
+  var n=ycActionable();
+  b.textContent = n? String(n) : '';
+  b.hidden = !n;
+}
+/* the countdown has to keep moving while the officer is looking at the board */
+var _ycTick=null;
+function ycStartTicking(){
+  ycStopTicking();
+  _ycTick=setInterval(function(){
+    var sec=$('sec-yard');
+    if(sec && sec.classList.contains('on')) renderYardSlots(); else ycUpdateBadge();
+  }, 30000);
+}
+function ycStopTicking(){ if(_ycTick){ clearInterval(_ycTick); _ycTick=null; } }
+
+var YC_VIEW = null, _ycDraftStash = null;
+/* A completed slot opens the check that was saved, read only. The officer's
+   own unfinished draft is put aside and restored on the way out. */
+function ycOpenSlot(slot){
+  if(!YC) ycLoadDraft();
+  var saved = ycSlotCheck(slot);
+  if(saved){
+    if(!YC_VIEW) _ycDraftStash = JSON.parse(JSON.stringify(YC));
+    YC_VIEW = slot;
+    YC = { date: saved.date, time: saved.time, name: saved.name||'',
+           _ts: saved.ts, _saved: saved,
+           rows: (saved.rows||[]).map(function(r){
+             return { trailer:r.trailer||'', product:r.product||'', set:r.set||'',
+                      temp:r.temp||'', type:r.type||'', fuel:r.fuel||'',
+                      intact:r.intact||'', door:r.door||'', action:r.action||'' };
+           }) };
+  } else {
+    ycExitView();
+    var prevTime = YC.time;
+    /* the slot fixes the date and time; the signed-in officer fixes the name */
+    YC.time = slot;
+    YC.date = ycSlotDate(slot);
+    YC.name = getOfficerName();
+    /* the office released the trailers for this check, so start from those.
+       Only when moving to a different check, or when nothing has been typed:
+       work already in progress is never overwritten. */
+    var rec = ycSlotRecord(slot);
+    if(rec && rec.trailers && rec.trailers.length && (prevTime !== slot || !YC.rows.length)){
+      YC.rows = rec.trailers.map(function(t){
+        return { trailer:(t.trailer||'').toUpperCase(), product:(t.product||'').toUpperCase(),
+                 set:'', temp:'', type:'', fuel:'', intact:'', door:'', action:'' };
+      });
+    }
+    ycSaveDraft();
+  }
+  go('yardsheet');
+}
+function ycExitView(){
+  if(!YC_VIEW) return;
+  YC_VIEW = null;
+  if(_ycDraftStash){ YC = _ycDraftStash; _ycDraftStash = null; }
+  else ycLoadDraft();
+}
+function ycApplyViewMode(){
+  var sec=$('sec-yardsheet'); if(!sec) return;
+  var on = !!YC_VIEW;
+  sec.classList.toggle('viewing', on);
+  var b=$('ycviewbar');
+  if(b){
+    b.hidden = !on;
+    if(on){
+      var who=(YC.name||'').trim();
+      b.textContent = 'Saved yard check \u00b7 completed '+ycHHMM(YC._ts)
+        + (who? ' by '+who : '') + '. This record cannot be changed.';
+    }
+  }
+}
 /* ---------- UI (grid layout matching the printed log) ---------- */
+var YC_MIN_ROWS = 18;
 function renderYard(){
   if(!YC) ycLoadDraft();
-  $('yc_date').value = YC.date; $('yc_time').value = YC.time;
-  $('yc_name').value = YC.name || getOfficerName();
-  var host = $('ycrows');
-  if(!YC.rows.length){
-    host.innerHTML = '<div class="empty">No trailers yet. Import a photo of the log, tap "Add trailer", or copy the last check.</div>';
-    ycSummary(); return;
+  renderYardSlots();
+  /* these are fixed by the slot you opened and by who is signed in */
+  $('yc_date').textContent = ycFmtDate(YC.date);
+  $('yc_time').textContent = YC.time;
+  $('yc_name').textContent = YC.name || getOfficerName();
+  /* column headings exactly as printed on the sheet */
+  var head = '<tr>'
+    + '<th style="min-width:92px">TRAILER#</th>'
+    + '<th style="min-width:104px">PRODUCT</th>'
+    + '<th style="min-width:104px">TEMP SET POINT</th>'
+    + '<th style="min-width:82px">TEMP</th>'
+    + '<th style="min-width:76px">FUEL</th>'
+    + '<th style="min-width:74px">INTACT<br>(Y or N)</th>'
+    + '<th style="min-width:70px">DOOR #</th>'
+    + '<th style="min-width:230px">*ESCALATE*<br>ACTION (if any was taken)</th>'
+    + '<th style="min-width:34px"></th></tr>';
+  var body = YC.rows.map(function(r,i){ return ycRowHTML(r,i); }).join('');
+  var blanks = YC_VIEW? 0 : Math.max(0, YC_MIN_ROWS - YC.rows.length);
+  for(var b=0;b<blanks;b++){
+    body += '<tr>'+new Array(10).join('<td class="ycblank">&nbsp;</td>')+'</tr>';
   }
-  var head = '<tr><th style="min-width:96px">Trailer#</th><th style="min-width:104px">Product</th>'
-    +'<th style="min-width:88px">Temp Set Point</th><th style="min-width:88px">Temp</th>'
-    +'<th style="min-width:76px">Fuel</th><th style="min-width:64px">Intact (Y/N)</th>'
-    +'<th style="min-width:66px">Door #</th><th style="min-width:235px">*Escalate* / Action (if any was taken)</th><th></th></tr>';
-  host.innerHTML = '<div class="ycwrap"><table class="yct">'+head
-    + YC.rows.map(function(r,i){ return ycRowHTML(r,i); }).join('')
-    + '</table></div>'
-    + '<div class="hint" style="margin-top:6px">Type <b>DEF</b> in Set Point or Temp when the unit shows defrost. Temps must be to the tenth (e.g. -10.0).</div>';
+  $('ycrows').innerHTML = '<div class="ycwrap"><table class="yct ycsheet">'+head+body+'</table></div>';
   YC.rows.forEach(function(r,i){ ycBanner(i); });
   ycSummary();
+  ycApplyViewMode();
 }
 function ycSelHTML(i,k,list,cur){
   return '<select onchange="ycSet('+i+',\''+k+'\',this.value,true)"><option value=""></option>'
     + list.map(function(v){ return '<option '+(cur===v?'selected':'')+'>'+v+'</option>'; }).join('')+'</select>';
 }
+function ycCell(v){ return '<td class="ycro">'+esc(v||'')+'</td>'; }
 function ycRowHTML(r,i){
+  if(YC_VIEW){
+    return '<tr id="ycr'+i+'">'
+      + ycCell(String(r.trailer||'').toUpperCase()) + ycCell(String(r.product||'').toUpperCase())
+      + ycCell(r.set) + ycCell(r.temp) + ycCell(r.fuel) + ycCell(r.intact) + ycCell(r.door)
+      + '<td id="ycb'+i+'"></td><td></td></tr>';
+  }
   return '<tr id="ycr'+i+'">'
     +'<td><input style="font-weight:800;text-transform:uppercase" placeholder="LR7524" value="'+esc(r.trailer)+'" oninput="ycSet('+i+',\'trailer\',this.value,true)"></td>'
     +'<td><input style="text-transform:uppercase" placeholder="FRIES" value="'+esc(r.product)+'" oninput="ycSet('+i+',\'product\',this.value,true)"></td>'
@@ -80,7 +338,7 @@ function ycRowHTML(r,i){
     +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
     +'<td><input placeholder="N/A" value="'+esc(r.door)+'" oninput="ycSet('+i+',\'door\',this.value,true)"></td>'
     +'<td id="ycb'+i+'"></td>'
-    +'<td><button class="delx" onclick="ycDel('+i+')">✕</button></td>'
+    +'<td><button class="delx" onclick="ycDel('+i+')">\u2715</button></td>'
     +'</tr>';
 }
 function ycBanner(i){
@@ -89,7 +347,9 @@ function ycBanner(i){
   if(tr) tr.classList.toggle('esc', reasons.length>0);
   if(reasons.length){
     el.innerHTML = '<div class="escmsg">🚨 *ESCALATE*: '+reasons.map(esc).join(' · ')+'</div>'
-      +'<input style="font-size:13.5px" placeholder="Action taken…" value="'+esc(r.action)+'" oninput="ycSet('+i+',\'action\',this.value,true)">';
+      + (YC_VIEW
+          ? '<div class="ycro" style="padding:2px 8px 7px;white-space:normal">'+esc(r.action||'\u2014')+'</div>'
+          : '<input style="font-size:13.5px" placeholder="Action taken…" value="'+esc(r.action)+'" oninput="ycSet('+i+',\'action\',this.value,true)">');
   } else if(r.temp && (ycIsTenth(r.temp) || String(r.temp).toUpperCase()==='DEF')){
     el.innerHTML = '<div class="okmsg">N/A · in range ✓</div>';
   } else el.innerHTML = '';
@@ -166,7 +426,6 @@ function ycProblems(){
   return {block:block, warn:warn};
 }
 function ycPreview(){
-  YC.name = $('yc_name').value.trim(); YC.date = $('yc_date').value; YC.time = $('yc_time').value;
   ycSaveDraft();
   var p = ycProblems();
   if(p.block.length){
@@ -332,7 +591,7 @@ function ycShare(){
   });
 }
 function renderYardHist(){
-  var el=$('ychist'); if(!el) return;
+  var el=$('ychist'); if(!el) return;   /* the panel was removed; kept harmless for sync callers */
   if(!DB.yardchecks.length){ el.innerHTML='<div class="empty">No saved yard checks yet.</div>'; return; }
   el.innerHTML = DB.yardchecks.map(function(y,i){
     var esc_n=(y.rows||[]).filter(function(r){return (r.escalate||[]).length;}).length;
@@ -352,18 +611,6 @@ function ycHistDel(i){
   if(window.CLOUD && CLOUD.ready && y._id){ CLOUD.db.collection('yardchecks').doc(y._id).delete(); }
   else { DB.yardchecks.splice(i,1); ycPersistAll(); renderYardHist(); }
 }
-/* meta field bindings */
-(function(){
-  ['yc_date','yc_time','yc_name'].forEach(function(id){
-    var e=$(id); if(!e) return;
-    e.addEventListener('change', function(){
-      if(!YC) return;
-      YC.date=$('yc_date').value; YC.time=$('yc_time').value; YC.name=$('yc_name').value.trim();
-      ycSaveDraft(); invalidateYcPreview();
-    });
-  });
-})();
-
 /* ---------- yard photo import ---------- */
 var YC_STOPWORDS = /TRAILER|PRODUCT|DATE:|TIME|NAME|ESCALATE|ACTION|DOOR|INTACT|FUEL|TEMP|SET POINT|INSPECTION|CRITICAL|FREEZER|COOLER|LIMITS|LOG|WAS TAKEN/;
 function ycParseTrailers(text){
@@ -462,4 +709,105 @@ async function ycImportPhoto(file){
     if(!YC) ycLoadDraft();
     ycImportPhoto(file); this.value='';
   });
+})();
+
+/* ======================= receiving office: trailer blocks ======================= */
+function blockSlots(){
+  /* the office loads for any check in the coming day, not just the live shift */
+  return YC_SLOTS.slice();
+}
+function blockRender(){
+  var sel=$('bk_slot'); if(!sel) return;
+  var cur = sel.value;
+  sel.innerHTML = blockSlots().map(function(s){
+    var rec = ycSlotRecord(s), done = ycSlotCheck(s);
+    var note = done? ' — completed' : (rec? ' — released':'');
+    return '<option value="'+s+'"'+(s===cur?' selected':'')+'>'
+      + s.slice(0,2)+':'+s.slice(2)+esc(note)+'</option>';
+  }).join('');
+  if(!cur){
+    /* default to the next check that has not been released */
+    var next = blockSlots().filter(function(s){ return !ycSlotRecord(s) && !ycSlotWindowClosed(s); })[0];
+    if(next) sel.value = next;
+  }
+  blockStatus();
+  var h=$('bk_hist');
+  if(h){
+    var t = ycTodayISO();
+    var rows = (DB.yardslots||[]).filter(function(r){ return r && r.date===t; })
+      .sort(function(a,b){ return a.slot<b.slot?-1:1; });
+    h.innerHTML = rows.length
+      ? rows.map(function(r){
+          var n = ycSlotTrailers(r);
+          return '<div class="histitem"><div>'
+            + '<div class="t1">'+esc(r.slot.slice(0,2)+':'+r.slot.slice(2))+' &middot; '
+            +   n+' trailer'+(n===1?'':'s')+'</div>'
+            + '<div class="t2">released '+esc(ycHHMM(r.loadedAt))
+            +   (r.loadedBy? ' by '+esc(String(r.loadedBy).split('@')[0]) : '')+'</div>'
+            + '</div></div>';
+        }).join('')
+      : '<div class="empty">Nothing released yet today.</div>';
+  }
+  blockBadge();
+}
+function blockStatus(){
+  var sel=$('bk_slot'), st=$('bk_status'); if(!sel||!st) return;
+  var rec = ycSlotRecord(sel.value);
+  st.textContent = rec
+    ? 'Already released at '+ycHHMM(rec.loadedAt)+' with '+ycSlotTrailers(rec)+' trailers. Releasing again replaces it.'
+    : '';
+}
+function blockParse(text){
+  var out=[], seen={};
+  String(text||'').split(/\n/).forEach(function(line){
+    var t = line.trim(); if(!t) return;
+    var m = t.match(/^([A-Za-z0-9\-]+)[\s,;]+(.*)$/);
+    var trailer = (m? m[1] : t).toUpperCase();
+    var product = (m? m[2] : '').trim().toUpperCase();
+    if(!trailer || seen[trailer]) return;
+    seen[trailer]=1;
+    out.push({ trailer:trailer, product:product });
+  });
+  return out;
+}
+function blockRelease(){
+  var sel=$('bk_slot'); if(!sel) return;
+  var slot = sel.value;
+  var trailers = blockParse($('bk_list').value);
+  if(!trailers.length){ toast('Add at least one trailer'); return; }
+  var rec = ycSlotRecord(slot);
+  if(rec && !confirm('The '+slot.slice(0,2)+':'+slot.slice(2)+' check was already released with '
+      + ycSlotTrailers(rec)+' trailers. Replace it?')) return;
+  var date = ycSlotDate(slot);
+  var entry = { id: date+'_'+slot, date: date, slot: slot,
+    loadedAt: new Date().toISOString(),
+    loadedBy: (window.CLOUD && CLOUD.user && CLOUD.user.email) || '',
+    count: trailers.length, trailers: trailers };
+  DB.yardslots = (DB.yardslots||[]).filter(function(r){ return !(r && r.date===date && r.slot===slot); });
+  DB.yardslots.unshift(entry);
+  ycSlotsPersist();
+  if(window.blockCloudSave) blockCloudSave(entry);
+  $('bk_list').value='';
+  blockRender();
+  toast('Released '+trailers.length+' trailer'+(trailers.length===1?'':'s')+' for '
+    + slot.slice(0,2)+':'+slot.slice(2)+'. The officer has one hour.');
+}
+function blockBadge(){
+  var b=$('blockbadge'); if(!b) return;
+  /* checks still to be released before their time comes round */
+  var n = blockSlots().filter(function(s){
+    return !ycSlotRecord(s) && !ycSlotCheck(s) && !ycSlotWindowClosed(s);
+  }).length;
+  b.textContent = n? String(n):''; b.hidden = !n;
+}
+function officeStat(){
+  var el=$('officestat'); if(!el) return;
+  var t=ycTodayISO();
+  var released = (DB.yardslots||[]).filter(function(r){ return r && r.date===t; }).length;
+  el.textContent = (DB.orders? DB.orders.length : 0)+' orders loaded · '
+    + released+' yard check'+(released===1?'':'s')+' released today';
+  blockBadge();
+}
+(function(){
+  var s=$('bk_slot'); if(s) s.addEventListener('change', blockStatus);
 })();

@@ -28,18 +28,105 @@ function fmtDate(iso){
   var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   return days[d.getDay()]+' '+(+p[1])+'/'+(+p[2])+'/'+p[0];
 }
-function go(name){
-  ['search','sched','form','hist','yard','settings'].forEach(function(n){
-    var s=$('sec-'+n); if(s) s.classList.toggle('on', n===name);
-    var b=$('nav-'+n); if(b) b.classList.toggle('on', n===name);
+var SECTIONS = ['home','office','block','search','sched','form','hist','yard','yardsheet','log','settings'];
+var SECTION_TITLES = { home:'', office:'', block:'Trailer block', search:'Search', sched:'Schedule',
+  form:'Seal Form', hist:'Saved', yard:'Yard Check', yardsheet:'Yard Check',
+  log:'Log', settings:'Settings' };
+/* Navigation runs on real browser history, so the platform's own back works:
+   one finger from the left edge on iOS/iPadOS and Android, two fingers on a Mac
+   trackpad, and the browser back button on a laptop. */
+/* Which screens a role may reach. The UI hides the rest, but the real
+   enforcement is in the Firestore rules, not here. */
+var OFFICE_ONLY  = ['office','block'];
+var OFFICER_ONLY = ['yard','yardsheet','log','form','hist','search'];
+function isOffice(){ return (window.CLOUD && CLOUD.role) === 'office'; }
+function homeSection(){ return isOffice() ? 'office' : 'home'; }
+function applyRole(){
+  var off = isOffice();
+  document.body.classList.toggle('role-office', off);
+  var cur = (history.state && history.state.sec) || 'home';
+  var blocked = off ? OFFICER_ONLY.indexOf(cur)>=0 : OFFICE_ONLY.indexOf(cur)>=0;
+  if(cur==='home' && off) blocked = true;
+  if(cur==='office' && !off) blocked = true;
+  if(blocked) go(homeSection());
+}
+function go(name, fromHistory){
+  if(SECTIONS.indexOf(name)<0) name = homeSection();
+  if(name==='home' && isOffice()) name='office';
+  if(name==='office' && !isOffice()) name='home';
+  /* a role never lands on the other role's screens */
+  if(isOffice() && OFFICER_ONLY.indexOf(name)>=0 && name!=='sched') name='office';
+  if(!isOffice() && OFFICE_ONLY.indexOf(name)>=0) name='home';
+  if(!fromHistory){
+    try{
+      var cur = (history.state && history.state.sec) || null;
+      if(cur !== name){
+        if(cur===null && name==='home') history.replaceState({sec:name}, '', '#home');
+        else history.pushState({sec:name}, '', '#'+name);
+      }
+    }catch(e){}
+  }
+  SECTIONS.forEach(function(n){
+    var sec=$('sec-'+n); if(sec) sec.classList.toggle('on', n===name);
   });
+  $('hdrtitle').textContent = (name==='home') ? '' : (SECTION_TITLES[name] || '');
+  menuFill();
   if(name==='sched') renderSched();
+  if(name==='office'){ officeStat(); }
+  if(name==='block'){ blockRender(); }
   if(name==='hist') renderHist();
+  if(name==='log') renderLog();
   if(name==='form') sigInit();
   if(name==='settings'){ var i=$('set_offname'); if(i) i.value=getOfficerName(); }
-  if(name==='yard'){ renderYard(); renderYardHist(); }
+  if(name!=='yardsheet' && typeof ycExitView==='function') ycExitView();
+  if(name==='yard'){ renderYardSlots(); renderYardHist(); ycStartTicking(); }
+  else if(typeof ycStopTicking==='function' && name!=='yardsheet') ycStopTicking();
+  if(name==='yardsheet'){ renderYard(); }
+  if(name==='search'){ var q=$('q'); if(q) setTimeout(function(){ q.focus(); },60); }
   window.scrollTo(0,0);
 }
+/* ---- slide-in menu ---- */
+
+function menuFill(){
+  var em=(window.CLOUD&&CLOUD.user&&CLOUD.user.email)||'';
+  var nm=getOfficerName() || em.split('@')[0] || 'Officer';
+  var d3=$('d_loc');   if(d3) d3.textContent = getLocation();
+  var h=$('hdrname');  if(h)  h.textContent  = nm;
+  var hm=$('hdrmail'); if(hm) hm.textContent = em;
+}
+function openMenu(){
+  var d=$('drawer'); if(!d) return;
+  menuFill();
+  d.hidden=false;
+  $('menubtn').setAttribute('aria-expanded','true');
+  var first=d.querySelector('.ditem'); if(first) first.focus();
+}
+function closeMenu(){
+  var d=$('drawer'); if(!d || d.hidden) return;
+  d.hidden=true;
+  $('menubtn').setAttribute('aria-expanded','false');
+  /* Safari does not focus a button on click, so returning to "whatever was
+     focused" lands on <body>. Return to the control that opened the menu. */
+  var b=$('menubtn'); if(b && b.focus) b.focus();
+}
+function menuGo(name){ closeMenu(); go(name); }
+window.addEventListener('popstate', function(e){
+  /* an open menu swallows the first back, which is what a drawer should do */
+  var d=$('drawer');
+  if(d && !d.hidden){ closeMenu(); }
+  go((e.state && e.state.sec) || 'home', true);
+});
+(function(){
+  try{
+    var h=(location.hash||'').replace('#','');
+    var start = SECTIONS.indexOf(h)>=0 ? h : 'home';
+    history.replaceState({sec:start}, '', '#'+start);
+  }catch(e){}
+})();
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape') closeMenu();
+});
+
 function toggle(id){ var e=$(id); e.style.display = e.style.display==='none'?'block':'none'; }
 function stat(){
   var dates = {}; DB.orders.forEach(function(o){ dates[o.date]=1; });
@@ -215,9 +302,10 @@ function fillFromOrder(order,date){
   $('formsrc').innerHTML = 'Auto-filled from order <b>'+esc(o.order)+'</b> · '+esc(o.vendor)
     +' ('+esc(fmtDate(o.date))+', '+esc(o.detail)+' '+esc(o.time)+')';
   go('form'); toast('Form filled from order '+o.order);
+  formDraftSave();
 }
 function resetForm(msg){
-  ['f_datein','f_timein','f_appt','f_po','f_trailer','f_carrier','f_vendor','f_initials',
+  ['f_datein','f_timein','f_appt','f_po','f_trailer','f_tractor','f_carrier','f_vendor','f_initials',
    'f_driver','f_sealtrailer','f_sealbol','f_reefset','f_reefact','f_verified']
    .forEach(function(id){ $(id).value=''; });
   $('f_photoid').checked=false; $('f_locked').checked=false;
@@ -227,10 +315,93 @@ function resetForm(msg){
   var pm=$('f_pomode'); if(pm){ pm.value='po'; $('f_po').disabled=false; }
   $('f_verified').value = getOfficerName();
   var ac=$('actions'); if(ac) ac.style.display='none';
-  $('formsrc').textContent = 'Not linked to an order. Search an order and tap "Fill Seal Verification Form" to auto-populate.';
+  $('formsrc').textContent = '';
   $('preview').innerHTML='';
-  if(msg) toast('New blank form');
+  Object.keys(REQ_FIELDS||{}).forEach(function(id){ var e=$(id); if(e) e.classList.remove('miss'); });
+  var sw=$('sealwarn'); if(sw){ sw.classList.remove('on'); sw.textContent=''; }
+  if(msg){ formDraftClear(); toast('New blank form'); }
 }
+
+/* ---- seal verification: the two numbers must agree ---- */
+function sealNorm(v){ return String(v||'').trim().toUpperCase().replace(/\s+/g,''); }
+function sealMismatch(d){
+  var a=sealNorm((d||collect()).sealtrailer), b=sealNorm((d||collect()).sealbol);
+  return !!(a && b && a!==b);
+}
+function checkSeal(){
+  var w=$('sealwarn'); if(!w) return;
+  var on=sealMismatch(null);
+  w.classList.toggle('on', on);
+  w.textContent = on
+    ? 'Seal numbers do not match. The number on the trailer is not the number on the BOL \u2014 report this before the driver leaves.'
+    : '';
+}
+
+/* ---- required fields, marked as the officer goes ---- */
+var REQ_FIELDS = {
+  f_appt:'Appt Time', f_po:'PO Number', f_trailer:'Trailer Number', f_tractor:'Tractor Number',
+  f_carrier:'Carrier Name', f_initials:'Initials', f_driver:'Driver Name',
+  f_reefset:'Refer Setting', f_reefact:'Refer Actual',
+  f_sealtrailer:'Seal Number on Trailer', f_sealbol:'Seal Number on BOL', f_verified:'Verified by'
+};
+function markMissing(id){
+  var el=$(id); if(!el) return;
+  var skipPo = (id==='f_po') && $('f_pomode') && $('f_pomode').value==='na';
+  el.classList.toggle('miss', !skipPo && !String(el.value||'').trim());
+}
+function markAllMissing(){ Object.keys(REQ_FIELDS).forEach(markMissing); }
+(function(){
+  Object.keys(REQ_FIELDS).forEach(function(id){
+    var el=$(id); if(!el) return;
+    el.addEventListener('blur', function(){ markMissing(id); });
+    el.addEventListener('input', function(){ if(el.classList.contains('miss')) markMissing(id); });
+  });
+})();
+
+/* ---- draft: a gate officer gets interrupted, the form must survive it ---- */
+var FORM_FIELDS = ['f_datein','f_timein','f_appt','f_po','f_trailer','f_tractor','f_carrier',
+  'f_vendor','f_initials','f_driver','f_sealtrailer','f_sealbol','f_reefset','f_reefact','f_verified'];
+var _draftT=null;
+function formDraftSave(){
+  clearTimeout(_draftT);
+  _draftT=setTimeout(function(){
+    try{
+      var d={ v:{},
+        photoid:$('f_photoid').checked, locked:$('f_locked').checked,
+        pick:{sealtype:CH.sealtype, sealcond:CH.sealcond, fuel:CH.fuel},
+        pomode:($('f_pomode')||{}).value||'po',
+        src:$('formsrc').innerHTML,
+        sig:(sigHas && sigCv)? sigCv.toDataURL('image/png') : '' };
+      FORM_FIELDS.forEach(function(id){ if($(id)) d.v[id]=$(id).value; });
+      sset('gc_formdraft', JSON.stringify(d));
+    }catch(e){}
+  }, 400);
+}
+function formDraftClear(){ clearTimeout(_draftT); try{ sset('gc_formdraft',''); }catch(e){} }
+function formDraftRestore(){
+  var raw=null; try{ raw=sget('gc_formdraft'); }catch(e){}
+  if(!raw) return false;
+  var d=null; try{ d=JSON.parse(raw); }catch(e){}
+  if(!d || !d.v) return false;
+  var typed = FORM_FIELDS.some(function(id){
+    return ['f_datein','f_timein','f_verified'].indexOf(id)<0 && String(d.v[id]||'').trim();
+  });
+  if(!typed && !d.sig) return false;               // nothing worth restoring
+  FORM_FIELDS.forEach(function(id){ if($(id) && d.v[id]!=null) $(id).value=d.v[id]; });
+  $('f_photoid').checked=!!d.photoid; $('f_locked').checked=!!d.locked;
+  if(d.pick){ setPick('sealtype',d.pick.sealtype); setPick('sealcond',d.pick.sealcond); setPick('fuel',d.pick.fuel); }
+  var pm=$('f_pomode'); if(pm && d.pomode){ pm.value=d.pomode; if(typeof poMode==='function') poMode(); }
+  if(d.src) $('formsrc').innerHTML=d.src;
+  if(d.sig){
+    var im=new Image();
+    im.onload=function(){ sigInit(); if(sigCx){ sigCx.drawImage(im,0,0,$('sig').clientWidth,$('sig').clientHeight); sigHas=true; } };
+    im.src=d.sig;
+  }
+  checkSeal();
+  toast('Unfinished form restored');
+  return true;
+}
+function stampTimeIn(){ $('f_timein').value = nowHHMM(); formDraftSave(); invalidatePreview(); }
 
 /* ======================= signature pad ======================= */
 var sigCv, sigCx, sigHas=false, sigReady=false;
@@ -277,6 +448,7 @@ function collect(){
     ts:new Date().toISOString(),
     datein:$('f_datein').value, timein:$('f_timein').value, appt:$('f_appt').value,
     po:$('f_po').value, trailer:$('f_trailer').value, carrier:$('f_carrier').value,
+    tractor:$('f_tractor').value,
     vendor:$('f_vendor').value, initials:$('f_initials').value.toUpperCase(),
     driver:$('f_driver').value, photoid:$('f_photoid').checked,
     sealtype:CH.sealtype, sealtrailer:$('f_sealtrailer').value, sealbol:$('f_sealbol').value,
@@ -368,6 +540,11 @@ function drawPaper(d, done){
     // Seal numbers
     field('Seal Number on Trailer:',L,800,400,R,d.sealtrailer,30);
     field('Seal Number on BOL:',L,862,400,R,d.sealbol,30);
+    if(sealMismatch(d)){
+      g.fillStyle='#C0392B';
+      txt('*** SEAL NUMBERS DO NOT MATCH ***',637,912,26,true,false,true);
+      g.fillStyle='#111';
+    }
     // Condition
     txt('Seal Condition:',L,930,26,true);
     options(930,['INTACT','MISSING','BROKEN','LTL (No Seal)'],d.sealcond,380,58,26);
@@ -402,6 +579,8 @@ function fileName(d){
 /* ======================= actions ======================= */
 function previewForm(){
   var m = blankFields();
+  markAllMissing();
+  checkSeal();
   if(m.length && !confirm('These fields are still empty:\n\n• '+m.join('\n• ')
       +'\n\nOK = continue anyway   ·   Cancel = go back and fill them')) return;
   drawPaper(collect(), function(cv){
@@ -412,6 +591,7 @@ function previewForm(){
 function saveForm(){
   var d = collect();
   if(!d.po){ toast('PO / Order number is empty'); return; }
+  formDraftClear();
   DB.forms.unshift(d);
   if(DB.forms.length>60) DB.forms.length=60;
   persist(); renderHist();
@@ -441,7 +621,17 @@ function shareForm(){
 }
 function offKey(){ var em=(window.CLOUD&&CLOUD.user&&CLOUD.user.email)||'local'; return 'gc_offname_'+em; }
 function getOfficerName(){ return (sget(offKey())||'').trim(); }
+function getLocation(){ return (sget('gc_location')||'Martin Brower').trim(); }
+(function(){ var i=$('set_location'); if(!i) return;
+  i.value=getLocation();
+  i.addEventListener('input', function(){ sset('gc_location', i.value.trim()); }); })();
+/* Morning shift runs 06:00-18:00, evening 18:00-06:00 */
+function currentShift(d){
+  var h=(d||new Date()).getHours();
+  return (h>=6 && h<18) ? '6am - 6pm' : '6pm - 6am';
+}
 (function(){ var i=$('set_offname'); if(!i) return;
+  i.addEventListener('input', function(){ if(typeof menuFill==='function') menuFill(); });
   i.addEventListener('input', function(){ sset(offKey(), i.value.trim());
     var v=$('f_verified'); if(v) v.value=i.value.trim(); });
   i.addEventListener('change', function(){
@@ -461,6 +651,7 @@ function blankFields(){
   if(!d.appt) m.push('Appt Time');
   if(!d.po) m.push('PO Number');
   if(!d.trailer) m.push('Trailer Number');
+  if(!d.tractor) m.push('Tractor Number');
   if(!d.carrier) m.push('Carrier Name');
   if(!d.initials) m.push('Initials');
   if(!d.driver) m.push('Driver Name');
@@ -500,6 +691,7 @@ function autoSend(d){
 (function(){ var m=document.getElementById('set_mailer'); if(!m) return;
   m.addEventListener('input', function(){ sset('gc_mailer', m.value.trim()); }); })();
 function emailData(d){
+  logAdd(d);
   if(getMailerUrl()){ autoSend(d); return; }
   drawPaper(d, function(cv){
     var blobP = new Promise(function(res){ cv.toBlob(res,'image/png'); });
@@ -511,7 +703,9 @@ function emailData(d){
       var body=encodeURIComponent('Seal Verification Form\n'
         +'PO Number: '+d.po+'\nCarrier: '+(d.carrier||'-')+'\nDriver: '+(d.driver||'-')
         +'\nDate/Time in: '+(d.datein||'')+' '+(d.timein||'')
-        +'\nSeal: '+(d.sealcond||'-')+' ('+(d.sealtype||'-')+') #'+(d.sealtrailer||'-')+'\n\n'
+        +'\nSeal: '+(d.sealcond||'-')+' ('+(d.sealtype||'-')+') #'+(d.sealtrailer||'-')
+        +(sealMismatch(d)? '\n*** SEAL NUMBERS DO NOT MATCH: trailer '+(d.sealtrailer||'-')
+            +' vs BOL '+(d.sealbol||'-')+' ***':'')+'\n\n'
         +(copied? 'The completed form image is on the clipboard - paste it here (Cmd/Ctrl+V).'
                 : 'The completed form image was downloaded - please attach it.'));
       var cc=getCcEmails().replace(/\s+/g,'');
@@ -560,7 +754,83 @@ function shareHist(i){ shareData(DB.forms[i]); }
 function delHist(i){ if(!confirm('Delete this saved form?')) return;
   DB.forms.splice(i,1); persist(); renderHist(); }
 
+/* ======================= NPG gate log ======================= */
+/* One row per truck signed into the yard. A row is created when the Seal
+   Verification Form is pushed to the receiving office; the officer completes
+   Time Out and the trailer the truck leaves with. Plate, State and Notes are
+   deliberately left blank, as on the paper log. */
+DB.logs = [];
+try{ var _lg0 = sget('gc_logs'); if(_lg0) DB.logs = JSON.parse(_lg0); }catch(e){}
+function logPersist(){ try{ sset('gc_logs', JSON.stringify(DB.logs.slice(0,400))); }catch(e){} }
+function logId(d){ return (d.datein||'')+'_'+(d.po||'')+'_'+(d.timein||''); }
+function logAdd(d){
+  var id = logId(d);
+  if(DB.logs.some(function(r){ return r.id===id; })) return;   // re-sending must not duplicate
+  DB.logs.unshift({
+    id:id, ts:new Date().toISOString(),
+    date:d.datein||todayStr(),
+    officer:(window.CLOUD&&CLOUD.user&&CLOUD.user.email)||'', officerName:getOfficerName(),
+    po:d.po||'', timein:d.timein||'', trailer:d.trailer||'',
+    carrier:d.carrier||'', tractor:d.tractor||'',
+    timeout:'', outtrailer:''
+  });
+  logPersist();
+  if(window.logCloudAdd) logCloudAdd(DB.logs[0]);
+  if($('sec-log') && $('sec-log').classList.contains('on')) renderLog();
+}
+function logSet(id,k,v){
+  var r = DB.logs.filter(function(x){ return x.id===id; })[0];
+  if(!r) return;
+  r[k]=v; logPersist();
+  if(window.logCloudSet) logCloudSet(r);
+}
+function logToday(){
+  var t=todayStr();
+  /* a gate log reads top-down in the order trucks arrived, like the paper form */
+  /* order by Time In, which is what the officer reads, falling back to when the
+     row was created. Two forms pushed in the same millisecond share a ts, so ts
+     alone is not a reliable ordering. */
+  function key(r){ return String(r.timein||'').padStart(4,'0') + '|' + (r.ts||''); }
+  return DB.logs.filter(function(r){ return r.date===t; })
+    .slice().sort(function(a,b){ return key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0; });
+}
+var LOG_MIN_ROWS = 14;
+function logCell(v){ return '<td class="logro">'+esc(v||'')+'</td>'; }
+function renderLog(){
+  var rows = logToday();
+  $('log_loc').textContent   = getLocation();
+  $('log_shift').textContent = currentShift();
+  $('log_guard').textContent = getOfficerName()
+    || ((window.CLOUD&&CLOUD.user&&CLOUD.user.email||'').split('@')[0]) || '';
+  $('log_date').textContent  = todayStr();
+  var head = '<tr>'
+    + '<th>Time In</th><th>Time Out</th><th>Out Trailer Number</th><th>Carrier Name</th>'
+    + '<th>Tractor Number</th><th>Trailer Number</th><th>Plate Number</th><th>State</th><th>Notes</th>'
+    + '</tr>';
+  var body = rows.map(function(r){
+    var id = esc(r.id);
+    return '<tr>'
+      + logCell(r.timein)
+      + '<td><input value="'+esc(r.timeout)+'" inputmode="numeric"'
+      +   ' oninput="logSet(\''+id+'\',\'timeout\',this.value)"></td>'
+      + '<td><input value="'+esc(r.outtrailer)+'" style="text-transform:uppercase"'
+      +   ' oninput="logSet(\''+id+'\',\'outtrailer\',this.value)"></td>'
+      + logCell(r.carrier) + logCell(r.tractor) + logCell(r.trailer)
+      + '<td></td><td></td><td></td>'
+      + '</tr>';
+  }).join('');
+  var blanks = Math.max(0, LOG_MIN_ROWS - rows.length);
+  for (var i=0; i<blanks; i++) body += '<tr>'+new Array(10).join('<td>&nbsp;</td>')+'</tr>';
+  $('logrows').innerHTML = '<div class="ycwrap"><table class="yct logt">'+head+body+'</table></div>';
+}
+
 /* ======================= boot ======================= */
 buildChoices(); stat(); doSearch(); resetForm(false);
-(function(){ var s=$('sec-form'); if(s) s.addEventListener('input', function(){
-  if(window.invalidatePreview) invalidatePreview(); }, true); })();
+try{ formDraftRestore(); }catch(e){}
+(function(){ var s=$('sec-form'); if(!s) return;
+  s.addEventListener('input', function(){
+    if(window.invalidatePreview) invalidatePreview();
+    checkSeal(); formDraftSave();
+  }, true);
+  s.addEventListener('change', function(){ checkSeal(); formDraftSave(); }, true);
+})();

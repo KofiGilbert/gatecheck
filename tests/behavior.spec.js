@@ -162,6 +162,7 @@ test.describe('sign-in behaviour', () => {
     const stillInert = await page.evaluate(() =>
       [...document.body.children].filter(el => el.hasAttribute('inert')).length);
     expect(stillInert, 'inert must be released after sign-in').toBe(0);
-    await expect(page.locator('#whoami')).toHaveText('kofi@martinbrower.com');
+    // the signed-in identity now lives in the slide-in menu
+  await expect(page.locator('#hdrmail')).toHaveText('kofi@martinbrower.com');
   });
 });

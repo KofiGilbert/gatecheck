@@ -14,6 +14,8 @@ const ORDERS = [
 async function signedIn(page, orders) {
   await H.gotoApp(page, { user: { email: 'kofi@martinbrower.com' }, orders: orders || ORDERS });
   await expect(page.locator('#login')).toBeHidden();
+  await page.click('#sec-home .tile[onclick*="search"]');      // the app opens on the tile menu
+  await expect(page.locator('#q')).toBeVisible();
 }
 
 /* The search box stays put. Search runs on every keystroke, so anything that

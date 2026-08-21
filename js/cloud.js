@@ -12,7 +12,7 @@ var FIREBASE_CONFIG = {
   measurementId: "G-N25VKB2J4P"
 };
 
-var CLOUD = { ready:false, user:null, subs:[], db:null };
+var CLOUD = { ready:false, user:null, subs:[], db:null, role:'officer' };
 
 function loginInert(on){
   var kids = document.body.children;
@@ -50,7 +50,7 @@ function authErrText(e, ctx){
     'auth/missing-password': 'Enter your password to sign in.',
     'auth/invalid-email': ctx==='reset'
       ? "That doesn't look like a complete email address. Check it and tap \"Forgot your password?\" again."
-      : "That doesn't look like a complete email address. It needs an @ and a domain, like you@martinbrower.com.",
+      : "That doesn't look like a complete email address. It needs an @ and a domain, like name@example.com.",
     'auth/user-disabled': 'This account has been turned off. Ask your admin to turn it back on.',
     'auth/too-many-requests': ctx==='reset'
       ? 'Too many reset requests. Wait a few minutes, then try again.'
@@ -89,15 +89,20 @@ function cloudInit(){
       CLOUD.user = u;
       if(u){
         CLOUD.ready = true;
+        /* apply the role we saw last time so there is no flash, then let the
+           account document confirm or correct it */
+        setRole(sget('gc_role_'+u.email) || 'officer');
         hideLogin(); loginErr('');
-        $('whoami').textContent = u.email;
-        $('signout').style.display = 'inline-block';
+        var _w=$('whoami'); if(_w) _w.textContent = u.email;
+        var _s=$('signout'); if(_s) _s.style.display = 'inline-block';
+        if(typeof menuFill==='function') menuFill();
         startSync();
       } else {
         CLOUD.ready = false;
         stopSync();
-        $('whoami').textContent = '';
-        $('signout').style.display = 'none';
+        var _w2=$('whoami'); if(_w2) _w2.textContent = '';
+        var _s2=$('signout'); if(_s2) _s2.style.display = 'none';
+        if(typeof closeMenu==='function') closeMenu();
         showLogin();
       }
     });
@@ -125,7 +130,41 @@ function doReset(){
     })
     .catch(function(e){ loginErr(authErrText(e,'reset')); });
 }
+/* ---- role: officer on the gate, or the receiving office ---- */
+function setRole(role){
+  role = (role === 'office') ? 'office' : 'officer';
+  CLOUD.role = role;
+  var em = (CLOUD.user && CLOUD.user.email) || '';
+  if(em) sset('gc_role_'+em, role);
+  if(typeof applyRole === 'function') applyRole();
+}
+
 function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
+
+/* ---- receiving office: releasing a trailer block ---- */
+function blockCloudSave(entry){
+  if(!CLOUD.ready || !entry || !entry.id) return;
+  CLOUD.db.collection('yardslots').doc(entry.id).set(entry)
+    .catch(function(e){ toast('Could not release: '+e.message); });
+}
+
+/* ---- gate log: shared with the team ---- */
+function logCloudAdd(r){
+  if(!CLOUD.ready || !r || !r.id) return;
+  CLOUD.db.collection('logs').doc(r.id).set(r, {merge:true})
+    .catch(function(e){ toast('Log not shared: '+e.message); });
+}
+var _logTimers = {};
+function logCloudSet(r){
+  if(!CLOUD.ready || !r || !r.id) return;
+  /* the officer types into Time Out and Out Trailer, so hold off until they stop */
+  clearTimeout(_logTimers[r.id]);
+  _logTimers[r.id] = setTimeout(function(){
+    CLOUD.db.collection('logs').doc(r.id)
+      .set({ timeout:r.timeout||'', outtrailer:r.outtrailer||'' }, {merge:true})
+      .catch(function(e){ toast('Log not saved: '+e.message); });
+  }, 700);
+}
 
 function startSync(){
   stopSync();
@@ -139,16 +178,32 @@ function startSync(){
     DB.forms = snap.docs.map(function(d){ var o=d.data(); o._id=d.id; return o; });
     persist(); renderHist();
   }, function(e){}));
+  CLOUD.subs.push(db.collection('logs').orderBy('ts','desc').limit(300).onSnapshot(function(snap){
+    DB.logs = snap.docs.map(function(d){ return d.data(); });
+    if(typeof logPersist==='function'){ logPersist();
+      if($('sec-log') && $('sec-log').classList.contains('on')) renderLog(); }
+  }, function(e){}));
+  /* the receiving office writes one record per slot when it loads the trailer block */
+  CLOUD.subs.push(db.collection('yardslots').orderBy('date','desc').limit(120).onSnapshot(function(snap){
+    DB.yardslots = snap.docs.map(function(d){ return d.data(); });
+    if(typeof ycSlotsPersist==='function'){ ycSlotsPersist();
+      /* tell the officer as soon as the office makes one available */
+      if(typeof ycNotifyReady==='function') ycNotifyReady();
+      if($('sec-yard') && $('sec-yard').classList.contains('on')) renderYardSlots(); }
+  }, function(e){}));
   CLOUD.subs.push(db.collection('yardchecks').orderBy('ts','desc').limit(60).onSnapshot(function(snap){
     DB.yardchecks = snap.docs.map(function(d){ var o=d.data(); o._id=d.id; return o; });
     if(typeof ycPersistAll==='function'){ ycPersistAll(); renderYardHist(); }
   }, function(e){}));
   var _em = CLOUD.user.email;
   CLOUD.subs.push(db.collection('officers').doc(_em).onSnapshot(function(doc){
-    var nm=(doc.exists && doc.data().name)||'';
+    var d = (doc.exists && doc.data()) || {};
+    var nm = d.name||'';
     if(nm){ sset('gc_offname_'+_em, nm);
       var i=$('set_offname'); if(i && document.activeElement!==i) i.value=nm;
       var v=$('f_verified'); if(v && !v.value) v.value=nm; }
+    /* the role comes from the account, never from anything the user picks */
+    setRole(d.role === 'office' ? 'office' : 'officer');
   }, function(e){}));
   CLOUD.subs.push(db.collection('settings').doc('app').onSnapshot(function(doc){
     var d = doc.exists? doc.data():{};

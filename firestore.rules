@@ -1,0 +1,76 @@
+rules_version = '2';
+
+/*
+  Checkpoint — access rules.
+
+  The role lives on the officer's own account document and is set by an admin.
+  Nothing the browser sends can change it, so hiding a button in the UI is a
+  convenience; this file is the actual boundary.
+*/
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn()  { return request.auth != null; }
+    function email()     { return request.auth.token.email; }
+    function account()   { return get(/databases/$(database)/documents/officers/$(email())).data; }
+    function role()      { return signedIn() && exists(/databases/$(database)/documents/officers/$(email()))
+                             ? account().role : 'officer'; }
+    function isOffice()  { return signedIn() && role() == 'office'; }
+    function isOfficer() { return signedIn() && role() != 'office'; }
+
+    // Delivery schedule: the receiving office publishes it, officers read it.
+    match /orders/{id} {
+      allow read:  if signedIn();
+      allow write: if isOffice();
+    }
+
+    // Trailer blocks released for a yard check: office writes, officers read.
+    match /yardslots/{id} {
+      allow read:  if signedIn();
+      allow write: if isOffice();
+    }
+
+    // Completed yard checks: officers record them. Nobody edits one afterwards;
+    // a saved check is a record, so updates are refused outright.
+    match /yardchecks/{id} {
+      allow read:   if signedIn();
+      allow create: if isOfficer();
+      allow update: if false;
+      allow delete: if isOffice();
+    }
+
+    // Seal verification forms.
+    match /forms/{id} {
+      allow read:   if signedIn();
+      allow create: if isOfficer();
+      allow update: if false;
+      allow delete: if isOffice();
+    }
+
+    // Gate log rows. Created when a form is pushed; the officer completes the
+    // time out and the outbound trailer, so those two fields stay writable.
+    match /logs/{id} {
+      allow read:   if signedIn();
+      allow create: if isOfficer();
+      allow update: if isOfficer()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['timeout','outtrailer']);
+      allow delete: if isOffice();
+    }
+
+    // Account documents carry the role, so only an admin may write them.
+    // Officers may read their own to learn their name and role.
+    match /officers/{id} {
+      allow read:  if signedIn() && id == email();
+      allow write: if false;
+    }
+
+    // Shared settings: office email, mailer URL, CC list.
+    match /settings/{id} {
+      allow read:  if signedIn();
+      allow write: if isOffice();
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

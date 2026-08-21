@@ -1,5 +1,5 @@
 const FB_STUB = (opts) => {
-  window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false, authDelay:0, orders:[] }, opts||{});
+  window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false, authDelay:0, orders:[], role:'officer' }, opts||{});
   const listeners = [];
   const err = (code) => { const e = new Error('stub'); e.code = code; return e; };
   const authObj = {
@@ -25,7 +25,18 @@ const FB_STUB = (opts) => {
         return ()=>{};
       },
       orderBy(){ return chain; }, limit(){ return chain; },
-      doc(){ return { onSnapshot(cb){ setTimeout(()=>cb({ exists:false, data:()=>({}) }),0); return ()=>{}; } }; },
+      doc(){ return {
+        onSnapshot(cb){
+          const isOfficers = name === 'officers';
+          setTimeout(()=>cb({
+            exists: isOfficers,
+            data: () => isOfficers ? { role: window.__fb.role, name: window.__fb.officerName || '' } : {},
+          }),0);
+          return ()=>{};
+        },
+        set(){ return Promise.resolve(); },
+        delete(){ return Promise.resolve(); },
+      }; },
     };
     return chain;
   };

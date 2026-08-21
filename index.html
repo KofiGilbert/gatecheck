@@ -23,14 +23,98 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif; font-size:16px}
-  header{background:var(--blue);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:20}
-  header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.3px}
-  header .sub{font-size:12px;opacity:.85;margin-top:2px}
+  header{background:var(--blue);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:20}
+  /* menu hard left, profile hard right, edge to edge */
+  .hdr{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;width:100%}
+  /* explicit columns, so hiding the title on a phone cannot shift the others */
+  #menubtn{grid-column:1;justify-self:start}
+  .hdrprof{display:flex;align-items:center;gap:9px;grid-column:3;justify-self:end;min-width:0}
+  .hpwho{min-width:0;text-align:right;line-height:1.25;max-width:220px}
+  @media (max-width:560px){ .hpwho{max-width:150px} }
+  /* on a narrow phone the name and email win; the back arrow and the screen
+     itself already say where you are, so the title is what gives way */
+  @media (max-width:480px){ header h1{display:none} }
+  .hpname{display:block;color:#fff;font-size:13.5px;font-weight:700;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hpmail{display:block;color:#fff;opacity:.72;font-size:11.5px;font-weight:500;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hpavatar{width:34px;height:34px;border-radius:50%;background:#ffffff26;
+    display:grid;place-items:center;font-size:18px;flex:0 0 auto}
+  header h1{margin:0;font-size:19px;font-weight:700;letter-spacing:.3px;
+    grid-column:2;justify-self:center;text-align:center;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hdrbtn{background:#ffffff22;border:none;color:#fff;border-radius:8px;
+    min-height:36px;padding:6px 11px;font-size:13px;font-weight:600;font-family:inherit}
+  .hdrbtn:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  /* slide-in menu */
+  .drawer{position:fixed;inset:0;z-index:90}
+  .drawer[hidden]{display:none}
+  .drawerbg{position:absolute;inset:0;background:rgba(0,14,25,.5);
+    animation:dfade 160ms linear both}
+  .drawerpanel{position:absolute;top:0;left:0;bottom:0;width:min(84vw,320px);
+    background:var(--card);display:flex;flex-direction:column;
+    padding:max(16px,env(safe-area-inset-top)) 14px max(16px,env(safe-area-inset-bottom));
+    box-shadow:2px 0 24px rgba(0,14,25,.28);overflow-y:auto;
+    animation:dslide 200ms cubic-bezier(.2,.8,.24,1) both}
+  @keyframes dfade{from{opacity:0}to{opacity:1}}
+  @keyframes dslide{from{transform:translateX(-100%)}to{transform:none}}
+  .dhead{margin:2px 0 12px;padding:4px 6px 14px;font-size:13px;font-weight:800;
+    letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);
+    border-bottom:1px solid var(--line)}
+  .ditem{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;
+    padding:12px;border:none;border-radius:10px;background:transparent;
+    font-family:inherit;font-size:15.5px;font-weight:700;color:var(--ink);text-align:left}
+  .ditem span{font-size:18px;width:24px;text-align:center}
+  .ditem:active{background:#F1ECE2}
+  .ditem:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+  .ddanger{color:var(--red)}
+  .dsep{height:1px;background:var(--line);margin:10px 4px}
+  .dfoot{margin-top:auto;padding:14px 6px 2px;font-size:11.5px;line-height:1.6;color:var(--mut)}
+  @media (prefers-reduced-motion:reduce){
+    .drawerbg,.drawerpanel{animation-duration:.01ms}
+  }
   nav{display:flex;background:var(--blue);position:sticky;top:58px;z-index:19}
   nav button{flex:1;background:none;border:none;color:#CBDCEE;padding:11px 2px 13px;
     font-size:13.5px;font-weight:600;border-bottom:3px solid transparent}
   nav button.on{color:#fff;border-bottom-color:var(--lime)}
-  main{padding:14px;max-width:640px;margin:0 auto;padding-bottom:60px}
+  main{max-width:640px;margin:0 auto}
+  main > section.on{padding:14px 14px 60px}
+  /* the menu fills the screen: this is used on a phone or an iPad, not a desktop */
+  #sec-home,#sec-office{padding:14px;max-width:980px;margin:0 auto}
+  #sec-office.on{display:flex;flex-direction:column;justify-content:center;gap:14px;
+    min-height:calc(100dvh - 62px)}
+  #sec-block{padding:14px;padding-bottom:60px;max-width:640px;margin:0 auto}
+  #sec-home.on{display:flex;flex-direction:column;justify-content:center;gap:14px;
+    min-height:calc(100dvh - 62px);
+    padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  /* square tiles: cap the grid width so 3 rows of squares still fit the screen */
+  .tiles.office{grid-template-columns:repeat(2,1fr);grid-template-rows:1fr}
+  .tiles{display:grid;gap:12px;grid-template-columns:repeat(2,1fr);
+    width:100%;margin:0 auto;
+    max-width:min(100%, calc((100dvh - 150px - 24px) * 2 / 3 + 12px))}
+  .tile{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:14px;min-height:96px;text-align:center;font-family:inherit;
+    box-shadow:0 1px 2px rgba(20,40,80,.06)}
+  /* content scales with the tile so it fills a phone and an iPad equally well */
+  .tile .tico{font-size:clamp(30px,7.5vmin,58px);line-height:1.05;margin-bottom:10px}
+  .tile b{font-size:clamp(17px,2.8vmin,26px);font-weight:800;color:var(--ink)}
+  .tbadge{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 6px;
+    border-radius:99px;background:var(--red);color:#fff;font-size:13px;font-weight:800;
+    vertical-align:middle;margin-left:6px}
+  .tbadge[hidden]{display:none}
+  .tile em{font-style:normal;font-size:clamp(12.5px,1.8vmin,17px);font-weight:600;color:var(--mut)}
+  .tile:active{background:#F1ECE2}
+  .tile:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+  .homestat{flex:0 0 auto;text-align:center;font-size:12.5px;color:var(--mut);line-height:1.5}
+  /* wide and short (landscape iPad, desktop): three across, two down */
+  @media (min-width:860px) and (min-aspect-ratio:1/1){
+    .tiles{grid-template-columns:repeat(3,1fr);
+      max-width:min(100%, calc((100dvh - 150px - 12px) * 3 / 2 + 24px))}
+  }
+  /* these sections live outside <main>, so they need their own gutters */
+  #sec-yard,#sec-log{padding:14px;padding-bottom:60px;max-width:1180px;margin:0 auto}
+  #sec-settings{padding:14px;padding-bottom:60px;max-width:640px;margin:0 auto}
   section{display:none}
   section.on{display:block}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
@@ -96,11 +180,175 @@
   .yct .escmsg{color:#C0392B;font-weight:800;font-size:11.5px;padding:5px 8px 0;line-height:1.3}
   .yct .okmsg{color:#1E7B45;font-weight:700;font-size:12.5px;text-align:center}
   .yct .delx{background:none;border:none;color:#C0392B;font-size:17px;padding:9px}
+  /* the board centres in the screen and sizes itself so all six cards fit,
+     whatever the device: phone 2x3, tablet 3x2, laptop 6 across */
+  #sec-yard{padding:14px;max-width:1500px;margin:0 auto}
+  /* Phone: cards sized by width and the page scrolls, so a card is cut off at
+     the fold as a scroll cue. Cramming six cards into one screen would shrink
+     them below a comfortable touch target. Tablet and laptop have the room, so
+     there the board fits and centres. */
+  #sec-yard.on{display:flex;flex-direction:column;justify-content:flex-start;
+    padding-bottom:max(20px,env(safe-area-inset-bottom))}
+  @media (min-width:640px){
+    #sec-yard.on{justify-content:center;min-height:calc(100dvh - 62px)}
+  }
+  #sec-yardsheet{padding:14px;padding-bottom:60px;max-width:1180px;margin:0 auto}
+  .slothead{font-size:12.5px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--mut);margin:0 2px 10px}
+  .slothead em{font-style:normal;font-weight:600;text-transform:none;letter-spacing:0}
+  .slots{display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+  @media (min-width:560px){ .slots{grid-template-columns:repeat(3,1fr)} }
+  @media (min-width:900px){ .slots{grid-template-columns:repeat(6,1fr)} }
+  @media (max-width:559px){ .slots{grid-template-columns:repeat(2,1fr)} }
+  /* Solid colour-coded cards: label, hero value, darker footer band. */
+  .slotgroup{--gap:14px; --availh:calc(100dvh - 240px);
+    width:100%;margin:0 auto;max-width:100%}   /* phone: sized by width, scrolls */
+  .slots{display:grid;gap:var(--gap);grid-template-columns:repeat(2,1fr);width:100%}
+  @media (min-width:640px){                       /* tablet: three across, two down */
+    .slotgroup{--availh:calc(100dvh - 240px);max-width:min(100%, calc(((var(--availh) - var(--gap)) / 2) * 5 / 7 * 3 + 2*var(--gap)))}
+    .slots{grid-template-columns:repeat(3,1fr)}
+  }
+  @media (min-width:1000px) and (min-aspect-ratio:1/1){   /* laptop: all six in a row */
+    .slotgroup{--availh:calc(100dvh - 215px);max-width:min(100%, calc(var(--availh) * 5 / 7 * 6 + 5*var(--gap)))}
+    .slots{grid-template-columns:repeat(6,1fr)}
+  }
+  .slot{--c:#6E7A8A; --cd:#55606E;
+    position:relative;aspect-ratio:5/7;display:flex;flex-direction:column;
+    align-items:stretch;padding:0;cursor:pointer;overflow:hidden;
+    border:none;border-radius:16px;background:var(--c);color:#fff;
+    font-family:inherit;text-align:center;
+    transition:transform 160ms cubic-bezier(.2,.8,.24,1), box-shadow 160ms cubic-bezier(.2,.8,.24,1);
+    box-shadow:0 1px 2px rgba(10,26,25,.10), 0 4px 10px rgba(10,26,25,.12),
+               0 12px 26px rgba(10,26,25,.12)}
+  .slot .top{flex:0 0 auto;padding:14px 12px 0;font-size:clamp(11px,1.35vmin,13.5px);
+    font-weight:600;line-height:1.2;color:rgba(255,255,255,.95)}
+  .slot .hero{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
+    min-height:0;padding:2px 8px}
+  .slot .hero b{font-size:clamp(46px,8.4vmin,78px);font-weight:800;line-height:.9;
+    letter-spacing:-2px;color:#fff;font-variant-numeric:tabular-nums}
+  .slot .bar{flex:0 0 auto;height:3px;background:rgba(255,255,255,.28);margin:0 14px 8px;
+    border-radius:2px;overflow:hidden}
+  .slot .bar s{display:block;height:100%;width:calc(var(--p) * 100%);
+    background:#fff;border-radius:2px;transition:width 400ms ease-out}
+  .slot .band{flex:0 0 auto;background:var(--cd);padding:10px 12px;
+    display:flex;align-items:center;justify-content:center;gap:8px}
+  .slot .band .arw{font-size:clamp(13px,1.7vmin,17px);line-height:1;color:#fff;font-weight:700}
+  .slot .band .kpi{font-size:clamp(13px,1.7vmin,17px);line-height:1;color:#fff;
+    font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* key to the colour code */
+  /* the key spans the same width as the cards, edge to edge */
+  .legend{display:flex;flex-wrap:wrap;justify-content:space-between;
+    gap:8px 14px;width:100%;margin-top:16px;padding:0 2px}
+  @media (max-width:639px){
+    .legend{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 10px;margin-top:12px}
+    .legend .lg{font-size:11px}
+    .legend .lg i{width:11px;height:11px}
+  }
+  .legend .lg{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;
+    color:var(--mut)}
+  .legend .lg i{width:13px;height:13px;border-radius:4px;flex:0 0 auto;
+    box-shadow:inset 0 0 0 1px rgba(0,14,25,.12)}
+  .legend .done i{background:#4C8A1E} .legend .esc i{background:#D9822B}
+  .legend .ready i{background:#1F6FB2} .legend .over i{background:#C2185B}
+  .legend .due i{background:#7E57C2}  .legend .next i{background:#5C6BC0}
+  .legend .wait i{background:#8D9AA8} .legend .past i{background:#A6A093}
+
+  @media (hover:hover){
+    .slot:hover{transform:translateY(-5px);
+      box-shadow:0 2px 4px rgba(10,26,25,.12), 0 10px 20px rgba(10,26,25,.16),
+                 0 22px 44px rgba(10,26,25,.18)}
+  }
+  .slot:active{transform:translateY(-1px)}
+  .slot:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+
+  /* the colour code */
+  .slot.done{--c:#4C8A1E; --cd:#3A6B15}      /* completed, all clear   */
+  .slot.esc {--c:#D9822B; --cd:#B0661C}      /* completed, escalations */
+  .slot.ready{--c:#1F6FB2; --cd:#17568B}  /* ready to start         */
+  .slot.over{--c:#C2185B; --cd:#9A1148}      /* overdue                */
+  .slot.due {--c:#7E57C2; --cd:#63449B}      /* due this hour          */
+  .slot.next{--c:#5C6BC0; --cd:#47549B}      /* up next                */
+  .slot.wait{--c:#8D9AA8; --cd:#717E8C}      /* awaiting the list      */
+  .slot.past{--c:#A6A093; --cd:#867F72}      /* window closed, nothing */
+
+  /* ready breathes: halo only, ~0.45Hz, far below the flash threshold */
+  @keyframes ycBreathe{
+    0%,100%{ box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 0 rgba(31,111,178,.55) }
+    50%    { box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 16px rgba(31,111,178,0) }
+  }
+  .slot.ready{animation:ycBreathe 2.2s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){
+    .slot.ready{animation:none;
+      box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 5px rgba(31,111,178,.45)}
+  }
+
+  /* yard check: a facsimile of the printed F-US399-QS-36 sheet */
+  .ycbrand{text-align:center;padding:2px 0 12px}
+  .yclogo{display:block;height:20px;width:auto;margin:0 auto 4px}
+  .yctitle{font-size:15px;font-weight:800;color:var(--ink)}
+  .ycsubtitle{font-size:12.5px;font-weight:700;color:var(--ink);margin-top:2px}
+  .ycfields{display:block;padding-top:2px}
+  .ycfields > div{display:flex;align-items:center;font-size:13.5px;margin-bottom:6px}
+  .ycfields span{color:var(--ink);font-weight:600;flex:0 0 58px}
+  .ycslots b{font-weight:600;border-bottom:1px solid var(--ink);padding:2px 6px 3px;flex:1 1 auto}
+  .ycfields b{flex:0 1 250px;min-width:0;border-bottom:1px solid var(--ink);
+    padding:3px 6px 5px;font-size:14px;font-weight:800;text-align:left}
+  /* the printed grid: black hairlines, plain header, no colour bar */
+  table.ycsheet{border-collapse:collapse;width:100%;min-width:940px;background:#fff}
+  table.ycsheet th{background:#fff;color:#111;border:1px solid #111;
+    font-size:11px;font-weight:700;letter-spacing:0;text-transform:none;
+    padding:6px 4px;line-height:1.25;vertical-align:middle}
+  table.ycsheet td{border:1px solid #111;padding:0;vertical-align:middle;height:34px}
+  table.ycsheet td input,table.ycsheet td select{
+    border:none;background:transparent;width:100%;padding:7px 6px;font-size:14px;border-radius:0}
+  table.ycsheet td input:focus,table.ycsheet td select:focus{outline:2px solid var(--blue);outline-offset:-2px}
+  table.ycsheet tr.esc td{background:#FDECEA}
+  .ycwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+  .logdoc,.ycdoc{text-align:left}
+  .logbrand{text-align:center;padding:2px 0 14px}
+  .logbrand #npglogo{display:block;height:46px;width:auto;margin:0 auto 4px}
+  .npgword{font-size:34px;font-weight:800;letter-spacing:2px;line-height:1;color:var(--ink)}
+  .logsub{font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);margin-top:2px}
+  .logtitle{font-size:16px;font-weight:800;color:var(--ink);margin-top:6px}
+  /* stacked one per line at the top left, as on the paper form */
+  .logfields{display:block;padding-top:2px}
+  .logfields div{display:flex;align-items:baseline;font-size:14px;margin-bottom:5px}
+  .logfields span{color:var(--ink);font-weight:600;flex:0 0 74px}
+  .logfields b{font-weight:800;flex:0 0 190px;
+    border-bottom:1px solid var(--ink);padding:0 6px 1px}
+  /* a saved check is a record: read only, no editing controls */
+  .viewbar{display:block;margin-bottom:12px;padding:12px 14px;border-radius:10px;
+    border-left:3px solid #4C6C1A;background:#F1F7E7;color:#2E4410;
+    font-size:14px;font-weight:700;line-height:1.45}
+  .viewbar[hidden]{display:none}
+  .viewonly{display:none}
+  #sec-yardsheet.viewing .yconly{display:none}
+  #sec-yardsheet.viewing .viewonly{display:block}
+  table.yct td.ycro{padding:9px 8px;font-size:14px;font-weight:700;white-space:nowrap}
+  table.logt{min-width:1080px}
+  table.logt th{font-size:10.5px;padding:8px 5px;line-height:1.25}
+  table.logt td{height:38px}
+  table.logt td.logro{padding:8px;font-weight:700;font-size:14px;white-space:nowrap}
+  table.logt td input{font-size:14px;padding:9px 7px}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#123;color:#fff;
     padding:11px 20px;border-radius:99px;font-size:14px;opacity:0;transition:.3s;z-index:99;
     pointer-events:none;max-width:88%;text-align:center}
   .toast.show{opacity:.96}
   #preview img{width:100%;border:1px solid var(--line);border-radius:8px}
+  .tinrow{display:flex;gap:8px}
+  .tinrow input{flex:1;min-width:0}
+  .nowbtn{flex:0 0 auto;border:1.5px solid var(--bd);background:var(--card);border-radius:9px;
+    padding:0 14px;font-family:inherit;font-size:14px;font-weight:700;color:var(--ink);min-height:46px}
+  .sealwarn{display:none}
+  .sealwarn.on{display:flex;gap:10px;align-items:flex-start;margin-top:10px;
+    padding:12px 14px;border-radius:9px;border-left:3px solid var(--red);
+    background:#FDECEA;color:#8E2A20;font-size:14px;font-weight:700;line-height:1.4}
+  .sealwarn.on::before{content:"!";flex:0 0 auto;width:18px;height:18px;border-radius:50%;
+    display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;
+    background:var(--red);margin-top:1px}
+  /* 4. required fields the officer has left empty */
+  #sec-form input.miss{border-color:var(--red);background:#FDF4F3}
   .warn{background:#FFF6E5;border:1px solid #F5D488;border-radius:9px;padding:10px;
     font-size:13px;color:#7A5A00;margin-top:8px;line-height:1.4}
 
@@ -298,7 +546,7 @@
           <input class="gc-field" type="email" id="lg_email" name="email" required
             autocomplete="username" inputmode="email" enterkeyhint="next"
             autocapitalize="none" autocorrect="off" spellcheck="false"
-            aria-describedby="loginerr" placeholder="you@martinbrower.com">
+            aria-describedby="loginerr" placeholder="name@example.com">
         </div>
         <div class="gc-row">
           <label class="gc-label" for="lg_pass">Password</label>
@@ -320,29 +568,82 @@
   </div>
 </div>
 <header>
-  <div style="display:flex;justify-content:space-between;align-items:center">
-    <h1>Checkpoint</h1>
-    <div style="text-align:right">
-      <span id="whoami" style="font-size:12px;opacity:.85"></span>
-      <button onclick="go('settings')" title="Settings" style="background:#ffffff22;border:none;
-        color:#fff;border-radius:7px;padding:5px 10px;font-size:14px;margin-left:8px">⚙️</button>
-      <button id="signout" onclick="doSignOut()" style="display:none;background:#ffffff22;border:none;
-        color:#fff;border-radius:7px;padding:5px 10px;font-size:12px;margin-left:8px">Sign out</button>
+  <div class="hdr">
+    <button id="menubtn" class="hdrbtn" onclick="openMenu()" aria-label="Open menu"
+      aria-controls="drawer" aria-expanded="false">&#9776;</button>
+    <h1 id="hdrtitle"></h1>
+    <div class="hdrprof">
+      <div class="hpwho">
+        <b class="hpname" id="hdrname"></b>
+        <span class="hpmail" id="hdrmail"></span>
+      </div>
+      <span class="hpavatar" aria-hidden="true">&#128100;</span>
     </div>
   </div>
-  <div class="sub" id="datastat">No schedule loaded yet</div>
 </header>
-<nav>
-  <button id="nav-search" class="on" onclick="go('search')">Search</button>
-  <button id="nav-sched" onclick="go('sched')">Schedule</button>
-  <button id="nav-form" onclick="go('form')">Seal Form</button>
-  <button id="nav-yard" onclick="go('yard')">Yard</button>
-  <button id="nav-hist" onclick="go('hist')">Saved</button>
-</nav>
+
+<!-- ============ SLIDE-IN MENU ============ -->
+<div id="drawer" class="drawer" hidden>
+  <div class="drawerbg" onclick="closeMenu()"></div>
+  <div class="drawerpanel" role="dialog" aria-modal="true" aria-label="Menu">
+    <h2 class="dhead">Menu</h2>
+    <button class="ditem" onclick="menuGo('home')"><span aria-hidden="true">&#127968;</span>Home</button>
+    <button class="ditem" onclick="menuGo('log')"><span aria-hidden="true">&#128203;</span>Gate log</button>
+    <button class="ditem" onclick="menuGo('yard')"><span aria-hidden="true">&#128667;</span>Yard check</button>
+    <button class="ditem" onclick="menuGo('hist')"><span aria-hidden="true">&#128193;</span>Saved forms</button>
+    <div class="dsep"></div>
+    <button class="ditem" onclick="menuGo('settings')"><span aria-hidden="true">&#9881;&#65039;</span>Settings</button>
+    <button class="ditem ddanger" onclick="closeMenu();doSignOut()"><span aria-hidden="true">&#9099;</span>Sign out</button>
+    <div class="dfoot">Checkpoint v1.0<br>NPG Security Services<br><span id="d_loc"></span></div>
+  </div>
+</div>
+<!-- ============ HOME ============ -->
+<section id="sec-home" class="on">
+  <div class="tiles">
+    <button class="tile" onclick="go('search')"><span class="tico" aria-hidden="true">&#128269;</span><b>Search</b><em>Find an order</em></button>
+    <button class="tile" onclick="go('sched')"><span class="tico" aria-hidden="true">&#128197;</span><b>Schedule</b><em>Today's loads</em></button>
+    <button class="tile" onclick="go('form')"><span class="tico" aria-hidden="true">&#128221;</span><b>Seal Form</b><em>Seal verification</em></button>
+    <button class="tile" onclick="go('yard')"><span class="tico" aria-hidden="true">&#128667;</span><b>Yard <span class="tbadge" id="yardbadge" hidden></span></b><em>Trailer inspection</em></button>
+    <button class="tile" onclick="go('log')"><span class="tico" aria-hidden="true">&#128203;</span><b>Log</b><em>Gate log</em></button>
+    <button class="tile" onclick="go('hist')"><span class="tico" aria-hidden="true">&#128193;</span><b>Saved</b><em>Saved forms</em></button>
+  </div>
+  <div class="homestat" id="datastat">No schedule loaded yet</div>
+</section>
+
 <main>
+<!-- ============ RECEIVING OFFICE ============ -->
+<section id="sec-office">
+  <div class="tiles office">
+    <button class="tile" onclick="go('sched')"><span class="tico" aria-hidden="true">&#128197;</span>
+      <b>Schedule</b><em>Upload today&rsquo;s orders</em></button>
+    <button class="tile" onclick="go('block')"><span class="tico" aria-hidden="true">&#128230;</span>
+      <b>Trailer blocks <span class="tbadge" id="blockbadge" hidden></span></b><em>Load a yard check</em></button>
+  </div>
+  <div class="homestat" id="officestat"></div>
+</section>
+
+<!-- ============ TRAILER BLOCK ============ -->
+<section id="sec-block">
+  <div class="card">
+    <h2>Load a yard check</h2>
+    <div class="hint">Pick the check, list the trailers, then release it. The officer on duty
+      is told straight away and has one hour from that moment.</div>
+    <label class="f">Yard check</label>
+    <select id="bk_slot"></select>
+    <label class="f">Trailers and products</label>
+    <textarea id="bk_list" rows="10" placeholder="LR7524 FRIES&#10;R25106 FRIES&#10;H50117 CHICKEN"></textarea>
+    <div class="hint">One trailer per line: trailer number first, then the product.</div>
+    <div id="bk_status" class="hint" style="text-align:center;font-size:14px"></div>
+    <button class="btn" onclick="blockRelease()">&#128640; Release to the yard</button>
+  </div>
+  <div class="card">
+    <h2>Released today</h2>
+    <div id="bk_hist"></div>
+  </div>
+</section>
 
 <!-- ============ SEARCH ============ -->
-<section id="sec-search" class="on">
+<section id="sec-search">
   <div class="card">
     <h2>Find an order</h2>
     <input id="q" class="big-search" type="search" inputmode="numeric" placeholder="Order # e.g. 8055968"
@@ -386,14 +687,16 @@
   <div class="card" style="text-align:center;padding:10px">
     <div style="font-weight:800;font-size:17px">Seal Verification Form</div>
     <div class="banner">*** DRIVER MUST SLIDE TANDEMS BACK ***</div>
-    <div class="hint" id="formsrc">Not linked to an order. Search an order and tap "Fill Seal Verification Form" to auto-populate.</div>
+    <div class="hint" id="formsrc"></div>
   </div>
 
   <div class="card">
     <h2>Load details (auto-filled)</h2>
     <div class="row2">
       <div><label class="f">Date In</label><input type="text" id="f_datein" placeholder="MM/DD/YY"></div>
-      <div><label class="f">Time In</label><input type="text" id="f_timein" placeholder="HHMM"></div>
+      <div><label class="f">Time In</label>
+        <div class="tinrow"><input type="text" id="f_timein" placeholder="HHMM">
+        <button type="button" class="nowbtn" onclick="stampTimeIn()">Now</button></div></div>
     </div>
     <label class="f">Appt Time</label><input type="text" id="f_appt" placeholder="e.g. 730">
     <label class="f">PO Number</label>
@@ -406,6 +709,8 @@
     </div>
     <div class="hint">Driver has no PO? Pick <b>N/A</b> and fill the form manually.</div>
     <label class="f">Trailer Number</label><input type="text" id="f_trailer">
+    <label class="f">Tractor Number</label><input type="text" id="f_tractor">
+    <div class="hint">Used for the NPG gate log only. It is not printed on the form sent to the receiving office.</div>
     <label class="f">Carrier Name</label><input type="text" id="f_carrier">
     <label class="f">Vendor (reference)</label><input type="text" id="f_vendor">
   </div>
@@ -443,6 +748,7 @@
     <div class="choice" id="c_sealtype"></div>
     <label class="f">Seal Number on Trailer</label><input type="text" id="f_sealtrailer">
     <label class="f">Seal Number on BOL</label><input type="text" id="f_sealbol">
+    <div id="sealwarn" class="sealwarn" role="status"></div>
     <label class="f">Seal Condition (circle one)</label>
     <div class="choice" id="c_sealcond"></div>
     <div class="chk"><input type="checkbox" id="f_locked"><label for="f_locked">Trailer was locked upon arrival <i>(LTL loads only!)</i></label></div>
@@ -473,47 +779,77 @@
 
 <!-- ============ YARD CHECK ============ -->
 <section id="sec-yard">
-  <div class="card" style="text-align:center;padding:10px">
-    <div style="font-weight:800;font-size:16px">F-US399-QS-36 Trailer Inspection Log</div>
-    <div class="hint">Air temperature critical limits: <b>Freezer 0° or less</b> · <b>Cooler 34.0°–40.0°</b> ·
-      escalate on DEF or fuel ¼ or less. Temps must be to the tenth (e.g. -10.0).</div>
+  <div class="slotgroup">
+    <div class="slothead"><span id="ycslotdate"></span></div>
+    <div class="slots" id="ycslots"></div>
+    <div class="legend" id="yclegend"></div>
   </div>
-  <div class="card">
-    <div class="row2">
-      <div><label class="f">Date</label><input type="date" id="yc_date"></div>
-      <div><label class="f">Time (check slot)</label>
-        <select id="yc_time"><option>0000</option><option>0200</option><option>0400</option><option>0600</option>
-        <option>0800</option><option>1000</option><option>1200</option><option>1400</option><option>1600</option>
-        <option>1800</option><option>2000</option><option>2200</option></select></div>
-    </div>
-    <label class="f">Name</label><input type="text" id="yc_name" placeholder="Officer name">
-  </div>
-  <div id="ycrows"></div>
-  <div class="card">
+</section>
+
+<!-- ============ YARD CHECK SHEET ============ -->
+<section id="sec-yardsheet">
+  <div id="ycviewbar" class="viewbar" hidden></div>
+  <div class="card yconly">
     <input type="file" id="ycfile" accept="image/*" style="display:none">
-    <button class="btn" onclick="document.getElementById('ycfile').click()">📷 Import trailer list from photo</button>
-    <div class="hint" style="text-align:center;margin-bottom:4px">Photograph the printed Trailer Inspection Log and
+    <button class="btn" onclick="document.getElementById('ycfile').click()">&#128247; Import trailer list from photo</button>
+    <div class="hint" style="text-align:center">Photograph the printed Trailer Inspection Log and
       the app fills in the trailer numbers and products for you.</div>
     <div id="ycocrstatus"></div>
-    <button class="btn sec" onclick="ycAdd()">➕ Add trailer</button>
-    <button class="btn sec" onclick="ycCopyLast()">📋 Same trailers as last check</button>
+  </div>
+
+  <div class="card ycdoc">
+    <div class="ycbrand">
+      <img class="yclogo" src="assets/mb-logo.png" alt="Martin Brower">
+      <div class="yctitle">&ldquo;F-US399-QS-36 Trailer Inspection Log&rdquo;</div>
+      <div class="ycsubtitle">Air temperature critical limits: Freezer 0&deg; or less/Cooler: 34.0&deg;-40.0&deg;</div>
+    </div>
+    <div class="ycfields">
+      <div><span>DATE:</span><b id="yc_date"></b></div>
+      <div class="ycslots"><span>TIME:</span><b>00, 02, 04, 06, 08, 10, 12, 14, 16, 18, 20, 22</b></div>
+      <div><span>Time:</span><b id="yc_time"></b></div>
+      <div><span>NAME:</span><b id="yc_name"></b></div>
+    </div>
+  </div>
+
+  <div id="ycrows"></div>
+
+  <div class="card yconly">
+    <button class="btn sec" onclick="ycAdd()">&#10133; Add trailer</button>
     <div class="hint" id="ycsum" style="text-align:center;margin-top:8px;font-size:14px"></div>
   </div>
-  <div class="card">
-    <button class="btn" onclick="ycPreview()">👁 Preview &amp; check log</button>
+
+  <div class="card yconly">
+    <button class="btn" onclick="ycPreview()">&#128065; Preview &amp; check log</button>
     <div class="hint" style="text-align:center">Preview first. Save and email appear under the preview.</div>
     <div id="ycpreview"></div>
     <div id="ycactions" style="display:none">
-      <button class="btn grn" onclick="ycSave()">✅ Save yard check</button>
-      <button class="btn" onclick="ycEmail()">📧 Email to receiving office</button>
-      <button class="btn sec" onclick="ycShare()">📤 Share another way</button>
+      <button class="btn grn" onclick="ycSave()">&#9989; Save yard check</button>
+      <button class="btn" onclick="ycEmail()">&#128231; Email to receiving office</button>
+      <button class="btn sec" onclick="ycShare()">&#128228; Share another way</button>
     </div>
-    <button class="btn red" onclick="ycNew()">Start a new blank yard check</button>
   </div>
-  <div class="card">
-    <h2>Past yard checks</h2>
-    <div id="ychist"></div>
+  <div class="card viewonly">
+    <button class="btn" onclick="ycEmail()">&#128231; Email this record again</button>
+    <button class="btn sec" onclick="ycShare()">&#128228; Share another way</button>
   </div>
+</section>
+
+<!-- ============ GATE LOG ============ -->
+<section id="sec-log">
+  <div class="card logdoc">
+    <div class="logbrand">
+      <div id="npgword" class="npgword">NPG</div>
+      <div class="logsub">Security Services</div>
+      <div class="logtitle">Martin Brower Log</div>
+    </div>
+    <div class="logfields">
+      <div><span>Location:</span><b id="log_loc"></b></div>
+      <div><span>Shift:</span><b id="log_shift"></b></div>
+      <div><span>Guard:</span><b id="log_guard"></b></div>
+      <div><span>Date:</span><b id="log_date"></b></div>
+    </div>
+  </div>
+  <div id="logrows"></div>
 </section>
 
 <!-- ============ SETTINGS ============ -->
@@ -522,6 +858,9 @@
     <h2>Officer</h2>
     <label class="f">Your first name</label>
     <input type="text" id="set_offname" placeholder="e.g. Kofi">
+    <label class="f">Site / location</label>
+    <input type="text" id="set_location" placeholder="e.g. McCook">
+    <div class="hint">Printed on the gate log and the daily activity report.</div>
     <div class="hint">Auto-fills "Verified by" on every form you complete while signed in, so there is no retyping.</div>
   </div>
   <div class="card">
