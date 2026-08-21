@@ -44,7 +44,8 @@ test.describe('sign-in behaviour', () => {
   });
 
   test('no raw Firebase codes leak for mapped errors', async ({ page }) => {
-    for (const code of ['auth/invalid-credential','auth/too-many-requests',
+    for (const code of ['auth/invalid-credential','auth/invalid-login-credentials',
+                        'auth/invalid-email-or-password','auth/too-many-requests',
                         'auth/network-request-failed','auth/user-disabled','auth/invalid-email']) {
       await H.gotoApp(page, { authError: code });
       await page.fill('#lg_email', 'a@b.com');
@@ -59,7 +60,8 @@ test.describe('sign-in behaviour', () => {
 
   test('credential errors are indistinguishable (no account enumeration)', async ({ page }) => {
     const seen = [];
-    for (const code of ['auth/invalid-credential','auth/user-not-found','auth/wrong-password']) {
+    for (const code of ['auth/invalid-credential','auth/invalid-login-credentials',
+                        'auth/invalid-email-or-password','auth/user-not-found','auth/wrong-password']) {
       await H.gotoApp(page, { authError: code });
       await page.fill('#lg_email', 'a@b.com');
       await page.fill('#lg_pass', 'x');

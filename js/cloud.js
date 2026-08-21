@@ -45,6 +45,8 @@ function authErrText(e, ctx){
           + 'or tap "Forgot your password?" below.';
   var map = {
     'auth/invalid-credential': bad,
+    'auth/invalid-login-credentials': bad,
+    'auth/invalid-email-or-password': bad,
     'auth/wrong-password': bad,
     'auth/user-not-found': bad,
     'auth/missing-password': 'Enter your password to sign in.',
