@@ -45,7 +45,14 @@ const FB_STUB = (opts) => {
     firestore(){ return {
       enablePersistence(){ return Promise.resolve(); },
       collection(n){ return mkChain(n); },
-      batch(){ return { set(){}, delete(){}, commit(){ return Promise.resolve(); } }; },
+      _name: 'db',
+      batch(){
+        /* record what the app publishes so tests can assert on it */
+        return {
+          set(ref, data){ (window.__fb.written = window.__fb.written || []).push(data); },
+          delete(){}, commit(){ return Promise.resolve(); },
+        };
+      },
     }; },
     auth(){ return authObj; },
   };

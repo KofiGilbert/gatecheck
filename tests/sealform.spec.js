@@ -60,7 +60,8 @@ test('an interrupted form survives a reload', async ({ page }) => {
   await page.waitForTimeout(600);            // debounce
   await page.reload();
   await page.waitForFunction(() => typeof window.doLogin === 'function');
-  await page.click('#sec-home .tile[onclick*="form"]');
+  // the reload deep-links straight back to the form, so no tile to click
+  await expect(page.locator('#sec-form')).toBeVisible();
   await expect(page.locator('#f_po')).toHaveValue('8045467');
   await expect(page.locator('#f_trailer')).toHaveValue('LR7524');
   await expect(page.locator('#f_tractor')).toHaveValue('T-4412');

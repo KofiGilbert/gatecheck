@@ -77,7 +77,7 @@ function importXlsx(buf){
     }
   });
   if(!all.length){ toast(parsedAny? 'Spreadsheet read, but no order rows found':'No "Order Number" sheet found in that file'); return; }
-  mergeOrders(all);
+  receiveOrders(all);
 }
 
 /* =================== v2: photo OCR =================== */
@@ -338,6 +338,6 @@ function confirmReview(){
   });
   if(!out.length){ toast('No valid rows to add'); return; }
   closeReview();
-  mergeOrders(out);
+  receiveOrders(out);
   go('search');
 }

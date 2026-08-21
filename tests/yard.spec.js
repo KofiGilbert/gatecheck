@@ -116,7 +116,7 @@ test('the officer name follows whoever is signed in', async ({ page }) => {
   await expect(page.locator('#yc_name')).toHaveText('Vincent Adjei');
   await page.reload();
   await page.waitForFunction(() => typeof window.renderYard === 'function');
-  await page.click('#sec-home .tile[onclick*="yard"]');
+  await page.evaluate(() => go('yard'));           // reload deep-links to the sheet
   await page.click('#ycslots .slot >> nth=0');
   await expect(page.locator('#yc_name')).toHaveText('Vincent Adjei');
 });
@@ -215,14 +215,15 @@ test('cards respond to the pointer', async ({ page }) => {
 test('every state has its own colour, and white type on it', async ({ page }) => {
   await onYard(page);
   const seen = await page.evaluate(() => {
-    const t = ycTodayISO(), N = Date.now(), cur = ycCurrentSlotIndex();
+    const N = Date.now(), sh = ycShiftSlots();
     DB.yardchecks = [
-      { date:t, time:YC_SLOTS[0], name:'A', ts:new Date(N-6*3600e3).toISOString(),
+      { date:ycSlotDate(sh[0]), time:sh[0], name:'A', ts:new Date(N-6*3600e3).toISOString(),
         rows:[{escalate:[]},{escalate:[]}] },
-      { date:t, time:YC_SLOTS[1], name:'B', ts:new Date(N-4*3600e3).toISOString(),
+      { date:ycSlotDate(sh[1]), time:sh[1], name:'B', ts:new Date(N-4*3600e3).toISOString(),
         rows:[{escalate:['TEMP']},{escalate:[]}] },
     ];
-    DB.yardslots = [{ date:t, slot:YC_SLOTS[cur], loadedAt:new Date().toISOString(), count:9 }];
+    const live = sh.find(x => !ycSlotWindowClosed(x)) || sh[5];
+    DB.yardslots = [{ date:ycSlotDate(live), slot:live, loadedAt:new Date().toISOString(), count:9 }];
     renderYardSlots();
     const out = {};
     document.querySelectorAll('#ycslots .slot').forEach(el => {

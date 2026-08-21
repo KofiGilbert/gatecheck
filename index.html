@@ -318,6 +318,33 @@
   .logfields b{font-weight:800;flex:0 0 190px;
     border-bottom:1px solid var(--ink);padding:0 6px 1px}
   /* a saved check is a record: read only, no editing controls */
+  /* office-only controls */
+  .officeonly{display:none}
+  body.role-office .officeonly{display:block}
+  /* display:block above would otherwise beat the hidden attribute */
+  body.role-office .officeonly[hidden]{display:none}
+  /* the staging grid: a spreadsheet the office can correct before submitting */
+  .dgwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+  table.dg{border-collapse:collapse;width:100%;min-width:1120px;background:#fff}
+  table.dg th{background:#1F3A5F;color:#fff;font-size:10.5px;font-weight:700;padding:7px 5px;
+    text-transform:none;letter-spacing:0;white-space:nowrap;position:sticky;top:0}
+  table.dg td{border:1px solid #D9D9D9;padding:0;height:30px}
+  table.dg td input{border:none;background:transparent;width:100%;padding:6px;font-size:13px;
+    border-radius:0;color:#111}
+  table.dg td input:focus{outline:2px solid var(--blue);outline-offset:-2px;background:#FFFDF0}
+  table.dg tr:nth-child(even) td{background:#F6F8FB}
+  table.dg .dgdel{background:none;border:none;color:#C0392B;font-size:15px;padding:6px}
+  /* the printed sheet */
+  .prnwrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+  table.prn{border-collapse:collapse;width:100%;min-width:1040px;background:#fff;color:#111}
+  .prnhead{padding:14px 16px 6px;background:#fff}
+  .prnconf{font-size:9.5px;letter-spacing:.4px;color:#333}
+  .prndate{font-size:15px;font-weight:700;margin-top:2px}
+  table.prn th{background:#fff;color:#111;border-bottom:1px solid #111;font-size:10px;
+    font-weight:700;padding:5px 6px;text-align:left;text-transform:none;letter-spacing:0;white-space:nowrap}
+  table.prn td{border:none;padding:3px 6px;font-size:10.5px;white-space:nowrap}
+  table.prn tr.tot td{border-top:1px solid #111;font-weight:800;padding-top:5px}
+  table.prn td.num{text-align:right}
   .viewbar{display:block;margin-bottom:12px;padding:12px 14px;border-radius:10px;
     border-left:3px solid #4C6C1A;background:#F1F7E7;color:#2E4410;
     font-size:14px;font-weight:700;line-height:1.45}
@@ -655,30 +682,38 @@
 
 <!-- ============ SCHEDULE ============ -->
 <section id="sec-sched">
-  <div class="card">
-    <h2>Load today's schedule</h2>
+  <div class="card officeonly">
+    <h2>Load the schedule</h2>
     <div class="hint" style="margin-bottom:8px">
-      Import a <b>photo of the printed sheet</b>, the <b>.xlsx spreadsheet</b>, or the
-      <b>.json</b> file from Claude. New days are <b>added</b> to what's already here.
-      Same order numbers get updated, nothing is lost.
+      Upload the <b>.xlsx spreadsheet</b>, or paste the rows straight out of your spreadsheet.
+      Nothing goes to the yard until you have checked it and pressed Submit.
     </div>
-    <input type="file" id="file" accept=".json,.csv,.xlsx,.xlsm,image/*" style="display:none">
-    <button class="btn" onclick="document.getElementById('file').click()">📷 Import photo / spreadsheet / file</button>
-    <div class="warn">📷 <b>Photo tips:</b> lay the sheet flat, shoot straight down, good light,
-      whole page in frame. The app reads it on your phone and shows everything it found for you
-      to check before adding. A blurry or angled photo will miss rows. The .xlsx or .json from
-      Claude is always 100% accurate. Photo reading works fully offline and takes about a minute.</div>
-    <div id="ocrstatus" style="display:none" class="warn"></div>
-    <button class="btn sec" onclick="toggle('pastebox')">✏️ Or paste data</button>
+    <input type="file" id="file" accept=".json,.csv,.tsv,.xlsx,.xlsm" style="display:none">
+    <button class="btn" onclick="document.getElementById('file').click()">&#128202; Upload spreadsheet</button>
+    <button class="btn sec" onclick="toggle('pastebox')">&#9999;&#65039; Or paste from a spreadsheet</button>
     <div id="pastebox" style="display:none">
-      <textarea id="paste" rows="5" placeholder='Paste the JSON from Claude here'></textarea>
-      <button class="btn sec" onclick="importPaste()">Add pasted data</button>
+      <textarea id="paste" rows="6" placeholder="Select the rows in Excel, copy, and paste them here"></textarea>
+      <button class="btn sec" onclick="importPaste()">Load pasted rows</button>
+    </div>
+    <div id="ocrstatus" style="display:none" class="warn"></div>
+  </div>
+
+  <div class="card officeonly" id="draftcard" hidden>
+    <h2>Check the schedule <span id="draftcnt" style="color:var(--mut);font-weight:600"></span></h2>
+    <div class="hint">Correct anything that came across wrong, then preview it exactly as it prints.</div>
+    <div id="draftgrid"></div>
+    <button class="btn" onclick="schedPreview()">&#128065; Preview</button>
+    <div id="schedpreview"></div>
+    <div id="schedactions" hidden>
+      <button class="btn grn" onclick="schedSubmit()">&#9989; Submit to the yard</button>
+      <button class="btn red" onclick="schedDiscard()">Discard</button>
     </div>
   </div>
+
   <div class="card">
     <h2>Loaded orders <span id="cnt" style="color:var(--mut);font-weight:600"></span></h2>
     <div id="sched"></div>
-    <button class="btn red" onclick="clearAll()">🗑 Clear all schedule data</button>
+    <button class="btn red officeonly" onclick="clearAll()">&#128465; Clear all schedule data</button>
   </div>
 </section>
 

@@ -45,9 +45,13 @@ function applyRole(){
   var off = isOffice();
   document.body.classList.toggle('role-office', off);
   var cur = (history.state && history.state.sec) || 'home';
+  var shown = document.querySelector('section.on');
+  var shownId = shown ? shown.id.replace('sec-','') : 'home';
   var blocked = off ? OFFICER_ONLY.indexOf(cur)>=0 : OFFICE_ONLY.indexOf(cur)>=0;
   if(cur==='home' && off) blocked = true;
   if(cur==='office' && !off) blocked = true;
+  /* the visible screen can lag the recorded one on a deep link */
+  if(!blocked && shownId !== cur) { go(cur, true); return; }
   if(blocked) go(homeSection());
 }
 function go(name, fromHistory){
@@ -121,6 +125,9 @@ window.addEventListener('popstate', function(e){
     var h=(location.hash||'').replace('#','');
     var start = SECTIONS.indexOf(h)>=0 ? h : 'home';
     history.replaceState({sec:start}, '', '#'+start);
+    /* a deep link has to actually show that screen, not just record it.
+       applyRole() corrects it once the account's role arrives. */
+    if(start !== 'home') go(start, true);
   }catch(e){}
 })();
 document.addEventListener('keydown', function(e){
@@ -149,18 +156,30 @@ function normalizeRow(o){
   };
 }
 function parseCSV(text){
+  /* copying rows out of Excel gives tabs, not commas, so pick whichever the
+     first line actually uses */
+  var firstLine = String(text).split(/\r?\n/)[0] || '';
+  var DELIM = (firstLine.split('\t').length > firstLine.split(',').length) ? '\t' : ',';
   var rows=[],row=[],cur='',inQ=false;
   for(var i=0;i<text.length;i++){
     var ch=text[i];
     if(inQ){ if(ch==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else inQ=false; } else cur+=ch; }
     else if(ch==='"') inQ=true;
-    else if(ch===','){ row.push(cur); cur=''; }
+    else if(ch===DELIM){ row.push(cur); cur=''; }
     else if(ch==='\n'||ch==='\r'){ if(cur!==''||row.length){row.push(cur);rows.push(row);row=[];cur='';} }
     else cur+=ch;
   }
   if(cur!==''||row.length){row.push(cur);rows.push(row);}
   if(!rows.length) return [];
-  var hdr = rows[0].map(function(h){return h.trim().toLowerCase().replace(/\s+/g,'_');});
+  var ALIAS = { order_number:'order', 'order_#':'order', vendor:'vendor', vendor_name:'vendor',
+    appointment_carrier:'carrier', carrier:'carrier', contact_name:'contact',
+    open_cases:'cases', cases:'cases', pallets:'pallets', zones:'zone', zone:'zone',
+    in_yard:'in_yard', 'in_yard?':'in_yard', detail:'detail', time:'time', date:'date',
+    'priority_(*)':'priority', 'priority_(\u2605)':'priority', priority:'priority' };
+  var hdr = rows[0].map(function(h){
+    var k = h.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_#?()*\u2605]/g,'');
+    return ALIAS[k] || k;
+  });
   return rows.slice(1).map(function(r){
     var o={}; hdr.forEach(function(h,i){o[h]=r[i];}); return o; });
 }
@@ -184,14 +203,17 @@ function ingest(text){
       arr = Array.isArray(j) ? j : (j.orders||[]);
     } else arr = parseCSV(text);
   }catch(e){ toast('Could not read file: '+e.message); return; }
-  mergeOrders(arr);
+  receiveOrders(arr);
+}
+/* The office checks and edits the schedule before anything reaches the yard. */
+function receiveOrders(arr){
+  if(typeof isOffice==='function' && isOffice()) stageOrders(arr);
+  else mergeOrders(arr);
 }
 $('file').addEventListener('change', function(){
   var f=this.files[0]; if(!f) return;
   var name = (f.name||'').toLowerCase();
-  if(f.type.indexOf('image')===0 || /\.(jpe?g|png|heic|webp)$/.test(name)){
-    importPhoto(f);
-  } else if(/\.(xlsx|xlsm)$/.test(name)){
+  if(/\.(xlsx|xlsm)$/.test(name)){
     var r1=new FileReader();
     r1.onload=function(){ try{ importXlsx(r1.result); }catch(e){ toast('Could not read spreadsheet: '+e.message); } };
     r1.readAsArrayBuffer(f);
@@ -206,6 +228,118 @@ function importPaste(){ ingest($('paste').value); $('paste').value=''; }
 function clearAll(){
   if(!confirm('Delete ALL loaded schedule data? Saved forms are kept.')) return;
   DB.orders=[]; persist(); stat(); renderSched(); toast('Schedule cleared');
+}
+
+/* ---- schedule staging: upload, correct, preview, submit ---- */
+var SCHED_DRAFT = null;
+var DG_COLS = [
+  {k:'date',     t:'Date',     w:96},
+  {k:'zone',     t:'Zone',     w:56},
+  {k:'priority', t:'Priority', w:64},
+  {k:'detail',   t:'Detail',   w:70},
+  {k:'time',     t:'Time',     w:64},
+  {k:'in_yard',  t:'In Yard',  w:64},
+  {k:'order',    t:'Order Number', w:110},
+  {k:'vendor',   t:'Vendor Name',  w:230},
+  {k:'carrier',  t:'Appointment Carrier', w:170},
+  {k:'contact',  t:'Contact Name', w:130},
+  {k:'cases',    t:'Open Cases', w:88},
+  {k:'pallets',  t:'Pallets',   w:70}
+];
+function stageOrders(arr){
+  var rows = (arr||[]).map(normalizeRow).filter(function(n){ return n.order; });
+  if(!rows.length){ toast('Nothing to load'); return; }
+  rows.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.order<b.order?-1:1); });
+  SCHED_DRAFT = rows;
+  schedRenderDraft();
+  toast('Loaded '+rows.length+' rows. Check them, then preview.');
+}
+function schedSet(i,k,v){
+  if(!SCHED_DRAFT || !SCHED_DRAFT[i]) return;
+  SCHED_DRAFT[i][k] = (k==='cases'||k==='pallets') ? (parseInt(v,10)||0) : v;
+  schedInvalidate();
+}
+function schedDel(i){
+  if(!SCHED_DRAFT) return;
+  SCHED_DRAFT.splice(i,1);
+  schedRenderDraft();
+}
+function schedInvalidate(){
+  var a=$('schedactions'); if(a) a.hidden = true;
+  var p=$('schedpreview'); if(p) p.innerHTML='';
+}
+function schedRenderDraft(){
+  var card=$('draftcard'); if(!card) return;
+  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ card.hidden = true; return; }
+  card.hidden = false;
+  $('draftcnt').textContent = '('+SCHED_DRAFT.length+')';
+  var head = '<tr>' + DG_COLS.map(function(c){
+    return '<th style="min-width:'+c.w+'px">'+esc(c.t)+'</th>'; }).join('') + '<th></th></tr>';
+  var body = SCHED_DRAFT.map(function(r,i){
+    return '<tr>' + DG_COLS.map(function(c){
+      return '<td><input value="'+esc(r[c.k]==null?'':String(r[c.k]))+'"'
+        + ' oninput="schedSet('+i+',\''+c.k+'\',this.value)"></td>';
+    }).join('') + '<td><button class="dgdel" onclick="schedDel('+i+')">\u2715</button></td></tr>';
+  }).join('');
+  $('draftgrid').innerHTML = '<div class="dgwrap"><table class="dg">'+head+body+'</table></div>';
+  schedInvalidate();
+}
+function schedDiscard(){
+  if(!confirm('Discard this schedule without submitting it?')) return;
+  SCHED_DRAFT = null; schedRenderDraft();
+  var c=$('draftcard'); if(c) c.hidden = true;
+  toast('Discarded');
+}
+/* the preview is the sheet exactly as it prints */
+function schedPreview(){
+  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to preview'); return; }
+  var bydate = {};
+  SCHED_DRAFT.forEach(function(r){ (bydate[r.date] = bydate[r.date] || []).push(r); });
+  var html = Object.keys(bydate).sort().map(function(d){
+    var rows = bydate[d].slice().sort(function(a,b){
+      return (a.zone||'')<(b.zone||'')?-1:(a.zone||'')>(b.zone||'')?1:((a.time||'')<(b.time||'')?-1:1); });
+    var cases=0, pallets=0;
+    rows.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
+    return '<div class="prnhead">'
+      + '<div class="prnconf">MARTIN BROWER, Inc. Confidential</div>'
+      + '<div class="prndate">'+esc(fmtLongDate(d))+'</div></div>'
+      + '<div class="prnwrap"><table class="prn"><tr>'
+      + '<th></th><th>Zones</th><th>Detail</th><th>Time</th><th>In Yard</th>'
+      + '<th>Order Number</th><th>Vendor Name</th><th>Appointment Carrier</th>'
+      + '<th>Contact Name</th><th class="num">Open Cases</th><th class="num">Pallets</th></tr>'
+      + rows.map(function(r){
+          return '<tr><td>'+(r.priority?'\u2605':'')+'</td>'
+            + '<td>'+esc(r.zone)+'</td><td>'+esc(r.detail)+'</td><td>'+esc(r.time)+'</td>'
+            + '<td>'+esc(r.in_yard)+'</td><td>'+esc(r.order)+'</td>'
+            + '<td>'+esc(r.vendor)+'</td><td>'+esc(r.carrier)+'</td><td>'+esc(r.contact)+'</td>'
+            + '<td class="num">'+(+r.cases||0).toLocaleString()+'</td>'
+            + '<td class="num">'+(+r.pallets||0)+'</td></tr>';
+        }).join('')
+      + '<tr class="tot"><td colspan="9"></td>'
+      + '<td class="num">'+cases.toLocaleString()+'</td>'
+      + '<td class="num">'+pallets.toLocaleString()+'</td></tr>'
+      + '</table></div>';
+  }).join('');
+  $('schedpreview').innerHTML = html;
+  $('schedactions').hidden = false;
+  toast('This is how it prints. Submit when it looks right.');
+}
+function fmtLongDate(iso){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')) return iso||'';
+  var p=iso.split('-'), d=new Date(+p[0], +p[1]-1, +p[2]);
+  var days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var mons=['January','February','March','April','May','June','July',
+            'August','September','October','November','December'];
+  return days[d.getDay()]+', '+mons[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+}
+function schedSubmit(){
+  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to submit'); return; }
+  var n = SCHED_DRAFT.length;
+  mergeOrders(SCHED_DRAFT);
+  SCHED_DRAFT = null;
+  var c=$('draftcard'); if(c) c.hidden = true;
+  schedInvalidate();
+  toast('Submitted '+n+' orders to the yard');
 }
 
 /* ======================= search ======================= */
