@@ -268,20 +268,34 @@ function schedInvalidate(){
   var a=$('schedactions'); if(a) a.hidden = true;
   var p=$('schedpreview'); if(p) p.innerHTML='';
 }
+function colLetter(i){
+  var s=''; i++;
+  while(i>0){ var m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); }
+  return s;
+}
 function schedRenderDraft(){
   var card=$('draftcard'); if(!card) return;
   if(!SCHED_DRAFT || !SCHED_DRAFT.length){ card.hidden = true; return; }
   card.hidden = false;
   $('draftcnt').textContent = '('+SCHED_DRAFT.length+')';
-  var head = '<tr>' + DG_COLS.map(function(c){
-    return '<th style="min-width:'+c.w+'px">'+esc(c.t)+'</th>'; }).join('') + '<th></th></tr>';
-  var body = SCHED_DRAFT.map(function(r,i){
-    return '<tr>' + DG_COLS.map(function(c){
-      return '<td><input value="'+esc(r[c.k]==null?'':String(r[c.k]))+'"'
-        + ' oninput="schedSet('+i+',\''+c.k+'\',this.value)"></td>';
-    }).join('') + '<td><button class="dgdel" onclick="schedDel('+i+')">\u2715</button></td></tr>';
+  /* column letters, then the real header, both frozen while the rows scroll */
+  var letters = '<tr class="dgcols"><th class="gut"></th>'
+    + DG_COLS.map(function(c,i){ return '<th style="min-width:'+c.w+'px">'+colLetter(i)+'</th>'; }).join('')
+    + '<th class="gut"></th></tr>';
+  var head = '<tr class="dghdr"><th class="gut">1</th>'
+    + DG_COLS.map(function(c){ return '<th>'+esc(c.t)+'</th>'; }).join('')
+    + '<th class="gut"></th></tr>';
+  /* each day gets its own tint, the way the spreadsheet does */
+  var seen = [], body = SCHED_DRAFT.map(function(r,i){
+    var di = seen.indexOf(r.date); if(di<0){ seen.push(r.date); di = seen.length-1; }
+    return '<tr class="d'+(di%2)+'"><td class="gut">'+(i+2)+'</td>'
+      + DG_COLS.map(function(c){
+          return '<td><input value="'+esc(r[c.k]==null?'':String(r[c.k]))+'"'
+            + ' oninput="schedSet('+i+',\''+c.k+'\',this.value)"></td>';
+        }).join('')
+      + '<td class="gut"><button class="dgdel" onclick="schedDel('+i+')">\u2715</button></td></tr>';
   }).join('');
-  $('draftgrid').innerHTML = '<div class="dgwrap"><table class="dg">'+head+body+'</table></div>';
+  $('draftgrid').innerHTML = '<div class="dgwrap"><table class="dg">'+letters+head+body+'</table></div>';
   schedInvalidate();
 }
 function schedDiscard(){
@@ -291,15 +305,15 @@ function schedDiscard(){
   toast('Discarded');
 }
 /* the preview is the sheet exactly as it prints */
-function schedPreview(){
-  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to preview'); return; }
+function schedPrintHTML(rows){
+  if(!rows || !rows.length) return '<div class="empty">Nothing loaded.</div>';
   var bydate = {};
-  SCHED_DRAFT.forEach(function(r){ (bydate[r.date] = bydate[r.date] || []).push(r); });
-  var html = Object.keys(bydate).sort().map(function(d){
-    var rows = bydate[d].slice().sort(function(a,b){
+  rows.forEach(function(r){ (bydate[r.date] = bydate[r.date] || []).push(r); });
+  return Object.keys(bydate).sort().map(function(d){
+    var day = bydate[d].slice().sort(function(a,b){
       return (a.zone||'')<(b.zone||'')?-1:(a.zone||'')>(b.zone||'')?1:((a.time||'')<(b.time||'')?-1:1); });
     var cases=0, pallets=0;
-    rows.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
+    day.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
     return '<div class="prnhead">'
       + '<div class="prnconf">MARTIN BROWER, Inc. Confidential</div>'
       + '<div class="prndate">'+esc(fmtLongDate(d))+'</div></div>'
@@ -307,7 +321,7 @@ function schedPreview(){
       + '<th></th><th>Zones</th><th>Detail</th><th>Time</th><th>In Yard</th>'
       + '<th>Order Number</th><th>Vendor Name</th><th>Appointment Carrier</th>'
       + '<th>Contact Name</th><th class="num">Open Cases</th><th class="num">Pallets</th></tr>'
-      + rows.map(function(r){
+      + day.map(function(r){
           return '<tr><td>'+(r.priority?'\u2605':'')+'</td>'
             + '<td>'+esc(r.zone)+'</td><td>'+esc(r.detail)+'</td><td>'+esc(r.time)+'</td>'
             + '<td>'+esc(r.in_yard)+'</td><td>'+esc(r.order)+'</td>'
@@ -320,7 +334,11 @@ function schedPreview(){
       + '<td class="num">'+pallets.toLocaleString()+'</td></tr>'
       + '</table></div>';
   }).join('');
-  $('schedpreview').innerHTML = html;
+}
+/* the preview is the sheet exactly as it prints */
+function schedPreview(){
+  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to preview'); return; }
+  $('schedpreview').innerHTML = schedPrintHTML(SCHED_DRAFT);
   $('schedactions').hidden = false;
   toast('This is how it prints. Submit when it looks right.');
 }
@@ -337,6 +355,7 @@ function schedSubmit(){
   var n = SCHED_DRAFT.length;
   mergeOrders(SCHED_DRAFT);
   SCHED_DRAFT = null;
+  renderSched();
   var c=$('draftcard'); if(c) c.hidden = true;
   schedInvalidate();
   toast('Submitted '+n+' orders to the yard');
@@ -380,15 +399,20 @@ function doSearch(){
 /* ======================= schedule list ======================= */
 function renderSched(){
   $('cnt').textContent = DB.orders.length? '('+DB.orders.length+')':'';
+  if(typeof isOffice==='function' && isOffice()){
+    /* the office should see exactly what the yard got */
+    $('sched').innerHTML = schedPrintHTML(DB.orders);
+    return;
+  }
   if(!DB.orders.length){ $('sched').innerHTML='<div class="empty">Nothing loaded.</div>'; return; }
   var bydate={};
   DB.orders.forEach(function(o){ (bydate[o.date]=bydate[o.date]||[]).push(o); });
   $('sched').innerHTML = Object.keys(bydate).sort().map(function(d){
     var rows = bydate[d].map(function(o){
-      return '<div class="schedrow"><span><b>'+esc(o.order)+'</b> · '+esc(o.zone)+' · '+esc(o.detail)
+      return '<div class="schedrow"><span><b>'+esc(o.order)+'</b> \u00b7 '+esc(o.zone)+' \u00b7 '+esc(o.detail)
         +' '+esc(o.time)+'</span><span style="color:var(--mut)">'+esc(o.vendor.slice(0,22))+'</span></div>';
     }).join('');
-    return '<div class="schedday">'+fmtDate(d)+' · '+bydate[d].length+' orders</div>'+rows;
+    return '<div class="schedday">'+fmtDate(d)+' \u00b7 '+bydate[d].length+' orders</div>'+rows;
   }).join('');
 }
 

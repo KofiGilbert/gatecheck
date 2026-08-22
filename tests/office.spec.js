@@ -146,9 +146,10 @@ test('pasted spreadsheet rows land in an editable grid, not straight into the ya
   await expect(page.locator('#draftcard')).toBeVisible();
   await expect(page.locator('#draftcnt')).toHaveText('(3)');
   const rows = page.locator('#draftgrid table tr');
-  await expect(rows).toHaveCount(4);                       // header + 3
-  await expect(rows.nth(1).locator('input').nth(6)).toHaveValue('8036385');
-  await expect(rows.nth(1).locator('input').nth(7)).toHaveValue('MCCAIN CA: CARBERRY');
+  await expect(rows).toHaveCount(5);          // column letters + header + 3 data rows
+  const first = rows.nth(2);
+  await expect(first.locator('input').nth(6)).toHaveValue('8036385');
+  await expect(first.locator('input').nth(7)).toHaveValue('MCCAIN CA: CARBERRY');
   // nothing published yet
   expect(await page.evaluate(() => (window.__fb.written || []).length)).toBe(0);
 });
@@ -159,7 +160,7 @@ test('the office can correct a row before submitting', async ({ page }) => {
   await page.click('button:has-text("Or paste from a spreadsheet")');
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
-  const vendor = page.locator('#draftgrid table tr').nth(1).locator('input').nth(7);
+  const vendor = page.locator('#draftgrid table tr').nth(2).locator('input').nth(7);
   await vendor.fill('MCCAIN CA: CARBERRY (CORRECTED)');
   await page.click('button:has-text("Preview")');
   await expect(page.locator('#schedpreview')).toContainText('CORRECTED');
@@ -212,7 +213,7 @@ test('editing after a preview forces another look before submitting', async ({ p
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
   await expect(page.locator('#schedactions')).toBeVisible();
-  await page.locator('#draftgrid table tr').nth(1).locator('input').nth(4).fill('815');
+  await page.locator('#draftgrid table tr').nth(2).locator('input').nth(4).fill('815');
   await expect(page.locator('#schedactions'), 'a change must invalidate the preview').toBeHidden();
 });
 
@@ -259,4 +260,99 @@ test('the office deep linked to the schedule stays on the schedule', async ({ pa
   await page.waitForFunction(() => window.CLOUD && CLOUD.role === 'office');
   await expect(page.locator('#sec-sched')).toBeVisible();
   await expect(page.locator('button:has-text("Upload spreadsheet")')).toBeVisible();
+});
+
+test('the grid looks like the spreadsheet it came from', async ({ page }) => {
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.fill('#paste', TSV);
+  await page.click('button:has-text("Load pasted rows")');
+
+  // column letters across the top, row numbers down the left
+  const letters = page.locator('#draftgrid table tr.dgcols th');
+  await expect(letters.nth(1)).toHaveText('A');
+  await expect(letters.nth(2)).toHaveText('B');
+  const rows = page.locator('#draftgrid table tr');
+  await expect(rows.nth(1).locator('.gut').first()).toHaveText('1');    // header is row 1
+  await expect(rows.nth(2).locator('.gut').first()).toHaveText('2');
+
+  // both header rows stay put while the grid scrolls
+  for (const sel of ['tr.dgcols th', 'tr.dghdr th']) {
+    const pos = await page.locator('#draftgrid table ' + sel).first()
+      .evaluate(el => getComputedStyle(el).position);
+    expect(pos, sel + ' should be frozen').toBe('sticky');
+  }
+  const gut = await page.locator('#draftgrid table .gut').first()
+    .evaluate(el => getComputedStyle(el).position);
+  expect(gut, 'the row-number gutter should be frozen').toBe('sticky');
+});
+
+test('each day is tinted differently, as in the spreadsheet', async ({ page }) => {
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.fill('#paste', TSV.replace(/2026-08-21\t(R)/, '2026-08-22\t$1'));
+  await page.click('button:has-text("Load pasted rows")');
+  const tints = await page.evaluate(() =>
+    [...document.querySelectorAll('#draftgrid table tr.d0 td, #draftgrid table tr.d1 td')]
+      .slice(0, 1).map(td => getComputedStyle(td).backgroundColor));
+  expect(tints.length).toBe(1);
+  const classes = await page.evaluate(() =>
+    [...document.querySelectorAll('#draftgrid table tr')].map(r => r.className).filter(Boolean));
+  expect(classes).toContain('d0');
+  expect(classes, 'a second day should get its own tint').toContain('d1');
+});
+
+test('the office gets the full window, officers keep the narrow layout', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  const officeW = await page.locator('main').evaluate(el => el.getBoundingClientRect().width);
+  expect(officeW, 'the office schedule should use the window').toBeGreaterThan(1000);
+
+  await asOfficer(page);
+  await page.click('#sec-home .tile[onclick*="sched"]');
+  const officerW = await page.locator('main').evaluate(el => el.getBoundingClientRect().width);
+  expect(officerW, 'officers keep the phone-friendly width').toBeLessThanOrEqual(660);
+});
+
+test('after submitting, the office sees the printed sheet, not a list', async ({ page }) => {
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.fill('#paste', TSV);
+  await page.click('button:has-text("Load pasted rows")');
+  await page.click('button:has-text("Preview")');
+  const sent = await page.evaluate(() => JSON.parse(JSON.stringify(SCHED_DRAFT)));
+  await page.click('button:has-text("Submit to the yard")');
+  // the published rows return through the sync; stand them in so we can render
+  await page.evaluate((rows) => { DB.orders = rows; renderSched(); }, sent);
+  const sched = page.locator('#sched');
+  await expect(sched).toContainText('MARTIN BROWER, Inc. Confidential');
+  await expect(sched).toContainText('Friday, August 21, 2026');
+  await expect(sched.locator('.schedrow'), 'the plain list should be gone').toHaveCount(0);
+});
+
+test('the grid header is a table row, not the app header bar', async ({ page }) => {
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.fill('#paste', TSV);
+  await page.click('button:has-text("Load pasted rows")');
+  // a class collision with the app header once made this row display:grid
+  const d = await page.evaluate(() => ({
+    row: getComputedStyle(document.querySelector('#draftgrid table tr.dghdr')).display,
+    cell: getComputedStyle(document.querySelector('#draftgrid table tr.dghdr th:nth-child(2)')).display,
+  }));
+  expect(d.row).toBe('table-row');
+  expect(d.cell).toBe('table-cell');
+  // and the header cells line up with the columns beneath them
+  const m = await page.evaluate(() => {
+    const h = document.querySelector('#draftgrid table tr.dghdr th:nth-child(8)').getBoundingClientRect();
+    const c = document.querySelector('#draftgrid table tr:nth-child(3) td:nth-child(8)').getBoundingClientRect();
+    return { hx: h.x, cx: c.x, hw: h.width, cw: c.width };
+  });
+  expect(Math.abs(m.hx - m.cx), 'header cell is not above its column').toBeLessThan(2);
+  expect(Math.abs(m.hw - m.cw), 'header cell width does not match its column').toBeLessThan(2);
 });
