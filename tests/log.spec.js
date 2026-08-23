@@ -49,8 +49,8 @@ test('pushing a form adds a log row, and re-sending does not duplicate it', asyn
   });
   await page.click('#sec-home .tile[onclick*=\"log\"]');
   // the grid always shows a full page of rows, like the paper form
-  await expect(page.locator('#logrows table tr')).toHaveCount(15);  // header + 14
-  const cells = page.locator('#logrows table tr').nth(1);
+  await expect(page.locator('#logrows table tr:not(.logband)')).toHaveCount(15); // header + 14
+  const cells = page.locator('#logrows table tr:not(.logband)').nth(1);
   await expect(cells).toContainText('0630');
   await expect(cells).toContainText('POPE');
   await expect(cells).toContainText('T-4412');
@@ -64,7 +64,7 @@ test('rows read top-down in arrival order', async ({ page }) => {
     logAdd({ datein: todayStr(), timein:'0812', po:'2', trailer:'BBB', carrier:'SECOND', tractor:'T2' });
   });
   await page.click('#sec-home .tile[onclick*=\"log\"]');
-  const rows = page.locator('#logrows table tr');
+  const rows = page.locator('#logrows table tr:not(.logband)');
   await expect(rows.nth(1)).toContainText('0645');
   await expect(rows.nth(1)).toContainText('FIRST');
   await expect(rows.nth(2)).toContainText('0812');
@@ -76,7 +76,7 @@ test('officer completes Time Out and Out Trailer, and it persists', async ({ pag
   await page.evaluate(() => logAdd({ datein: todayStr(), timein:'0630', po:'8045467',
     trailer:'LR7524', carrier:'POPE', tractor:'T-4412' }));
   await page.click('#sec-home .tile[onclick*=\"log\"]');
-  const inputs = page.locator('#logrows table tr').nth(1).locator('input');
+  const inputs = page.locator('#logrows table tr:not(.logband)').nth(1).locator('input');
   await inputs.nth(0).fill('1415');
   await inputs.nth(1).fill('MB9001');
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('gc_logs'))[0]);
@@ -153,4 +153,242 @@ test('with nothing filled in it shows the blank form, not a message', async ({ p
   await expect(heads.nth(8)).toHaveText('Notes');
   await expect(page.locator('#logrows')).not.toContainText('No trailers signed in');
   await expect(page.locator('#sec-log')).not.toContainText('A row is added automatically');
+});
+
+/* ---- the gate log and the schedule agree on a date ----
+   The log used to store the date the officer reads (8/22/26) while the schedule
+   stores ISO, so a log row could never be matched to the order it belonged to. */
+
+const asOfficerD = (p) => H.gotoApp(p, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+
+test('the two date forms are kept apart, and convert cleanly', async ({ page }) => {
+  await asOfficerD(page);
+  expect(await page.evaluate(() => ({
+    display: /^\d{1,2}\/\d{1,2}\/\d{2}$/.test(todayStr()),
+    stored:  /^\d{4}-\d{2}-\d{2}$/.test(isoToday()),
+    same:    isoDate(todayStr()) === isoToday(),
+    iso:     isoDate('2026-08-22'),
+    short:   isoDate('8/22/26'),
+    padded:  isoDate('08/22/2026'),
+    junk:    isoDate('nonsense'),
+    blank:   isoDate(''),
+  }))).toEqual({ display:true, stored:true, same:true, iso:'2026-08-22',
+                 short:'2026-08-22', padded:'2026-08-22', junk:'', blank:'' });
+});
+
+test('a pushed form writes an ISO date on the gate log row', async ({ page }) => {
+  await asOfficerD(page);
+  const r = await page.evaluate(() => {
+    DB.logs = [];
+    logAdd({ datein: todayStr(), po:'8036365', timein:'0800', carrier:'DAY&ROSS' });
+    return DB.logs[0];
+  });
+  expect(r.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(r.id.startsWith(r.date)).toBe(true);
+  // and the row is still today's as far as the log screen is concerned
+  expect(await page.evaluate(() => logToday().length)).toBe(1);
+});
+
+test('a row written under the old format is read back as ISO', async ({ page }) => {
+  await asOfficerD(page);
+  const out = await page.evaluate(() => {
+    const legacy = [{ id:'8/22/26_8036365_0800', date:'8/22/26', po:'8036365', timein:'0800' }];
+    logMigrate(legacy);
+    return legacy[0].date;
+  });
+  expect(out).toBe('2026-08-22');
+});
+
+test('re-sending a form does not duplicate a row written the old way', async ({ page }) => {
+  await asOfficerD(page);
+  const n = await page.evaluate(() => {
+    // a row already on file under the display format, as a real device would have
+    DB.logs = [{ id: todayStr()+'_8036365_0800', date: todayStr(),
+                 po:'8036365', timein:'0800', timeout:'' }];
+    logMigrate(DB.logs);
+    logAdd({ datein: todayStr(), po:'8036365', timein:'0800' });
+    return DB.logs.length;
+  });
+  expect(n).toBe(1);
+});
+
+test('a gate log row matches the order it belongs to', async ({ page }) => {
+  await asOfficerD(page);
+  const t = await page.evaluate(() => {
+    AN_NOW = 720;
+    DB.orders = [{ date:isoToday(), order:'8036365', time:'800', carrier:'DAY&ROSS',
+                   vendor:'MCCAIN', cases:1134, pallets:21, detail:'LIVE' }];
+    DB.logs = [];
+    logAdd({ datein: todayStr(), po:'8036365', timein:'0800', carrier:'DAY&ROSS' });
+    return anTotals([anRows(isoToday())]);
+  });
+  expect(t.scheduled).toBe(1);
+  expect(t.arrived).toBe(1);
+  expect(t.unscheduled).toBe(0);      // before the fix this was 1 scheduled, 0 arrived
+});
+
+/* ---- one continuous sheet across shifts ----
+   A trailer that books in on the morning shift often leaves on the evening one,
+   so any officer on duty completes any row, and the row records both hands. */
+
+test('the officer who marks the time out is recorded', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'morning@npg.com'}, role:'officer' });
+  const id = await page.evaluate(() => {
+    sset('gc_offname_morning@npg.com', 'Kofi Mensah');
+    DB.logs = [];
+    logAdd({ datein: todayStr(), po:'8036365', timein:'0700', carrier:'DAY&ROSS' });
+    return DB.logs[0].id;
+  });
+  const r = await page.evaluate((id) => {
+    logSet(id, 'timeout', '1830');
+    return DB.logs[0];
+  }, id);
+  expect(r.officer).toBe('morning@npg.com');
+  expect(r.timeout).toBe('1830');
+  expect(r.outBy).toBe('morning@npg.com');
+  expect(r.outAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('an evening officer closes a row the morning officer opened', async ({ page }) => {
+  // the morning shift books it in
+  await H.gotoApp(page, { user:{email:'morning@npg.com'}, role:'officer' });
+  const row = await page.evaluate(() => {
+    sset('gc_offname_morning@npg.com', 'Kofi Mensah');
+    DB.logs = [];
+    logAdd({ datein: todayStr(), po:'8036365', timein:'0700', carrier:'DAY&ROSS' });
+    logPersist();
+    return DB.logs[0];
+  });
+  expect(row.officerName).toBe('Kofi Mensah');
+  expect(row.outBy).toBeFalsy();
+
+  // a different officer signs in that evening and sees the same open row
+  await H.gotoApp(page, { user:{email:'evening@npg.com'}, role:'officer' });
+  const after = await page.evaluate((row) => {
+    sset('gc_offname_evening@npg.com', 'Vincent Adjei');
+    DB.logs = [row];
+    go('log');
+    logSet(row.id, 'timeout', '1915');
+    return DB.logs[0];
+  }, row);
+
+  expect(after.officerName).toBe('Kofi Mensah');    // who took it in
+  expect(after.outByName).toBe('Vincent Adjei');    // who marked it out
+  expect(after.outBy).toBe('evening@npg.com');
+  // and both names are on the sheet
+  await expect(page.locator('#logrows')).toContainText('Kofi Mensah');
+  await expect(page.locator('#logrows')).toContainText('Vincent Adjei');
+});
+
+test('clearing a time out clears who marked it', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'a@npg.com'}, role:'officer' });
+  const out = await page.evaluate(() => {
+    DB.logs = [];
+    logAdd({ datein: todayStr(), po:'1', timein:'0700' });
+    const id = DB.logs[0].id;
+    logSet(id, 'timeout', '0900');
+    logSet(id, 'timeout', '');
+    return DB.logs[0];
+  });
+  expect(out.outBy).toBe('');
+  expect(out.outByName).toBe('');
+});
+
+test('a row left open overnight stays on the sheet', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'night@npg.com'}, role:'officer' });
+  const rows = await page.evaluate(() => {
+    const y = anShiftDate(isoToday(), -1);
+    DB.logs = [
+      { id:'a', date:y, po:'8036365', timein:'2330', timeout:'', carrier:'DAY&ROSS' },
+      { id:'b', date:y, po:'8036366', timein:'1400', timeout:'1500', carrier:'J&L' },
+      { id:'c', date:isoToday(), po:'8036367', timein:'0700', timeout:'', carrier:'MARTEN' },
+    ];
+    go('log');
+    return logToday().map(r => r.id);
+  });
+  // the trailer still on site is carried over; the one that left is not
+  expect(rows).toEqual(['a', 'c']);
+});
+
+/* ---- the sheet is the officer's own shift, with what was left open above it ---- */
+
+test('the sheet starts with what the last shift left open', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'evening@npg.com'}, role:'officer' });
+  const ids = await page.evaluate(() => {
+    // pin the clock to 20:00, so the evening shift began at 18:00 today
+    const at8pm = new Date(); at8pm.setHours(20, 0, 0, 0);
+    logShiftStart = function(){ return { date: isoToday(), min: 18*60 }; };
+    currentShift = function(){ return '6pm - 6am'; };
+    DB.logs = [
+      { id:'open-am',  date:isoToday(), po:'1', timein:'0900', timeout:'' },
+      { id:'done-am',  date:isoToday(), po:'2', timein:'1000', timeout:'1100' },
+      { id:'mine-1',   date:isoToday(), po:'3', timein:'1830', timeout:'' },
+      { id:'mine-2',   date:isoToday(), po:'4', timein:'1915', timeout:'' },
+    ];
+    go('log');
+    return logToday().map(r => r.id);
+  });
+  // the morning's unfinished row comes first; the morning's finished one is gone
+  expect(ids).toEqual(['open-am', 'mine-1', 'mine-2']);
+});
+
+test('the two blocks are labelled, and the shift on duty is named', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'evening@npg.com'}, role:'officer' });
+  await page.evaluate(() => {
+    sset('gc_offname_evening@npg.com', 'Vincent Adjei');
+    logShiftStart = function(){ return { date: isoToday(), min: 18*60 }; };
+    currentShift = function(){ return '6pm - 6am'; };
+    DB.logs = [
+      { id:'open-am', date:isoToday(), po:'1', timein:'0900', timeout:'',
+        officerName:'Kofi Mensah' },
+      { id:'mine-1',  date:isoToday(), po:'3', timein:'1830', timeout:'' },
+    ];
+    go('log');
+  });
+  const bands = page.locator('#logrows tr.logband');
+  await expect(bands).toHaveCount(2);
+  await expect(bands.nth(0)).toContainText('Left open by the shift before');
+  await expect(bands.nth(1)).toContainText('6pm - 6am');
+  await expect(bands.nth(1)).toContainText('Vincent Adjei');
+  // the header still says whose shift it is
+  await expect(page.locator('#log_shift')).toHaveText('6pm - 6am');
+  await expect(page.locator('#log_guard')).toHaveText('Vincent Adjei');
+  // and the carried row is marked out
+  await expect(page.locator('#logrows tr.carried')).toHaveCount(1);
+});
+
+test('with nothing left open the sheet is just this shift', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'a@npg.com'}, role:'officer' });
+  await page.evaluate(() => {
+    logShiftStart = function(){ return { date: isoToday(), min: 18*60 }; };
+    currentShift = function(){ return '6pm - 6am'; };
+    DB.logs = [{ id:'mine', date:isoToday(), po:'1', timein:'1830', timeout:'' }];
+    go('log');
+  });
+  await expect(page.locator('#logrows tr.logband')).toHaveCount(1);
+  await expect(page.locator('#logrows tr.logband')).toContainText('This shift');
+  await expect(page.locator('#logrows tr.carried')).toHaveCount(0);
+});
+
+test('after midnight the officer is still on the evening shift', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'a@npg.com'}, role:'officer' });
+  const r = await page.evaluate(() => {
+    const at2am = new Date(2026, 7, 22, 2, 0, 0);
+    const s = logShiftStart(at2am);
+    return { date: s.date, min: s.min, yesterday: anShiftDate('2026-08-22', -1) };
+  });
+  expect(r.min).toBe(18 * 60);
+  expect(r.date).toBe(r.yesterday);      // the shift began at 18:00 the day before
+});
+
+test('any officer may close any row, whoever opened it', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'other@npg.com'}, role:'officer' });
+  const saved = await page.evaluate(() => {
+    DB.logs = [{ id:'x', date:isoToday(), po:'1', timein:'0700', timeout:'',
+                 officer:'someone.else@npg.com', officerName:'Someone Else' }];
+    go('log');
+    const input = document.querySelector('#logrows tbody tr input, #logrows tr input');
+    return !!input && !input.disabled && !input.readOnly;
+  });
+  expect(saved, 'the time out must be editable by whoever is on duty').toBe(true);
 });

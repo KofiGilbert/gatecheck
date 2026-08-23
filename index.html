@@ -349,6 +349,409 @@
   table.dg tr.d1 td{background:#EEF7EC}
   table.dg tr.d0 .gut,table.dg tr.d1 .gut{background:#EDF0F4}
   table.dg .dgdel{background:none;border:none;color:#C0392B;font-size:14px;padding:4px}
+  /* the sheet totals its own columns, as the printed one does, and stays in
+     view while a long day is scrolled */
+  table.dg tr.dgtot td{position:sticky;bottom:0;z-index:2;background:#EDF0F4;
+    border-top:1px solid #8C97A6;font-size:11.5px;font-weight:700;color:#1F3A5F;
+    padding:6px 7px;white-space:nowrap}
+  table.dg tr.dgtot td.num{text-align:right;font-variant-numeric:tabular-nums}
+  /* one bar per day. The bar itself opens Preview, the safe read-only view;
+     editing a published day stays behind its own icon. */
+  .dayacc{border:1px solid var(--line);border-radius:10px;background:#fff;
+    margin-bottom:10px;overflow:hidden}
+  .daybar{display:flex;align-items:stretch;background:#fff}
+  .dbmain{display:flex;align-items:center;gap:14px;flex:1 1 auto;min-width:0;
+    background:none;border:none;padding:12px 4px 12px 14px;cursor:pointer;
+    font-family:inherit;text-align:left}
+  .dbmain:hover{background:#FBF9F4}
+  .dbmain:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+  .dbtext{flex:1 1 auto;min-width:0}
+  .dbconf{display:block;font-size:9.5px;letter-spacing:.4px;color:#555}
+  .dbdate{display:block;font-size:15px;font-weight:700;color:var(--ink);margin-top:2px}
+  .dbsum{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--mut);
+    white-space:nowrap;font-variant-numeric:tabular-nums}
+  .dbicons{flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 8px 0 4px}
+  .dbico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+    background:none;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1}
+  .dbico:hover{background:#EEF3E2}
+  .dbico:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+  @media (max-width:640px){
+    .dbmain{flex-wrap:wrap;gap:4px 12px}
+    .dbsum{flex:1 1 100%;order:3}
+  }
+  /* a day opened over the whole window */
+  body.dayview-open{overflow:hidden}
+  .dayview{position:fixed;inset:0;z-index:80;background:var(--bg);
+    display:flex;flex-direction:column}
+  .dayview[hidden]{display:none}
+  /* explicit columns, the same as the app header, so the date sits in the
+     true centre of the bar whatever is beside it */
+  .dvbar{flex:0 0 auto;display:grid;grid-template-columns:1fr auto 1fr;
+    align-items:center;gap:10px;background:var(--blue);color:#fff;
+    padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top))}
+  .dvback{grid-column:1;justify-self:start;width:40px;height:40px;background:none;border:none;
+    color:#fff;font-size:20px;line-height:1;border-radius:8px;cursor:pointer}
+  .dvback:hover{background:rgba(255,255,255,.12)}
+  .dvback:focus-visible{outline:3px solid var(--lime);outline-offset:-3px}
+  .dvttl{grid-column:2;min-width:0;text-align:center}
+  .dvdate{display:block;font-size:15px;font-weight:700;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .dvright{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px}
+  .dvseg{flex:0 0 auto;display:flex;gap:2px;padding:3px;border-radius:999px;
+    background:rgba(255,255,255,.12)}
+  .dvseg button{background:none;border:none;color:#D3DAE3;font-family:inherit;
+    font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:999px;cursor:pointer}
+  .dvseg button.on{background:var(--lime);color:var(--blue)}
+  .dvseg button:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  .dvact{font-family:inherit;font-size:12.5px;font-weight:700;
+    padding:9px 16px;border-radius:8px;border:none;cursor:pointer;
+    background:var(--lime);color:var(--blue)}
+  .dvact[hidden]{display:none}
+  /* the sheet IS the screen: no padding, no card, no rounded corners.
+     It meets all four edges the way a spreadsheet does, and scrolls inside itself. */
+  .dvbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+    padding:0;overflow:hidden;background:#fff}
+  .dvbody > *{width:100%;max-width:none;margin:0}
+  .dayview .prnwrap,.dayview .dgwrap{flex:1 1 auto;min-height:0;margin:0;
+    border:0;border-radius:0;max-height:none;overflow:auto;
+    -webkit-overflow-scrolling:touch}
+  .dayview table.prn,.dayview table.dg{width:100%}
+  .dvnote{flex:0 0 auto;background:var(--gold);border:0;
+    border-bottom:1px solid #E4CE86;border-radius:0;
+    padding:10px 16px;font-size:13px;color:#4A3B10}
+  @media (max-width:640px){
+    .dvseg button{padding:7px 12px;font-size:12px}
+    /* a phone has no room for arrow, date and controls on one line, so the
+       controls drop to their own row and the date stays truly centred */
+    .dvbar{grid-template-columns:1fr auto 1fr;row-gap:8px}
+    .dvback{grid-row:1}
+    .dvttl{grid-row:1}
+    .dvright{grid-column:1 / -1;grid-row:2;justify-self:center}
+  }
+  /* ---------- analytics ----------
+     A bento grid: twelve columns, tiles sized by how much a figure matters.
+     Martin Brower's own palette throughout - black, dark green, lime, beige.
+     Called .btile, not .tile: .tile is the home screen's playing card and
+     carries aspect-ratio:1, which turned a full-width strip into a square. */
+  #sec-stats{max-width:1560px;margin:0 auto;padding:16px 16px 40px}
+  .anhead{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:16px}
+  .anchips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .anchip{font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 15px;
+    border-radius:999px;border:1px solid transparent;background:#E7E2D8;color:var(--mut);
+    cursor:pointer;transition:background 140ms ease-out,color 140ms ease-out}
+  .anchip:hover{background:#DED8CC;color:var(--ink)}
+  .anchip.on{background:var(--blue);color:var(--lime)}
+  .anchip:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .anpick{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);font-weight:600}
+  .anpick input{font-family:inherit;font-size:12.5px;padding:6px 9px;border-radius:999px;
+    border:1px solid var(--bd);background:#fff;color:var(--ink)}
+  .anwhen{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--mut)}
+
+  .bento{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+  .btile{grid-column:span 12;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;
+    box-shadow:0 1px 2px rgba(10,26,25,.04),0 6px 18px rgba(10,26,25,.045)}
+  .c4{grid-column:span 4} .c5{grid-column:span 5}
+  .c7{grid-column:span 7} .c12{grid-column:span 12}
+  .r2{grid-row:span 2}
+  .btile .th{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    margin-bottom:10px;min-height:20px}
+  .btile .th b{font-size:13.5px;font-weight:800;color:var(--ink);letter-spacing:-.1px}
+  .btile .th span{font-size:11px;color:var(--mut);font-weight:600;white-space:nowrap}
+  .btile .tf{margin-top:auto;padding-top:10px;font-size:11px;line-height:1.5;color:var(--mut)}
+  .btile .tf b{color:var(--ink)}
+  .more{font-family:inherit;font-size:11px;font-weight:700;color:var(--blue2);
+    background:none;border:none;cursor:pointer;padding:2px 0;white-space:nowrap}
+  .more:hover{text-decoration:underline}
+  .more:focus-visible{outline:2px solid var(--blue2);outline-offset:2px;border-radius:4px}
+
+  /* the hero: the one tile that answers "is the day all right?" */
+  .btile.hero{background:var(--blue);border-color:#0B1B27;color:#fff;
+    align-items:center;text-align:center}
+  .btile.hero .th{width:100%}
+  .btile.hero .th b{color:#fff} .btile.hero .th span{color:var(--lime)}
+  .btile.hero .tf{color:#AEBAC6;text-align:center;width:100%}
+  .btile.hero .tf b{color:var(--lime)}
+  .btile.alert{border-color:#E3B6AF;background:#FFF7F5}
+
+  .donut{width:150px;height:150px;margin:2px auto 4px;color:#fff;display:block}
+  .donut circle{transition:stroke-dasharray 420ms ease-out}
+  .dmid{text-anchor:middle;font-size:30px;font-weight:800;fill:#fff;
+    font-family:inherit;font-variant-numeric:tabular-nums}
+  .dsub{text-anchor:middle;font-size:11px;font-weight:600;fill:var(--lime);font-family:inherit}
+  .gauge{width:170px;height:110px;margin:4px auto 0;color:var(--ink);display:block}
+  .gauge .g-good{stroke:var(--green)} .gauge .g-due{stroke:#C9A227} .gauge .g-bad{stroke:var(--red)}
+  .gmid{text-anchor:middle;font-size:27px;font-weight:800;fill:var(--ink);
+    font-family:inherit;font-variant-numeric:tabular-nums}
+  .gsub{text-anchor:middle;font-size:10.5px;font-weight:600;fill:var(--mut);font-family:inherit}
+
+  .ankey{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:8px;
+    font-size:10.5px;font-weight:600;color:var(--mut)}
+  .btile.hero .ankey{color:#AEBAC6;justify-content:center}
+  .ankey span{display:flex;align-items:center;gap:5px}
+  .ankey b{color:var(--ink);font-weight:800}
+  .btile.hero .ankey b{color:#fff}
+  .ankey i{width:9px;height:9px;border-radius:2px;display:block;flex:0 0 auto;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.16)}
+
+  /* the strip of plain numbers */
+  .strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;padding:0;overflow:hidden}
+  .kpi{padding:14px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;
+    gap:1px;border-top:3px solid transparent}
+  .kpi:last-child{border-right:none}
+  .kpi b{font-size:27px;font-weight:800;line-height:1.1;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .kpi > span{font-size:11.5px;font-weight:700;color:var(--mut)}
+  .kpi.k-done{border-top-color:var(--green)} .kpi.k-done b{color:var(--green)}
+  .kpi.k-onsite{border-top-color:#3E7CA8} .kpi.k-onsite b{color:#2F6E8F}
+  .kpi.k-due{border-top-color:#C9A227} .kpi.k-due b{color:#8A6D1F}
+  .kpi.k-bad{border-top-color:var(--red)} .kpi.k-bad b{color:var(--red)}
+  .delta{font-size:10px;font-weight:700;margin-top:2px}
+  .delta.up{color:var(--green)} .delta.down{color:var(--red)} .delta.flat{color:var(--mut)}
+  /* on the no-shows tile the meaning flips: fewer is better */
+  .kpi.k-bad .delta.up{color:var(--red)} .kpi.k-bad .delta.down{color:var(--green)}
+  /* more work booked in is neither good nor bad, so it stays neutral */
+  .kpi.k-plain .delta{color:var(--mut)}
+
+  .big{font-size:30px;font-weight:800;color:var(--ink);line-height:1.1;margin:2px 0 12px;
+    font-variant-numeric:tabular-nums}
+  .big.good{color:var(--green)} .big.bad{color:var(--red)}
+  .big em{display:block;font-size:11px;font-weight:600;font-style:normal;color:var(--mut);
+    margin-top:3px}
+  .brow{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .brow .bl{flex:0 0 84px;font-size:11.5px;font-weight:700;color:var(--ink)}
+  .brow .bt{flex:1 1 auto;position:relative;height:9px;border-radius:5px;background:#E6E1D7}
+  .brow .bt i{display:block;height:100%;border-radius:5px}
+  .brow .bt u{position:absolute;top:-3px;width:2px;height:15px;background:var(--ink);opacity:.4}
+  .brow .bv{flex:0 0 auto;font-size:11.5px;font-weight:700;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .f-good{background:var(--green)} .f-bad{background:var(--red)}
+
+  /* gate load */
+  .gate{display:flex;align-items:flex-end;gap:5px;height:132px;
+    border-bottom:1px solid var(--line);padding-bottom:2px}
+  .gcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:flex-end;height:100%;gap:4px}
+  .gstack{flex:1 1 auto;width:100%;max-width:30px;display:flex;flex-direction:column;
+    justify-content:flex-end;gap:2px}
+  .gcol i{display:block;width:100%;border-radius:3px;min-height:2px}
+  .g-arr{background:var(--green)} .g-due{background:#C9A227;opacity:.5}
+  .gcol em{font-size:9.5px;font-style:normal;color:var(--mut);font-weight:600}
+
+  /* seven-day trend */
+  .trendwrap{display:flex;flex-direction:column}
+  .trend{width:100%;height:128px;display:block}
+  .tarea{fill:#C9A227;fill-opacity:.16}
+  /* the chart is stretched to the tile, so stroke width is kept steady by hand */
+  .trend path{vector-effect:non-scaling-stroke}
+  .tsched{stroke:#C9A227;stroke-width:2;stroke-dasharray:4 4}
+  .tarr{stroke:var(--green);stroke-width:2.5;stroke-linejoin:round}
+  .tdot{fill:var(--green);stroke:var(--card);stroke-width:2;vector-effect:non-scaling-stroke}
+  .tlabs{display:flex;margin-top:5px}
+  .tlabs span{flex:1 1 0;text-align:center;font-size:10px;color:var(--mut);font-weight:600}
+  .tlabs span:first-child{text-align:left} .tlabs span:last-child{text-align:right}
+
+  /* carriers */
+  .clist{display:flex;flex-direction:column;gap:9px}
+  .crow{display:flex;align-items:center;gap:9px}
+  .crow .cn{flex:0 0 108px;font-size:11.5px;font-weight:700;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crow .cbar{flex:1 1 auto;display:flex;height:9px;border-radius:5px;overflow:hidden;
+    background:#E6E1D7}
+  .crow .cbar i{display:block;height:100%}
+  .c-arr{background:var(--green)} .c-miss{background:var(--red)}
+  .crow .cv{flex:0 0 auto;font-size:11px;font-weight:700;color:var(--mut);
+    font-variant-numeric:tabular-nums}
+  .crow .cp{flex:0 0 38px;text-align:right;font-size:11.5px;font-weight:800;color:var(--mut);
+    font-variant-numeric:tabular-nums}
+  .crow .cp.good{color:var(--green)} .crow .cp.due{color:#8A6D1F} .crow .cp.bad{color:var(--red)}
+
+  /* who to chase */
+  /* scoped past .btile .th span, which would otherwise paint the count grey on
+     red and leave the pill looking like an empty blob */
+  .btile .th .pillc{display:inline-block;min-width:20px;padding:2px 7px;border-radius:999px;
+    font-size:11px;line-height:1.25;font-weight:800;color:#fff;text-align:center;
+    white-space:nowrap}
+  .pillc.noshow{background:var(--red)} .pillc.due{background:#8A6D1F}
+  .chlist{display:flex;flex-direction:column}
+  .chrow{display:flex;align-items:center;gap:10px;padding:7px 0;
+    border-bottom:1px solid #F0ECE3}
+  .chrow:last-child{border-bottom:none}
+  .chrow .cht{flex:0 0 40px;font-size:11.5px;font-weight:800;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .chrow .chv{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+  .chrow .chv b{font-size:12px;font-weight:700;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chrow .chv em{font-size:10.5px;font-style:normal;color:var(--mut)}
+  .chrow .chn{flex:0 0 auto;text-align:right;font-size:12px;font-weight:800;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .chrow .chn em{display:block;font-size:9.5px;font-style:normal;font-weight:600;color:var(--mut)}
+
+  .waiting{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;gap:5px;font-size:12px;font-weight:700;
+    color:var(--mut);padding:16px 4px}
+  .waiting span{font-size:11px;font-weight:500;line-height:1.5;max-width:250px}
+  .waiting.allgood{font-size:30px;color:var(--green)}
+  .btile.blank{align-items:center;justify-content:center;text-align:center;gap:6px;
+    padding:44px 20px;color:var(--mut)}
+  .btile.blank b{font-size:15px;color:var(--ink)}
+  .btile.blank span{font-size:12.5px;line-height:1.5;max-width:420px}
+  .blankmark{font-size:30px;opacity:.5}
+
+  /* the long lists, on their own screen */
+  .antwrap{overflow:auto;height:100%}
+  table.antab{border-collapse:collapse;width:100%;min-width:680px;background:#fff}
+  table.antab th{position:sticky;top:0;z-index:2;text-align:left;background:#EDF0F4;
+    font-size:10.5px;letter-spacing:.3px;color:#5A6472;padding:8px 12px;white-space:nowrap;
+    border-bottom:1px solid var(--line)}
+  table.antab td{font-size:12.5px;padding:8px 12px;border-bottom:1px solid #F0ECE3;
+    white-space:nowrap}
+  table.antab td.num,table.antab th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.antab td.good{color:var(--green);font-weight:700}
+  table.antab td.bad{color:var(--red);font-weight:700}
+  table.antab td.due{color:#8A6D1F;font-weight:700}
+
+  @media (max-width:1180px){
+    .c4,.c5{grid-column:span 6} .c7{grid-column:span 6}
+    .strip{grid-template-columns:repeat(3,1fr)}
+    .kpi:nth-child(3n){border-right:none}
+    .kpi:nth-child(-n+3){border-bottom:1px solid var(--line)}
+  }
+  @media (max-width:760px){
+    #sec-stats{padding:12px 10px 32px}
+    .c4,.c5,.c7{grid-column:span 12}
+    .r2{grid-row:span 1}
+    .anwhen{margin-left:0;width:100%}
+    .strip{grid-template-columns:repeat(2,1fr)}
+    .kpi{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .kpi:nth-child(2n){border-right:none}
+    .kpi b{font-size:23px}
+    .crow .cn{flex:0 0 88px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .donut circle{transition:none}
+  }
+  /* who took each half of a gate log row */
+  .logwho{display:block;font-size:8.5px;line-height:1.3;color:#6B7480;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  /* a row the shift before left open, still owed a time out */
+  table.logt tr.carried td{background:#FFF6DF}
+  table.logt tr.carried td:first-child{box-shadow:inset 3px 0 0 #C9A227}
+  /* the band that tells the two blocks apart */
+  table.logt tr.logband td{padding:5px 10px;font-size:9.5px;font-weight:800;
+    letter-spacing:.5px;text-transform:uppercase;border:none}
+  table.logt tr.carryband td{background:#F3E4BC;color:#6A5312}
+  table.logt tr.shiftband td{background:var(--blue);color:var(--lime)}
+  /* ---------- yard check, trailer by trailer ----------
+     The tabs follow the streaming-app rows Kofi asked for: wide, short, centred,
+     one label to a tab. The card follows his drawing: one row of boxes across,
+     with SAVE beneath. */
+  #sec-ycgrid{max-width:1240px;margin:0 auto;padding:16px 16px 40px}
+  .ycghead{margin-bottom:12px}
+  .ycgtop{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .ycgslot{font-size:30px;font-weight:800;color:var(--ink);letter-spacing:-.6px}
+  .ycgmeta{font-size:12.5px;color:var(--mut);font-weight:600}
+  .ycgtrack{height:6px;border-radius:3px;background:#E6E1D7;overflow:hidden;margin:10px 0 6px}
+  .ycgfill{display:block;height:100%;background:var(--blue2);border-radius:3px;width:0;
+    transition:width 220ms ease-out}
+  .ycgfill.full{background:var(--green)}
+  .ycgcount{font-size:12px;font-weight:700;color:var(--mut)}
+  .ycgnote{font-size:12.5px;line-height:1.5;color:var(--mut);margin-bottom:14px}
+  .ycgrid{display:grid;gap:14px;grid-template-columns:repeat(4,1fr)}
+  .ycgtile{position:relative;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:3px;min-height:96px;padding:16px 14px;border-radius:10px;
+    cursor:pointer;text-align:center;font-family:inherit;background:#2F3640;
+    border:none;color:#fff}
+  .ycgtile:hover{background:#3A424D}
+  .ycgtile:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .ycgtile b{font-size:21px;font-weight:700;letter-spacing:-.2px;line-height:1.15}
+  .ycgtile em{font-style:normal;font-size:12.5px;color:#AEB6BF;font-weight:500}
+  .ycgmark{position:absolute;top:8px;right:11px;font-size:13px;line-height:1;opacity:.9}
+  .ycgtile.done{background:var(--green)}
+  .ycgtile.done:hover{background:#5A7F1F}
+  .ycgtile.done em{color:#DCEBC0}
+  .ycgtile.esc{background:var(--red)}
+  .ycgtile.esc:hover{background:#CF4839}
+  .ycgtile.esc em{color:#FADBD6}
+  .ycgtile.add{background:transparent;border:2px dashed var(--bd);color:var(--mut)}
+  .ycgtile.add:hover{background:#F3EEE4}
+  .ycgtile.add b{font-size:15px;color:var(--ink);font-weight:700}
+  .ycgtile.add em{color:var(--mut)}
+  .ycgact{margin-top:22px;display:flex;justify-content:center}
+  /* display:flex above would otherwise beat the hidden attribute */
+  .ycgact[hidden]{display:none}
+  .ycgact .btn{min-width:320px;font-size:16px;padding:15px 22px}
+
+  /* the card, over the middle of the screen */
+  body.ycmodal-open{overflow:hidden}
+  .ycmwrap{position:fixed;inset:0;z-index:90;display:flex;align-items:center;
+    justify-content:center;padding:16px}
+  .ycmwrap[hidden]{display:none}
+  .ycmscrim{position:absolute;inset:0;background:rgba(6,12,18,.55)}
+  .ycmcard{position:relative;z-index:1;width:100%;max-width:900px;max-height:92dvh;
+    overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 18px 60px rgba(6,12,18,.35);padding:20px 22px 20px}
+  .ycmhead{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+  .ycmhead b{flex:1 1 auto;font-size:23px;font-weight:800;color:var(--ink);
+    letter-spacing:-.4px;min-width:0}
+  .ycmx{flex:0 0 auto;width:34px;height:34px;border:none;background:#EDE8DE;border-radius:9px;
+    font-size:14px;color:var(--mut);cursor:pointer}
+  .ycmx:hover{background:#E3DCCF}
+  /* one row of boxes, as drawn */
+  .ycmrow{display:flex;gap:10px;align-items:flex-start}
+  .ycmnew{display:flex;gap:10px;margin-bottom:12px}
+  .ycmnew .ycmbox{flex:1 1 0}
+  .ycmbox{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:5px}
+  .ycmbox.wide{flex:1 1 100%}
+  .ycmbox > span{font-size:9.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+    color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ycmbox input,.ycmbox select{font-family:inherit;font-size:17px;font-weight:700;
+    padding:13px 9px;border-radius:10px;border:1.5px solid var(--bd);background:#fff;
+    color:var(--ink);width:100%;text-align:center}
+  .ycmbox select{text-align-last:center}
+  .ycmbox input:focus,.ycmbox select:focus{outline:3px solid var(--blue2);outline-offset:1px}
+  .ycmother{margin-top:6px}
+  .ycmescbox{font-size:15px;font-weight:800;padding:14px 9px;border-radius:10px;
+    border:1.5px solid var(--bd);background:#fff;color:var(--mut);text-align:center}
+  .ycmescbox.on{background:#FCEEEC;border-color:#E7BDB6;color:var(--red)}
+  .ycmesc{margin-top:14px;padding:12px 14px;border-radius:12px;background:#FCEEEC;
+    border:1px solid #E7BDB6;font-size:12.5px;color:var(--mut)}
+  .ycmesc[hidden]{display:none}
+  .ycmesc b{display:block;font-size:13px;color:var(--red);margin-bottom:2px}
+  .ycmesc ul{margin:4px 0 10px;padding-left:17px}
+  .ycmesc li{font-size:12.5px;color:#7A1F14;font-weight:600;margin-bottom:2px}
+  .ycmhint{margin-top:8px;font-size:11.5px;font-weight:700;color:#7A1F14}
+  .ycmroute{margin-top:5px;font-size:11px;color:var(--mut)}
+  .ycmroute b{display:inline;color:var(--ink);font-size:11px;margin:0}
+  .escroute{font-size:10.5px;font-weight:700;color:var(--mut);padding:1px 0 2px}
+  .ycmfoot{margin-top:18px}
+  .ycmfoot .btn{width:100%;font-size:17px;padding:15px}
+  @media (max-width:900px){
+    .ycgrid{grid-template-columns:repeat(3,1fr)}
+    .ycmrow{flex-wrap:wrap}
+    .ycmrow .ycmbox{flex:1 1 30%;min-width:120px}
+  }
+  @media (max-width:620px){
+    #sec-ycgrid{padding:12px 12px 32px}
+    .ycgrid{grid-template-columns:repeat(2,1fr)}
+    .ycgtile b{font-size:18px}
+    .ycmrow .ycmbox{flex:1 1 45%}
+    .ycmcard{padding:16px 14px}
+    .ycmhead b{font-size:19px}
+    .ycgact .btn{min-width:0;width:100%}
+  }
+  /* a released slot the officer has finished */
+  button.histitem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+    font-family:inherit;cursor:pointer}
+  button.histitem[disabled]{cursor:default;opacity:.75}
+  .hstate{margin-left:auto;flex:0 0 auto;font-size:11px;font-weight:800;
+    letter-spacing:.3px;color:var(--green);white-space:nowrap}
+  .hstate.esc{color:var(--red)}
+  .hstate.wait{color:var(--mut)}
+  .bkvmeta{padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+  .bkvmeta b{display:block;font-size:14px;color:var(--ink)}
+  .bkvmeta span{display:block;font-size:11.5px;color:var(--mut);margin-top:2px}
+  #bkview .dvbody{background:#fff}
   /* the printed sheet */
   .prnwrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
   table.prn{border-collapse:collapse;width:100%;min-width:1040px;background:#fff;color:#111}
@@ -652,6 +1055,40 @@
   <div class="homestat" id="datastat">No schedule loaded yet</div>
 </section>
 
+<!-- ============ YARD CHECK, TRAILER BY TRAILER ============ -->
+<section id="sec-ycgrid">
+  <div class="ycghead">
+    <div class="ycgtop">
+      <span class="ycgslot" id="ycg_slot"></span>
+      <span class="ycgmeta" id="ycg_meta"></span>
+    </div>
+    <div class="ycgtrack"><span class="ycgfill" id="ycg_bar"></span></div>
+    <div class="ycgcount" id="ycg_count"></div>
+  </div>
+  <div class="ycgnote" id="ycg_note"></div>
+  <div class="ycgrid" id="ycgridwrap"></div>
+  <div class="ycgact" id="ycg_actions" hidden>
+    <button class="btn grn" id="ycg_review" onclick="ycGridReview()">Review and submit</button>
+  </div>
+</section>
+
+<!-- ============ ANALYTICS ============ -->
+<section id="sec-stats">
+  <div class="anhead">
+    <div class="anchips" role="group" aria-label="Period">
+      <button type="button" class="anchip" data-kind="today"     onclick="anSetRange('today')">Today</button>
+      <button type="button" class="anchip" data-kind="yesterday" onclick="anSetRange('yesterday')">Yesterday</button>
+      <button type="button" class="anchip" data-kind="d7"        onclick="anSetRange('d7')">Last 7 days</button>
+      <button type="button" class="anchip" data-kind="d30"       onclick="anSetRange('d30')">Last 30 days</button>
+      <label class="anpick">A day
+        <input type="date" id="an_day" onchange="anSetRange('day', this.value)">
+      </label>
+    </div>
+    <div class="anwhen" id="an_range"></div>
+  </div>
+  <div id="statsbody"></div>
+</section>
+
 <main>
 <!-- ============ RECEIVING OFFICE ============ -->
 <section id="sec-office">
@@ -660,7 +1097,9 @@
       <b>Schedule</b><em>Upload today&rsquo;s orders</em></button>
     <button class="tile" onclick="go('block')"><span class="tico" aria-hidden="true">&#128230;</span>
       <b>Trailer blocks <span class="tbadge" id="blockbadge" hidden></span></b><em>Load a yard check</em></button>
-  </div>
+      <button class="tile" onclick="go('stats')"><span class="tico" aria-hidden="true">&#128202;</span>
+      <b>Analytics</b><em>How the day is running</em></button>
+</div>
   <div class="homestat" id="officestat"></div>
 </section>
 
@@ -873,8 +1312,7 @@
     <div class="hint" style="text-align:center">Preview first. Save and email appear under the preview.</div>
     <div id="ycpreview"></div>
     <div id="ycactions" style="display:none">
-      <button class="btn grn" onclick="ycSave()">&#9989; Save yard check</button>
-      <button class="btn" onclick="ycEmail()">&#128231; Email to receiving office</button>
+      <button class="btn grn" onclick="ycSubmit()">&#9989; Submit to receiving office</button>
       <button class="btn sec" onclick="ycShare()">&#128228; Share another way</button>
     </div>
   </div>
@@ -943,6 +1381,58 @@
     <button class="btn red" onclick="closeReview()">Cancel</button>
   </div>
 </div>
+<!-- a published day, opened over the whole window -->
+<div id="dayview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="dv_date" hidden>
+  <div class="dvbar">
+    <button type="button" id="dv_back" class="dvback" aria-label="Back to the schedule"
+      onclick="dayViewClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="dv_date"></b></span>
+    <span class="dvright">
+      <span class="dvseg" role="group" aria-label="View mode">
+        <button type="button" id="dv_preview" onclick="dayViewMode('preview')">Preview</button>
+        <button type="button" id="dv_edit" onclick="dayViewMode('edit')">Edit</button>
+      </span>
+      <button type="button" id="dv_save" class="dvact" onclick="dayViewSave()" hidden>Save</button>
+      <button type="button" id="dv_confirm" class="dvact" onclick="dayViewConfirm()" hidden>Confirm</button>
+    </span>
+  </div>
+  <div class="dvbody" id="dv_body"></div>
+</div>
+<!-- a long analytics list, on its own screen -->
+<div id="anlist" class="dayview" role="dialog" aria-modal="true" aria-labelledby="anlist_title" hidden>
+  <div class="dvbar">
+    <button type="button" id="anlist_back" class="dvback" aria-label="Back to the dashboard"
+      onclick="anListClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="anlist_title"></b></span>
+    <span class="dvright"></span>
+  </div>
+  <div class="dvbody" id="anlist_body"></div>
+</div>
+<!-- the office reads a completed yard check -->
+<div id="bkview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="bkview_title" hidden>
+  <div class="dvbar">
+    <button type="button" id="bkview_back" class="dvback" aria-label="Back to trailer blocks"
+      onclick="blockViewClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="bkview_title"></b></span>
+    <span class="dvright"></span>
+  </div>
+  <div class="dvbody" id="bkview_body"></div>
+</div>
+<!-- one trailer, on a card in the middle of the screen -->
+<div id="ycmodal" class="ycmwrap" role="dialog" aria-modal="true" aria-labelledby="ycm_title" hidden>
+  <div class="ycmscrim" onclick="ycModalClose()"></div>
+  <div class="ycmcard">
+    <div class="ycmhead">
+      <b id="ycm_title"></b>
+      <button type="button" class="ycmx" aria-label="Close" onclick="ycModalClose()">&#10005;</button>
+    </div>
+    <div class="ycmbody" id="ycm_body"></div>
+    <div class="ycmesc" id="ycm_esc" hidden></div>
+    <div class="ycmfoot">
+      <button type="button" class="btn grn" id="ycm_save" onclick="ycModalSave()">Save</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <canvas id="paper" width="1275" height="1650" style="display:none"></canvas>
 <script src="js/app.js"></script>
@@ -955,4 +1445,5 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/cloud.js"></script>
 <script src="js/yard.js"></script>
+<script src="js/stats.js"></script>
 </body>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Checkpoint — Analytics (demo data)</title>
+<!--
+  A look at the analytics dashboard on made-up traffic: no sign in, no Firebase.
+  It pulls the real stylesheet and the real markup out of index.html and runs the
+  real js/stats.js over invented orders and gate log rows, so what you see here
+  is what the live screen does. Delete this file whenever it has served its turn.
+-->
+<style>
+  html,body{margin:0}
+  #demobar{position:sticky;top:0;z-index:50;background:#000E19;color:#fff;
+    font:600 12.5px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    padding:9px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  #demobar b{color:#BEF91B}
+  #demobar span{color:#AEBAC6;font-weight:500}
+  #demobar a{color:#BEF91B;margin-left:auto}
+  #boot{font:500 14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    padding:40px;color:#4C5763}
+</style>
+</head>
+<body>
+<div id="demobar">
+  <b>DEMO DATA</b>
+  <span>Invented traffic for a week, so the dashboard has something to draw.
+        Nothing here touches the real schedule or gate log.</span>
+  <a href="index.html#stats">Open the real app →</a>
+</div>
+<div id="boot">Loading the dashboard…</div>
+
+<script>
+/* ---- the few helpers stats.js leans on, lifted from app.js ---- */
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function todayStr(){ var d=new Date();
+  return (d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2); }
+function isoDate(v){
+  var s=String(v==null?'':v).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
+  if(!m) return '';
+  var y=m[3].length===2?2000+(+m[3]):+m[3];
+  return y+'-'+String(+m[1]).padStart(2,'0')+'-'+String(+m[2]).padStart(2,'0');
+}
+function isoToday(){ var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')
+    +'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtLongDate(iso){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')) return iso||'';
+  var p=iso.split('-'), d=new Date(+p[0],+p[1]-1,+p[2]);
+  var days=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  var mons=['January','February','March','April','May','June','July',
+            'August','September','October','November','December'];
+  return days[d.getDay()]+', '+mons[d.getMonth()]+' '+d.getDate()+', '+d.getFullYear();
+}
+/* no router here: the "see all" screens open and close directly */
+var DEMO_SUB='';
+function routeSub(){ return DEMO_SUB; }
+function go(sec, fromHistory, sub){ DEMO_SUB = sub || ''; anListSync(DEMO_SUB); }
+var DB = { orders:[], logs:[] };
+
+/* ---- a week of invented traffic ---- */
+function demoData(){
+  var D = isoToday(), orders = [], logs = [];
+  var carriers = ['ARNOLD BROS','DAY&ROSS','J&L','HIRSCHBACH','MARTEN','GENEVA',
+                  'KOTTKE','ROEHL','PRIME','CH ROBINSON','STEVENS','POPE'];
+  var vendors  = ['MCCAIN CA: CARBERRY','INTERSTATE WAREHOUSING','SIMPLOT HARTFORD MI',
+                  'COCA-COLA COMPANY (THE)','PACTIV LLC','TAYLOR FARMS TENNESSEE INC',
+                  'SAPUTO DAIRY FOODS','NEWCOLD INDIANAPOLIS LLC','PILGRIMS PRIDE CARTERSVILLE',
+                  'ARMADA WAREHOUSE SOLUTIONS LLC','SERVICE COLD STORAGE','MONIN ZELIENOPLE PA'];
+  var now = new Date(), nowMin = now.getHours()*60 + now.getMinutes();
+  for(var d = 6; d >= 0; d--){
+    var date = anShiftDate(D, -d);
+    var n = d === 0 ? 26 : 16 + (d % 6);
+    for(var i = 0; i < n; i++){
+      var appt = 330 + i * 36;
+      var hh = String(Math.floor(appt/60)).padStart(2,'0') + String(appt%60).padStart(2,'0');
+      var po = String(8036000 + d*100 + i);
+      orders.push({ date:date, order:po, zone:'FDR'[i%3], detail: i%3 ? 'DROP' : 'LIVE',
+        priority: i%4 ? '' : '*', time: (i===5||i===17) ? '???' : String(+hh),
+        vendor: vendors[i % vendors.length], carrier: carriers[i % carriers.length],
+        contact:'', cases: 400 + (i*137)%1700, pallets: 5 + (i*7)%32, in_yard:'N' });
+      if(i % 8 === 3) continue;                       /* never turned up */
+      if(d === 0 && appt > nowMin) continue;          /* not due yet today */
+      var drift = (i % 7 === 0) ? 58 : (i % 5 === 0) ? -24 : (i % 3) * 7;
+      var tin = appt + drift;
+      var th = String(Math.floor(tin/60)).padStart(2,'0') + String(tin%60).padStart(2,'0');
+      var stay = (i % 3) ? 190 + (i*13)%170 : 50 + (i*11)%75;   /* DROP sits, LIVE turns */
+      var out = tin + stay;
+      var oh = String(Math.floor((out%1440)/60)).padStart(2,'0') + String(out%60).padStart(2,'0');
+      logs.push({ date:date, po:po, timein:th,
+                  timeout: (d === 0 && out > nowMin) ? '' : oh,
+                  carrier: carriers[i % carriers.length], trailer:'TR'+po.slice(-4) });
+    }
+  }
+  /* a couple who turned up with no appointment on the schedule */
+  logs.push({ date:D, po:'9990001', timein:'1015', timeout:'1120', carrier:'POPE' });
+  logs.push({ date:D, po:'9990002', timein:'0730', timeout:'0815', carrier:'STEVENS' });
+  DB.orders = orders; DB.logs = logs;
+}
+
+/* ---- borrow the real stylesheet and the real markup ---- */
+fetch('index.html').then(function(r){ return r.text(); }).then(function(html){
+  var doc = new DOMParser().parseFromString(html, 'text/html');
+  var style = document.createElement('style');
+  style.textContent = [].map.call(doc.querySelectorAll('style'),
+    function(s){ return s.textContent; }).join('\n');
+  document.head.appendChild(style);
+
+  var sec = doc.getElementById('sec-stats');
+  var list = doc.getElementById('anlist');
+  document.getElementById('boot').remove();
+  document.body.appendChild(sec);
+  document.body.appendChild(list);
+  sec.classList.add('on');
+  sec.style.display = 'block';
+
+  var s = document.createElement('script');
+  s.src = 'js/stats.js';
+  s.onload = function(){ demoData(); renderStats(); };
+  document.body.appendChild(s);
+}).catch(function(e){
+  document.getElementById('boot').textContent =
+    'Could not load index.html (' + e.message + '). Serve this over http, not file://.';
+});
+</script>
+</body>
+</html>

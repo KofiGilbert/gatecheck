@@ -6,7 +6,14 @@ try{ var _yc0 = sget('gc_ycs'); if(_yc0) DB.yardchecks = JSON.parse(_yc0); }catc
 function ycPersistAll(){ try{ sset('gc_ycs', JSON.stringify(DB.yardchecks.slice(0,40))); }catch(e){} }
 
 var YC_SLOTS = ['0000','0200','0400','0600','0800','1000','1200','1400','1600','1800','2000','2200'];
-var YC_FUELS = ['FULL','3/4','1/2','1/4','E'];
+var YC_FUELS = ['FULL','3/4','1/2','1/4','EMPTY'];
+/* Set points seen on this site: the freezer runs at -10, the cooler somewhere
+   inside its 34-40 band. Anything else is typed in by hand. */
+var YC_SETPOINTS = ['-10.0','34.0','35.0','36.0','37.0','38.0','39.0','40.0'];
+/* A trailer is either on a dock door - always even, 2 up to 46 - or sitting in
+   the yard on no door at all. */
+var YC_DOORS = ['N/A'];
+for(var _d=2; _d<=46; _d+=2) YC_DOORS.push(String(_d));
 var YC = null;
 
 function ycBlank(){
@@ -41,7 +48,9 @@ function ycEval(row){
     if(type==='FROZEN' && t >= 0.05) reasons.push('TEMP OUT OF RANGE: frozen must be 0.0° or less');
     if(type==='COOLER' && (t < 33.95 || t > 40.05)) reasons.push('TEMP OUT OF RANGE: cooler must be 34.0° to 40.0°');
   }
-  if(row.fuel==='1/4' || row.fuel==='E') reasons.push('LOW FUEL: ¼ tank or less');
+  var f = String(row.fuel||'').toUpperCase();
+  /* 'E' is how older checks recorded an empty tank */
+  if(f==='1/4' || f==='E' || f==='EMPTY') reasons.push('LOW FUEL: ¼ tank or less');
   return reasons;
 }
 
@@ -233,8 +242,20 @@ function ycStopTicking(){ if(_ycTick){ clearInterval(_ycTick); _ycTick=null; } }
 var YC_VIEW = null, _ycDraftStash = null;
 /* A completed slot opens the check that was saved, read only. The officer's
    own unfinished draft is put aside and restored on the way out. */
+/* A check still to be done opens as tabs, one trailer at a time. A check
+   already saved opens as the sheet it was filed as. */
 function ycOpenSlot(slot){
+  go(ycSlotCheck(slot) ? 'yardsheet' : 'ycgrid', false, slot);
+}
+/* Loading the slot is separate from navigating to it, so a refresh on
+   #yardsheet/0800 brings back the same check rather than an empty sheet. */
+function ycRestoreSlot(slot){
   if(!YC) ycLoadDraft();
+  if(YC_VIEW === slot) return;
+  /* Only skip when there is work in progress for this slot. A blank draft
+     already carries the current slot's time, so without the row check the
+     trailers the office released would never be loaded at all. */
+  if(!YC_VIEW && YC && YC.time === slot && YC.rows.length && !ycSlotCheck(slot)) return;
   var saved = ycSlotCheck(slot);
   if(saved){
     if(!YC_VIEW) _ycDraftStash = JSON.parse(JSON.stringify(YC));
@@ -265,7 +286,6 @@ function ycOpenSlot(slot){
     }
     ycSaveDraft();
   }
-  go('yardsheet');
 }
 function ycExitView(){
   if(!YC_VIEW) return;
@@ -445,7 +465,9 @@ function ycData(){
     date:YC.date, time:YC.time, name:YC.name||getOfficerName(),
     rows: YC.rows.map(function(r){ var reasons=ycEval(r);
       return {trailer:r.trailer,product:r.product,set:r.set,temp:r.temp,type:r.type,
-        fuel:r.fuel,intact:r.intact,door:r.door,action:r.action,escalate:reasons}; }) };
+        fuel:r.fuel,intact:r.intact,door:r.door,action:r.action,escalate:reasons,
+        /* who it was raised with; the call is external, the record is not */
+        escTo: reasons.length ? (r.escTo || ycEscalateRoute()) : ''}; }) };
 }
 function ycFmtDate(iso){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')) return iso||'';
@@ -739,12 +761,24 @@ function blockRender(){
     h.innerHTML = rows.length
       ? rows.map(function(r){
           var n = ycSlotTrailers(r);
-          return '<div class="histitem"><div>'
+          var chk = ycSlotCheck(r.slot);
+          var escN = chk ? (chk.rows||[]).filter(function(x){
+            return x.escalate && x.escalate.length; }).length : 0;
+          /* a completed check opens: the office reads the sheet the officer filed */
+          return '<button type="button" class="histitem'+(chk?' done':'')+'"'
+            + (chk ? ' onclick="blockOpenCheck(\''+esc(r.slot)+'\')"' : ' disabled')
+            + '><div>'
             + '<div class="t1">'+esc(r.slot.slice(0,2)+':'+r.slot.slice(2))+' &middot; '
             +   n+' trailer'+(n===1?'':'s')+'</div>'
             + '<div class="t2">released '+esc(ycHHMM(r.loadedAt))
             +   (r.loadedBy? ' by '+esc(String(r.loadedBy).split('@')[0]) : '')+'</div>'
-            + '</div></div>';
+            + '</div>'
+            + (chk
+                ? '<span class="hstate'+(escN?' esc':'')+'">Completed'
+                  + (escN? ' \u00b7 '+escN+' escalation'+(escN===1?'':'s') : '')
+                  + ' \u2192</span>'
+                : '<span class="hstate wait">Awaiting officer</span>')
+            + '</button>';
         }).join('')
       : '<div class="empty">Nothing released yet today.</div>';
   }
@@ -811,3 +845,276 @@ function officeStat(){
 (function(){
   var s=$('bk_slot'); if(s) s.addEventListener('change', blockStatus);
 })();
+
+/* ================= the officer's check, trailer by trailer =================
+   The board sends the officer here, not to the full sheet. One tab per trailer
+   released for the slot, the way a streaming app lays out its rows; tapping one
+   opens a card with only that trailer's boxes on it. The sheet is still the
+   record, and the officer reads it whole before it goes anywhere - but nobody
+   fills a nine-column grid on a phone in a cold yard.
+*/
+function ycSlotLabel(t){
+  t = String(t||''); return t.length===4 ? t.slice(0,2)+':'+t.slice(2) : t;
+}
+function ycRowDone(r){
+  return !!(String(r.set||'').trim() && String(r.temp||'').trim()
+    && r.fuel && r.intact && String(r.door||'').trim());
+}
+function ycGridOpen(slot){ go('ycgrid', false, slot); }
+function ycGridBack(){ go('yard'); }
+
+function renderYcGrid(){
+  var host = $('ycgridwrap'); if(!host) return;
+  if(!YC) ycLoadDraft();
+  var rows = YC.rows || [];
+  var done = rows.filter(ycRowDone).length;
+  var escN = rows.filter(function(r){ return ycRowDone(r) && ycEval(r).length; }).length;
+  var all  = rows.length > 0 && done === rows.length;
+
+  $('ycg_slot').textContent = ycSlotLabel(YC.time);
+  $('ycg_meta').textContent = ycFmtDate(YC.date) + ' · ' + (YC.name || 'on duty');
+  $('ycg_count').textContent = done + ' of ' + rows.length + ' checked'
+    + (escN ? ' · ' + escN + ' to escalate' : '');
+  $('ycg_bar').style.width = (rows.length ? Math.round(done/rows.length*100) : 0) + '%';
+  $('ycg_bar').className = 'ycgfill' + (all ? ' full' : '');
+
+  var tiles = rows.map(function(r, i){
+    var ok = ycRowDone(r);
+    var bad = ok && ycEval(r).length;
+    var state = bad ? 'Escalate' : ok ? 'Checked' : 'To do';
+    return '<button type="button" class="ycgtile'
+      + (bad ? ' esc' : ok ? ' done' : '') + '" onclick="ycModalOpen(' + i + ')"'
+      + ' aria-label="' + esc(String(r.trailer||'Trailer '+(i+1))) + ', '
+      +   esc(String(r.product||'no product')) + ', ' + state + '">'
+      + (ok ? '<span class="ycgmark">' + (bad ? '\u26a0' : '\u2713') + '</span>' : '')
+      + '<b>' + esc(String(r.trailer||'').toUpperCase() || '\u2014') + '</b>'
+      + '<em>' + esc(String(r.product||'').toUpperCase() || 'No product') + '</em>'
+      + '</button>';
+  }).join('');
+
+  host.innerHTML = tiles
+    + '<button type="button" class="ycgtile add" onclick="ycGridAdd()"'
+    +   ' aria-label="Add a trailer that is not on the list">'
+    + '<b>+ Add trailer</b><em>Not on the list</em></button>';
+
+  var act = $('ycg_actions');
+  act.hidden = !all;
+  $('ycg_review').textContent = escN
+    ? 'Review and submit \u00b7 ' + escN + ' escalation' + (escN===1?'':'s')
+    : 'Review and submit';
+  var note = $('ycg_note');
+  note.textContent = rows.length
+    ? (all ? 'Every trailer is checked. Read the sheet before it goes to the receiving office.'
+           : 'Tap a trailer to record it.')
+    : 'The receiving office has not released a trailer list for this check yet. '
+      + 'Add the trailers you can see in the yard.';
+}
+function ycGridAdd(){
+  YC.rows.push(ycRowBlank());
+  ycSaveDraft();
+  renderYcGrid();
+  ycModalOpen(YC.rows.length - 1);
+}
+function ycGridReview(){ go('yardsheet', false, YC.time); }
+
+/* ---- one trailer, on a card in the middle of the screen ---- */
+var YCM = -1, YCM_OTHER = false;
+function ycModalOpen(i){
+  if(!YC.rows[i]) return;
+  YCM = i;
+  YCM_OTHER = false;
+  ycModalRender();
+  var m = $('ycmodal');
+  m.hidden = false;
+  document.body.classList.add('ycmodal-open');
+  var f = m.querySelector('input,select'); if(f) f.focus();
+}
+function ycModalClose(){
+  YCM = -1;
+  var m = $('ycmodal'); if(m) m.hidden = true;
+  document.body.classList.remove('ycmodal-open');
+  renderYcGrid();
+}
+function ycmSel(k, list, cur, extra){
+  return '<select id="ycm_'+k+'" onchange="ycmSet(\''+k+'\',this.value)"'
+    + (extra||'') + '><option value=""></option>'
+    + list.map(function(v){
+        return '<option'+(String(cur)===String(v)?' selected':'')+'>'+esc(v)+'</option>'; }).join('')
+    + '</select>';
+}
+function ycModalRender(){
+  var r = YC.rows[YCM]; if(!r) return;
+  var known = YC_SETPOINTS.indexOf(String(r.set)) >= 0 || String(r.set)==='DEF';
+  /* "Other" clears the value, so the choice itself has to be remembered or the
+     box would vanish the moment it appeared */
+  var other = YCM_OTHER || (String(r.set||'').trim() && !known);
+  $('ycm_title').textContent = (String(r.trailer||'').toUpperCase() || 'New trailer')
+    + (r.product ? ' \u2014 ' + String(r.product).toUpperCase() : '');
+  function box(label, inner, cls){
+    return '<div class="ycmbox'+(cls? ' '+cls : '')+'"><span>'+esc(label)+'</span>'
+      + inner + '</div>';
+  }
+  $('ycm_body').innerHTML =
+      (String(r.trailer||'').trim() ? '' :
+        '<div class="ycmnew">'
+        + box('Trailer #', '<input id="ycm_trailer" value="'+esc(r.trailer||'')+'"'
+            + ' placeholder="LR7524" style="text-transform:uppercase"'
+            + ' oninput="ycmSet(\'trailer\',this.value)">')
+        + box('Product', '<input id="ycm_product" value="'+esc(r.product||'')+'"'
+            + ' placeholder="FRIES" style="text-transform:uppercase"'
+            + ' oninput="ycmSet(\'product\',this.value)">')
+        + '</div>')
+    + '<div class="ycmrow">'
+    +   box('Temp set point',
+          ycmSel('set', YC_SETPOINTS.concat(['DEF','Other\u2026']), other ? 'Other\u2026' : r.set)
+          + (other ? '<input class="ycmother" id="ycm_setother" value="'+esc(r.set)+'"'
+             + ' placeholder="28.0" oninput="ycmSet(\'set\',this.value)">' : ''))
+    +   box('Temp', '<input id="ycm_temp" value="'+esc(r.temp||'')+'" placeholder="-9.1"'
+          + ' oninput="ycmSet(\'temp\',this.value)">')
+    +   box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
+    +   box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
+    +   box('Door #', ycmSel('door', YC_DOORS, r.door))
+    +   box('Escalate', '<div class="ycmescbox" id="ycm_escbox">N/A</div>')
+    + '</div>';
+  ycModalEsc();
+}
+/* the escalate box is never typed into: it says what the rules say */
+function ycModalEsc(){
+  var r = YC.rows[YCM]; if(!r) return;
+  var reasons = ycEval(r);
+  if(reasons.length){ if(!r.escTo) r.escTo = ycEscalateRoute(); }
+  else if(r.escTo){ r.escTo = ''; }
+  var cell = $('ycm_escbox');
+  if(cell){
+    cell.textContent = reasons.length ? '*ESCALATE*' : 'N/A';
+    cell.className = 'ycmescbox' + (reasons.length ? ' on' : '');
+  }
+  var box = $('ycm_esc');
+  if(reasons.length){
+    box.hidden = false;
+    box.className = 'ycmesc on';
+    box.innerHTML = '<b>\uD83D\uDEA8 *ESCALATE*</b>'
+      + '<ul>' + reasons.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('') + '</ul>'
+      + '<div class="ycmbox wide"><span>Action taken</span>'
+      + '<input id="ycm_action" value="'+esc(r.action||'')+'"'
+      + ' placeholder="Reported to DC" oninput="ycmSet(\'action\',this.value)"></div>'
+      + '<div class="ycmhint">'+esc(ycEscalateTo())+'</div>'
+      + '<div class="ycmroute">Recorded as escalated to <b>'
+      +   esc(r.escTo || ycEscalateRoute())+'</b></div>';
+  } else {
+    box.hidden = true;
+    box.innerHTML = '';
+  }
+}
+/* who an escalation goes to depends on the hour: the receiving office is not
+   always open, and the poster says to raise it on the walkie when it is not */
+function ycEscalateOpen(now){
+  var n = now || new Date(), day = n.getDay(), h = n.getHours();
+  var closed = (h >= 0 && h < 5)
+    || (day === 6 && h >= 14) || (day === 0 && h < 5)
+    || (day === 0 && h >= 14) || (day === 1 && h < 5);
+  return !closed;
+}
+/* Where the escalation was raised. The call itself happens on a walkie, outside
+   the app, but which route was used is part of the record and is kept with the
+   row - the paperwork must show it was raised, and to whom. */
+function ycEscalateRoute(now){
+  return ycEscalateOpen(now) ? 'DC' : 'Warehouse supervisor (walkie)';
+}
+function ycEscalateTo(now){
+  return ycEscalateOpen(now)
+    ? 'Escalate to the DC. Record what you did below.'
+    : 'Receiving is closed \u2014 call the warehouse supervisor on the walkie, '
+      + 'then record what you did below.';
+}
+function ycmSet(k, v){
+  var r = YC.rows[YCM]; if(!r) return;
+  if(k==='set' && v==='Other\u2026'){ YCM_OTHER = true; r.set=''; ycSaveDraft(); ycModalRender(); return; }
+  if(k==='set' && v && v!=='Other\u2026' && YC_SETPOINTS.concat(['DEF']).indexOf(v)>=0) YCM_OTHER = false;
+  r[k] = v;
+  if(k==='set'){ var at = ycAutoType(r); if(at) r.type = at; }
+  ycSaveDraft();
+  ycModalEsc();
+}
+function ycModalSave(){
+  var r = YC.rows[YCM];
+  if(r){
+    var t = String(r.temp||'').trim();
+    if(t && t.toUpperCase()!=='DEF' && !ycIsTenth(t)){
+      toast('Temp must be recorded to the tenth, e.g. -10.0');
+      var el=$('ycm_temp'); if(el) el.focus();
+      return;
+    }
+    if(t && t.toUpperCase()==='DEF') r.temp='DEF';
+    ycSaveDraft();
+  }
+  ycModalClose();
+}
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && YCM >= 0) ycModalClose();
+});
+
+/* One button closes the check: it is filed, it is emailed to the receiving
+   office, and the board marks the slot done. Saving and sending as two
+   separate buttons invited half-finished checks, where the office never got
+   the paperwork. */
+function ycSubmit(){
+  var p = (typeof ycProblems === 'function') ? ycProblems() : { block: [], warn: [] };
+  if(p.block && p.block.length){ toast(p.block[0]); return; }
+  var d = ycData();
+  var n = d.rows.length;
+  var escN = d.rows.filter(function(r){ return r.escalate && r.escalate.length; }).length;
+  if(!confirm('Submit this ' + ycSlotLabel(d.time) + ' yard check?\n\n'
+      + n + ' trailer' + (n===1?'':'s')
+      + (escN ? ', ' + escN + ' escalation' + (escN===1?'':'s') : ', no escalations')
+      + '\n\nIt goes on the record and to the receiving office.')) return;
+  ycSave();
+  ycSendData(d);
+  YC = ycBlank(); ycSaveDraft();
+  go('yard');
+}
+
+
+/* ---- the office reads a completed check ---- */
+function blockOpenCheck(slot){ go('block', false, slot); }
+function blockViewClose(){ go('block'); }
+function blockViewSync(sub){
+  var el = $('bkview'); if(!el) return;
+  var chk = sub ? ycSlotCheck(sub) : null;
+  if(!chk){ el.hidden = true; document.body.classList.remove('dayview-open'); return; }
+  $('bkview_title').textContent = ycSlotLabel(chk.time) + ' yard check';
+  $('bkview_body').innerHTML = ycCheckHTML(chk);
+  el.hidden = false;
+  document.body.classList.add('dayview-open');
+  var b = $('bkview_back'); if(b) b.focus();
+}
+/* the saved check, drawn as the sheet it was filed as */
+function ycCheckHTML(d){
+  var head = '<tr><th>TRAILER#</th><th>PRODUCT</th><th>TEMP SET POINT</th><th>TEMP</th>'
+    + '<th>FUEL</th><th>INTACT<br>(Y or N)</th><th>DOOR #</th>'
+    + '<th style="min-width:230px">*ESCALATE*<br>ACTION (if any was taken)</th></tr>';
+  var body = (d.rows||[]).map(function(r){
+    var bad = r.escalate && r.escalate.length;
+    return '<tr'+(bad?' class="esc"':'')+'>'
+      + '<td class="ycro">'+esc(String(r.trailer||'').toUpperCase())+'</td>'
+      + '<td class="ycro">'+esc(String(r.product||'').toUpperCase())+'</td>'
+      + '<td class="ycro">'+esc(r.set||'')+'</td>'
+      + '<td class="ycro">'+esc(r.temp||'')+'</td>'
+      + '<td class="ycro">'+esc(r.fuel||'')+'</td>'
+      + '<td class="ycro">'+esc(r.intact||'')+'</td>'
+      + '<td class="ycro">'+esc(r.door||'N/A')+'</td>'
+      + '<td class="ycro">'
+      +   (bad
+          ? '<div class="escmsg">\uD83D\uDEA8 *ESCALATE*: '+r.escalate.map(esc).join(' \u00b7 ')+'</div>'
+            + '<div style="padding:2px 0;white-space:normal">'+esc(r.action||'\u2014')+'</div>'
+            + (r.escTo? '<div class="escroute">Raised with '+esc(r.escTo)+'</div>' : '')
+          : '<span style="color:var(--green);font-weight:700">N/A \u00b7 in range \u2713</span>')
+      + '</td></tr>';
+  }).join('');
+  var escN = (d.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
+  return '<div class="bkvmeta"><b>'+esc(ycFmtDate(d.date))+' \u00b7 '+esc(ycSlotLabel(d.time))+'</b>'
+    + '<span>Recorded by '+esc(d.name||'\u2014')
+    + ' \u00b7 '+(d.rows||[]).length+' trailer'+((d.rows||[]).length===1?'':'s')
+    + ' \u00b7 '+(escN? escN+' escalation'+(escN===1?'':'s') : 'no escalations')+'</span></div>'
+    + '<div class="ycwrap"><table class="yct ycsheet">'+head+body+'</table></div>';
+}

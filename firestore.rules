@@ -47,14 +47,21 @@ service cloud.firestore {
       allow delete: if isOffice();
     }
 
-    // Gate log rows. Created when a form is pushed; the officer completes the
-    // time out and the outbound trailer, so those two fields stay writable.
+    // Gate log rows. One continuous sheet: any officer on duty may complete any
+    // row, because the trailer that booked in on the morning shift often leaves
+    // on the evening one. Only the closing fields are writable, and the row
+    // records which officer marked it out.
     match /logs/{id} {
       allow read:   if signedIn();
       allow create: if isOfficer();
       allow update: if isOfficer()
                     && request.resource.data.diff(resource.data).affectedKeys()
-                         .hasOnly(['timeout','outtrailer']);
+                         .hasOnly(['timeout','outtrailer','outBy','outByName','outAt'])
+                    // the closing officer is stamped by the app, not chosen
+                    && (!request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['outBy'])
+                        || request.resource.data.outBy == ''
+                        || request.resource.data.outBy == email());
       allow delete: if isOffice();
     }
 

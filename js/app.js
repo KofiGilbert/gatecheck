@@ -18,8 +18,24 @@ function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show');
   clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2600); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+/* Two date forms, on purpose, and they must not be mixed up:
+   todayStr() is what an officer reads on the paper form, M/D/YY.
+   isoDate()/isoToday() are what the records are stored and matched on. The gate
+   log used to store the display form, so a log row could never be matched to
+   the order it belonged to. Everything is stored ISO now. */
 function todayStr(){ var d=new Date();
   return (d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2); }
+function isoDate(v){
+  var s = String(v == null ? '' : v).trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/);
+  if(!m) return '';
+  var y = m[3].length === 2 ? 2000 + (+m[3]) : +m[3];
+  return y + '-' + String(+m[1]).padStart(2,'0') + '-' + String(+m[2]).padStart(2,'0');
+}
+function isoToday(){ var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')
+    +'-'+String(d.getDate()).padStart(2,'0'); }
 function nowHHMM(){ var d=new Date();
   return String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0'); }
 function fmtDate(iso){
@@ -28,45 +44,93 @@ function fmtDate(iso){
   var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   return days[d.getDay()]+' '+(+p[1])+'/'+(+p[2])+'/'+p[0];
 }
-var SECTIONS = ['home','office','block','search','sched','form','hist','yard','yardsheet','log','settings'];
-var SECTION_TITLES = { home:'', office:'', block:'Trailer block', search:'Search', sched:'Schedule',
-  form:'Seal Form', hist:'Saved', yard:'Yard Check', yardsheet:'Yard Check',
+var SECTIONS = ['home','office','block','stats','search','sched','form','hist','yard','ycgrid','yardsheet','log','settings'];
+var SECTION_TITLES = { home:'', office:'', block:'Trailer block', stats:'Analytics', search:'Search', sched:'Schedule',
+  form:'Seal Form', hist:'Saved', yard:'Yard Check', ycgrid:'Yard Check', yardsheet:'Yard Check',
   log:'Log', settings:'Settings' };
 /* Navigation runs on real browser history, so the platform's own back works:
    one finger from the left edge on iOS/iPadOS and Android, two fingers on a Mac
    trackpad, and the browser back button on a laptop. */
 /* Which screens a role may reach. The UI hides the rest, but the real
    enforcement is in the Firestore rules, not here. */
-var OFFICE_ONLY  = ['office','block'];
-var OFFICER_ONLY = ['yard','yardsheet','log','form','hist','search'];
+var OFFICE_ONLY  = ['office','block','stats'];
+var OFFICER_ONLY = ['yard','ycgrid','yardsheet','log','form','hist','search'];
 function isOffice(){ return (window.CLOUD && CLOUD.role) === 'office'; }
 function homeSection(){ return isOffice() ? 'office' : 'home'; }
 function applyRole(){
   var off = isOffice();
   document.body.classList.toggle('role-office', off);
-  var cur = (history.state && history.state.sec) || 'home';
+  var r = curRoute();
+  var cur = r.sec, sub = r.sub;
   var shown = document.querySelector('section.on');
   var shownId = shown ? shown.id.replace('sec-','') : 'home';
   var blocked = off ? OFFICER_ONLY.indexOf(cur)>=0 : OFFICE_ONLY.indexOf(cur)>=0;
   if(cur==='home' && off) blocked = true;
   if(cur==='office' && !off) blocked = true;
   /* the visible screen can lag the recorded one on a deep link */
-  if(!blocked && shownId !== cur) { go(cur, true); return; }
+  if(!blocked && shownId !== cur) { go(cur, true, sub); return; }
   if(blocked) go(homeSection());
 }
-function go(name, fromHistory){
+/* A route is a screen and, where a screen has one, the thing open inside it:
+   #yardsheet/0800, #sched/2026-08-16/edit. Keeping that in the address means a
+   refresh puts the officer back exactly where they were. */
+function parseRoute(h){
+  h = String(h||'').replace(/^#/,'');
+  var i = h.indexOf('/');
+  return i<0 ? { sec:h, sub:'' } : { sec:h.slice(0,i), sub:h.slice(i+1) };
+}
+function routeHash(sec, sub){ return '#'+sec+(sub ? '/'+sub : ''); }
+function curRoute(){
+  var st = history.state;
+  if(st && st.sec) return { sec:st.sec, sub:st.sub||'' };
+  return parseRoute(location.hash);
+}
+function routeSub(sec){ var r = curRoute(); return r.sec===sec ? r.sub : ''; }
+/* a renderer that a later script file owns; before it loads, doing nothing is
+   the right answer */
+function call(fn, a){ var f = window[fn]; if(typeof f === 'function') return f(a); }
+/* Cloud records can land after the route was restored, so give the open screen
+   a second chance to show what the address actually asked for. */
+function routeResync(){
+  var r = curRoute();
+  var shown = document.querySelector('section.on');
+  /* only ever finish the screen that is actually open, so a resync can never
+     drag the officer off somewhere they have since navigated to */
+  if(!shown || shown.id !== 'sec-'+r.sec) return;
+  if(r.sec==='sched') dayViewSync(r.sub);
+  if(r.sec==='yard'){ call('renderYardSlots'); call('renderYardHist'); call('ycStartTicking'); }
+  if(r.sec==='block'){ call('blockRender'); call('blockViewSync', r.sub); }
+  if(r.sec==='stats') call('renderStats');
+  if(r.sec==='office') call('officeStat');
+  if(r.sec==='ycgrid'){
+    if(r.sub) call('ycRestoreSlot', r.sub);
+    call('renderYcGrid');
+  }
+  if(r.sec==='yardsheet'){
+    if(r.sub) call('ycRestoreSlot', r.sub);
+    call('renderYard');
+  }
+}
+function go(name, fromHistory, sub, replace){
+  var asked = name;
+  sub = sub || '';
   if(SECTIONS.indexOf(name)<0) name = homeSection();
   if(name==='home' && isOffice()) name='office';
   if(name==='office' && !isOffice()) name='home';
   /* a role never lands on the other role's screens */
   if(isOffice() && OFFICER_ONLY.indexOf(name)>=0 && name!=='sched') name='office';
   if(!isOffice() && OFFICE_ONLY.indexOf(name)>=0) name='home';
+  /* a redirected screen cannot keep the other screen's sub-state */
+  if(name !== asked) sub = '';
   if(!fromHistory){
     try{
-      var cur = (history.state && history.state.sec) || null;
-      if(cur !== name){
-        if(cur===null && name==='home') history.replaceState({sec:name}, '', '#home');
-        else history.pushState({sec:name}, '', '#'+name);
+      var st = history.state || {};
+      var same = (st.sec === name) && ((st.sub||'') === sub);
+      if(!same){
+        if(replace || (st.sec == null && name==='home' && !sub))
+          history.replaceState({sec:name, sub:sub}, '', routeHash(name, sub));
+        else
+          history.pushState({sec:name, sub:sub}, '', routeHash(name, sub));
       }
     }catch(e){}
   }
@@ -75,18 +139,31 @@ function go(name, fromHistory){
   });
   $('hdrtitle').textContent = (name==='home') ? '' : (SECTION_TITLES[name] || '');
   menuFill();
+  /* yard.js loads after this file, so a route restored while the page is still
+     parsing calls into functions that do not exist yet. Skipping them here is
+     safe: routeResync() finishes the job once everything has loaded. */
   if(name==='sched') renderSched();
-  if(name==='office'){ officeStat(); }
-  if(name==='block'){ blockRender(); }
+  if(name==='office') call('officeStat');
+  if(name==='block'){ call('blockRender'); call('blockViewSync', sub); }
+  if(name==='stats') call('renderStats');
   if(name==='hist') renderHist();
   if(name==='log') renderLog();
   if(name==='form') sigInit();
   if(name==='settings'){ var i=$('set_offname'); if(i) i.value=getOfficerName(); }
-  if(name!=='yardsheet' && typeof ycExitView==='function') ycExitView();
-  if(name==='yard'){ renderYardSlots(); renderYardHist(); ycStartTicking(); }
-  else if(typeof ycStopTicking==='function' && name!=='yardsheet') ycStopTicking();
-  if(name==='yardsheet'){ renderYard(); }
+  if(name!=='yardsheet' && name!=='ycgrid') call('ycExitView');
+  if(name==='yard'){ call('renderYardSlots'); call('renderYardHist'); call('ycStartTicking'); }
+  else if(name!=='yardsheet' && name!=='ycgrid') call('ycStopTicking');
+  if(name==='ycgrid'){
+    if(sub) call('ycRestoreSlot', sub);
+    call('renderYcGrid');
+  }
+  if(name==='yardsheet'){
+    if(sub) call('ycRestoreSlot', sub);
+    call('renderYard');
+  }
   if(name==='search'){ var q=$('q'); if(q) setTimeout(function(){ q.focus(); },60); }
+  /* the day sheet lives inside the schedule, so it follows the route too */
+  if(typeof dayViewSync==='function') dayViewSync(name==='sched' ? sub : '');
   window.scrollTo(0,0);
 }
 /* ---- slide-in menu ---- */
@@ -118,17 +195,20 @@ window.addEventListener('popstate', function(e){
   /* an open menu swallows the first back, which is what a drawer should do */
   var d=$('drawer');
   if(d && !d.hidden){ closeMenu(); }
-  go((e.state && e.state.sec) || 'home', true);
+  var st = e.state || parseRoute(location.hash);
+  go(st.sec || 'home', true, st.sub || '');
 });
 (function(){
+  var r = parseRoute(location.hash);
+  var start = SECTIONS.indexOf(r.sec)>=0 ? r.sec : 'home';
+  var sub = (start === r.sec) ? r.sub : '';
   try{
-    var h=(location.hash||'').replace('#','');
-    var start = SECTIONS.indexOf(h)>=0 ? h : 'home';
-    history.replaceState({sec:start}, '', '#'+start);
-    /* a deep link has to actually show that screen, not just record it.
-       applyRole() corrects it once the account's role arrives. */
-    if(start !== 'home') go(start, true);
+    history.replaceState({sec:start, sub:sub}, '', routeHash(start, sub));
+    /* Show that screen now, so nothing flashes; the parts owned by yard.js are
+       filled in below. applyRole() corrects the choice when the role arrives. */
+    go(start, true, sub);
   }catch(e){}
+  window.addEventListener('DOMContentLoaded', function(){ routeResync(); });
 })();
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape') closeMenu();
@@ -273,29 +353,37 @@ function colLetter(i){
   while(i>0){ var m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); }
   return s;
 }
-function schedRenderDraft(){
-  var card=$('draftcard'); if(!card) return;
-  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ card.hidden = true; return; }
-  card.hidden = false;
-  $('draftcnt').textContent = '('+SCHED_DRAFT.length+')';
-  /* column letters, then the real header, both frozen while the rows scroll */
+function dgTableHTML(rows, setFn, delFn){
   var letters = '<tr class="dgcols"><th class="gut"></th>'
     + DG_COLS.map(function(c,i){ return '<th style="min-width:'+c.w+'px">'+colLetter(i)+'</th>'; }).join('')
     + '<th class="gut"></th></tr>';
   var head = '<tr class="dghdr"><th class="gut">1</th>'
     + DG_COLS.map(function(c){ return '<th>'+esc(c.t)+'</th>'; }).join('')
     + '<th class="gut"></th></tr>';
-  /* each day gets its own tint, the way the spreadsheet does */
-  var seen = [], body = SCHED_DRAFT.map(function(r,i){
+  var seen = [], body = rows.map(function(r,i){
     var di = seen.indexOf(r.date); if(di<0){ seen.push(r.date); di = seen.length-1; }
     return '<tr class="d'+(di%2)+'"><td class="gut">'+(i+2)+'</td>'
       + DG_COLS.map(function(c){
           return '<td><input value="'+esc(r[c.k]==null?'':String(r[c.k]))+'"'
-            + ' oninput="schedSet('+i+',\''+c.k+'\',this.value)"></td>';
+            + ' oninput="'+setFn+'('+i+',\''+c.k+'\',this.value)"></td>';
         }).join('')
-      + '<td class="gut"><button class="dgdel" onclick="schedDel('+i+')">\u2715</button></td></tr>';
+      + '<td class="gut"><button class="dgdel" onclick="'+delFn+'('+i+')">\u2715</button></td></tr>';
   }).join('');
-  $('draftgrid').innerHTML = '<div class="dgwrap"><table class="dg">'+letters+head+body+'</table></div>';
+  var cases=0, pallets=0;
+  rows.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
+  var foot = '<tr class="dgtot"><td class="gut"></td>'
+    + '<td colspan="'+(DG_COLS.length-2)+'">'+rows.length+' order'+(rows.length===1?'':'s')+'</td>'
+    + '<td class="num">'+cases.toLocaleString()+'</td>'
+    + '<td class="num">'+pallets.toLocaleString()+'</td>'
+    + '<td class="gut"></td></tr>';
+  return '<div class="dgwrap"><table class="dg">'+letters+head+body+foot+'</table></div>';
+}
+function schedRenderDraft(){
+  var card=$('draftcard'); if(!card) return;
+  if(!SCHED_DRAFT || !SCHED_DRAFT.length){ card.hidden = true; return; }
+  card.hidden = false;
+  $('draftcnt').textContent = '('+SCHED_DRAFT.length+')';
+  $('draftgrid').innerHTML = dgTableHTML(SCHED_DRAFT, 'schedSet', 'schedDel');
   schedInvalidate();
 }
 function schedDiscard(){
@@ -305,40 +393,188 @@ function schedDiscard(){
   toast('Discarded');
 }
 /* the preview is the sheet exactly as it prints */
-function schedPrintHTML(rows){
-  if(!rows || !rows.length) return '<div class="empty">Nothing loaded.</div>';
+function schedDayTable(day){
+  var cases=0, pallets=0;
+  day.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
+  return '<div class="prnwrap"><table class="prn"><tr>'
+    /* column order follows the printed sheet: the zone, then its priority star */
+    + '<th>Zones</th><th></th><th>Detail</th><th>Time</th><th>In Yard</th>'
+    + '<th>Order Number</th><th>Vendor Name</th><th>Appointment Carrier</th>'
+    + '<th>Contact Name</th><th class="num">Open Cases</th><th class="num">Pallets</th></tr>'
+    + day.map(function(r){
+        return '<tr><td>'+esc(r.zone)+'</td>'
+          + '<td>'+(r.priority?'\u2605':'')+'</td>'
+          + '<td>'+esc(r.detail)+'</td><td>'+esc(r.time)+'</td>'
+          + '<td>'+esc(r.in_yard)+'</td><td>'+esc(r.order)+'</td>'
+          + '<td>'+esc(r.vendor)+'</td><td>'+esc(r.carrier)+'</td><td>'+esc(r.contact)+'</td>'
+          + '<td class="num">'+(+r.cases||0).toLocaleString()+'</td>'
+          + '<td class="num">'+(+r.pallets||0)+'</td></tr>';
+      }).join('')
+    + '<tr class="tot"><td colspan="9">'+day.length+' order'+(day.length===1?'':'s')+'</td>'
+    + '<td class="num">'+cases.toLocaleString()+'</td>'
+    + '<td class="num">'+pallets.toLocaleString()+'</td></tr>'
+    + '</table></div>';
+}
+function schedDaySummary(day){
+  var cases=0, pallets=0;
+  day.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
+  return day.length+' order'+(day.length===1?'':'s')
+    + ' \u00b7 '+cases.toLocaleString()+' cases \u00b7 '+pallets.toLocaleString()+' pallets';
+}
+function schedByDate(rows){
   var bydate = {};
   rows.forEach(function(r){ (bydate[r.date] = bydate[r.date] || []).push(r); });
-  return Object.keys(bydate).sort().map(function(d){
-    var day = bydate[d].slice().sort(function(a,b){
+  Object.keys(bydate).forEach(function(d){
+    bydate[d].sort(function(a,b){
       return (a.zone||'')<(b.zone||'')?-1:(a.zone||'')>(b.zone||'')?1:((a.time||'')<(b.time||'')?-1:1); });
-    var cases=0, pallets=0;
-    day.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
-    return '<div class="prnhead">'
-      + '<div class="prnconf">MARTIN BROWER, Inc. Confidential</div>'
-      + '<div class="prndate">'+esc(fmtLongDate(d))+'</div></div>'
-      + '<div class="prnwrap"><table class="prn"><tr>'
-      + '<th></th><th>Zones</th><th>Detail</th><th>Time</th><th>In Yard</th>'
-      + '<th>Order Number</th><th>Vendor Name</th><th>Appointment Carrier</th>'
-      + '<th>Contact Name</th><th class="num">Open Cases</th><th class="num">Pallets</th></tr>'
-      + day.map(function(r){
-          return '<tr><td>'+(r.priority?'\u2605':'')+'</td>'
-            + '<td>'+esc(r.zone)+'</td><td>'+esc(r.detail)+'</td><td>'+esc(r.time)+'</td>'
-            + '<td>'+esc(r.in_yard)+'</td><td>'+esc(r.order)+'</td>'
-            + '<td>'+esc(r.vendor)+'</td><td>'+esc(r.carrier)+'</td><td>'+esc(r.contact)+'</td>'
-            + '<td class="num">'+(+r.cases||0).toLocaleString()+'</td>'
-            + '<td class="num">'+(+r.pallets||0)+'</td></tr>';
-        }).join('')
-      + '<tr class="tot"><td colspan="9"></td>'
-      + '<td class="num">'+cases.toLocaleString()+'</td>'
-      + '<td class="num">'+pallets.toLocaleString()+'</td></tr>'
-      + '</table></div>';
+  });
+  return bydate;
+}
+/* rows as they print. collapsible gives one bar per day, opened one at a time. */
+function schedPrintHTML(rows, collapsible){
+  if(!rows || !rows.length) return '<div class="empty">Nothing loaded.</div>';
+  var bydate = schedByDate(rows);
+  return Object.keys(bydate).sort().map(function(d){
+    var day = bydate[d];
+    if(!collapsible){
+      return '<div class="prnhead">'
+        + '<div class="prnconf">MARTIN BROWER, Inc. Confidential</div>'
+        + '<div class="prndate">'+esc(fmtLongDate(d))+'</div></div>'
+        + schedDayTable(day);
+    }
+    return '<div class="dayacc" data-date="'+esc(d)+'">'
+      + '<div class="daybar">'
+      +   '<button type="button" class="dbmain" onclick="dayViewOpen(\''+esc(d)+'\',\'preview\')">'
+      +     '<span class="dbtext">'
+      +       '<span class="dbconf">MARTIN BROWER, Inc. Confidential</span>'
+      +       '<span class="dbdate">'+esc(fmtLongDate(d))+'</span>'
+      +     '</span>'
+      +     '<span class="dbsum">'+esc(schedDaySummary(day))+'</span>'
+      +   '</button>'
+      +   '<span class="dbicons">'
+      +     '<button type="button" class="dbico" title="Preview" aria-label="Preview '+esc(fmtLongDate(d))+'"'
+      +       ' onclick="dayViewOpen(\''+esc(d)+'\',\'preview\')">\ud83d\udc41\ufe0f</button>'
+      +     '<button type="button" class="dbico" title="Edit" aria-label="Edit '+esc(fmtLongDate(d))+'"'
+      +       ' onclick="dayViewOpen(\''+esc(d)+'\',\'edit\')">\u270f\ufe0f</button>'
+      +   '</span>'
+      + '</div></div>';
   }).join('');
 }
-/* the preview is the sheet exactly as it prints */
+/* A day opens over the whole window: read it, edit it, save it back.
+   Saving shows the printed preview again and asks for a confirmation, because
+   officers may already be working from this schedule. */
+var DAYVIEW = null, DV_PUSHED = false;
+function dayViewOpen(date, mode){
+  if(!DB.orders.some(function(o){ return o.date===date; })){ toast('Nothing on that day'); return; }
+  go('sched', false, date+'/'+(mode==='edit' ? 'edit' : 'preview'));
+  DV_PUSHED = true;
+}
+/* the overlay is whatever the route says it is */
+function dayViewSync(sub){
+  var p = String(sub||'').split('/');
+  var date = p[0]||'', mode = (p[1]==='edit') ? 'edit' : 'preview';
+  if(!date){
+    if(DAYVIEW && DAYVIEW.dirty &&
+       !confirm('You have unsaved changes to this day. Leave without saving?')){
+      go('sched', false, DAYVIEW.date+'/'+DAYVIEW.mode);
+      return;
+    }
+    dayViewHide();
+    return;
+  }
+  if(DAYVIEW && DAYVIEW.date === date){
+    if(DAYVIEW.mode !== mode){ DAYVIEW.mode = mode; DAYVIEW.confirming = false; dayViewRender(); }
+    return;
+  }
+  var rows = DB.orders.filter(function(o){ return o.date===date; })
+    .map(function(o){ return JSON.parse(JSON.stringify(o)); });
+  /* on a refresh the schedule may not have arrived yet; renderSched calls back */
+  if(!rows.length){ dayViewHide(); return; }
+  DAYVIEW = { date: date, mode: mode, rows: rows, dirty: false, confirming: false };
+  var v = $('dayview');
+  v.hidden = false;
+  document.body.classList.add('dayview-open');
+  dayViewRender();
+  var b = $('dv_back'); if(b) b.focus();
+}
+function dayViewHide(){
+  DAYVIEW = null; DV_PUSHED = false;
+  var v = $('dayview'); if(v) v.hidden = true;
+  document.body.classList.remove('dayview-open');
+}
+function dayViewClose(){
+  if(DV_PUSHED){ DV_PUSHED = false; history.back(); }
+  else go('sched');
+}
+function dayViewMode(mode){
+  /* switching view is not a place of its own, so back still leaves the day */
+  if(DAYVIEW) go('sched', false, DAYVIEW.date+'/'+mode, true);
+}
+function dayViewSet(i,k,v){
+  if(!DAYVIEW || !DAYVIEW.rows[i]) return;
+  DAYVIEW.rows[i][k] = (k==='cases'||k==='pallets') ? (parseInt(v,10)||0) : v;
+  DAYVIEW.dirty = true; DAYVIEW.confirming = false;
+  dayViewChrome();
+}
+function dayViewDel(i){
+  if(!DAYVIEW) return;
+  DAYVIEW.rows.splice(i,1);
+  DAYVIEW.dirty = true; DAYVIEW.confirming = false;
+  dayViewRender();
+}
+function dayViewSave(){
+  if(!DAYVIEW) return;
+  if(!DAYVIEW.rows.length){ toast('A day cannot be left with no orders'); return; }
+  DAYVIEW.confirming = true; DAYVIEW.mode = 'preview';
+  dayViewRender();
+  toast('Check the changes, then confirm');
+}
+function dayViewConfirm(){
+  if(!DAYVIEW) return;
+  var n = DAYVIEW.rows.length, date = DAYVIEW.date, rows = DAYVIEW.rows;
+  DAYVIEW.dirty = false;
+  publishDay(date, rows);
+  dayViewClose();
+  toast('Updated '+n+' order'+(n===1?'':'s')+' for the yard');
+}
+/* Publishing an edited day replaces that day outright, so a row the office
+   deleted really goes, instead of lingering from the earlier upload. */
+function publishDay(date, rows){
+  var list = rows.map(normalizeRow).filter(function(r){ return r.order; });
+  DB.orders = DB.orders.filter(function(o){ return o.date !== date; }).concat(list);
+  DB.orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
+  persist(); stat(); renderSched();
+}
+function dayViewChrome(){
+  if(!DAYVIEW) return;
+  $('dv_date').textContent = fmtLongDate(DAYVIEW.date);
+  $('dv_preview').classList.toggle('on', DAYVIEW.mode==='preview');
+  $('dv_edit').classList.toggle('on', DAYVIEW.mode==='edit');
+  $('dv_save').hidden    = !(DAYVIEW.mode==='edit' && DAYVIEW.dirty);
+  $('dv_confirm').hidden = !DAYVIEW.confirming;
+}
+function dayViewRender(){
+  if(!DAYVIEW) return;
+  dayViewChrome();
+  $('dv_body').innerHTML = DAYVIEW.mode==='edit'
+    ? dgTableHTML(DAYVIEW.rows, 'dayViewSet', 'dayViewDel')
+    : (DAYVIEW.confirming
+        ? '<div class="dvnote">These are your changes. Confirm to send them to the yard.</div>'
+          + schedDayTable(DAYVIEW.rows)
+        : schedDayTable(DAYVIEW.rows));
+}
+document.addEventListener('keydown', function(e){
+  if(e.key!=='Escape') return;
+  if(DAYVIEW){ dayViewClose(); return; }
+  var al=$('anlist');
+  if(al && !al.hidden && typeof anListClose==='function'){ anListClose(); return; }
+  var bv=$('bkview');
+  if(bv && !bv.hidden && typeof blockViewClose==='function') blockViewClose();
+});
+
 function schedPreview(){
   if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to preview'); return; }
-  $('schedpreview').innerHTML = schedPrintHTML(SCHED_DRAFT);
+  $('schedpreview').innerHTML = schedPrintHTML(SCHED_DRAFT, false);
   $('schedactions').hidden = false;
   toast('This is how it prints. Submit when it looks right.');
 }
@@ -401,7 +637,7 @@ function renderSched(){
   $('cnt').textContent = DB.orders.length? '('+DB.orders.length+')':'';
   if(typeof isOffice==='function' && isOffice()){
     /* the office should see exactly what the yard got */
-    $('sched').innerHTML = schedPrintHTML(DB.orders);
+    $('sched').innerHTML = schedPrintHTML(DB.orders, true);
     return;
   }
   if(!DB.orders.length){ $('sched').innerHTML='<div class="empty">Nothing loaded.</div>'; return; }
@@ -918,17 +1154,36 @@ function delHist(i){ if(!confirm('Delete this saved form?')) return;
    Time Out and the trailer the truck leaves with. Plate, State and Notes are
    deliberately left blank, as on the paper log. */
 DB.logs = [];
-try{ var _lg0 = sget('gc_logs'); if(_lg0) DB.logs = JSON.parse(_lg0); }catch(e){}
+/* Rows written before the gate log stored ISO are converted as they are read.
+   They cannot be corrected in place: the rules let an officer change only the
+   time out and the outbound trailer, so the stored date stays as it was and is
+   translated on the way in, every time. */
+function logMigrate(rows){
+  (rows || []).forEach(function(r){
+    var d = isoDate(r && r.date);
+    if(d) r.date = d;
+  });
+  return rows || [];
+}
+try{ var _lg0 = sget('gc_logs'); if(_lg0) DB.logs = logMigrate(JSON.parse(_lg0)); }catch(e){}
 function logPersist(){ try{ sset('gc_logs', JSON.stringify(DB.logs.slice(0,400))); }catch(e){} }
-function logId(d){ return (d.datein||'')+'_'+(d.po||'')+'_'+(d.timein||''); }
+function logId(d){ return (isoDate(d.datein)||isoToday())+'_'+(d.po||'')+'_'+(d.timein||''); }
 function logAdd(d){
-  var id = logId(d);
-  if(DB.logs.some(function(r){ return r.id===id; })) return;   // re-sending must not duplicate
+  var id = logId(d), date = isoDate(d.datein) || isoToday();
+  /* re-sending must not duplicate, including over a row written under the old
+     date format, whose id will not match the one built above */
+  var dup = DB.logs.some(function(r){
+    return r.id === id
+      || (isoDate(r.date) === date
+          && String(r.po||'') === String(d.po||'')
+          && String(r.timein||'') === String(d.timein||''));
+  });
+  if(dup) return;
   DB.logs.unshift({
     id:id, ts:new Date().toISOString(),
-    date:d.datein||todayStr(),
+    date:date,
     officer:(window.CLOUD&&CLOUD.user&&CLOUD.user.email)||'', officerName:getOfficerName(),
-    po:d.po||'', timein:d.timein||'', trailer:d.trailer||'',
+    po:d.po||'', timein:d.timein||'', appt:d.appt||'', trailer:d.trailer||'',
     carrier:d.carrier||'', tractor:d.tractor||'',
     timeout:'', outtrailer:''
   });
@@ -936,24 +1191,97 @@ function logAdd(d){
   if(window.logCloudAdd) logCloudAdd(DB.logs[0]);
   if($('sec-log') && $('sec-log').classList.contains('on')) renderLog();
 }
+/* The sheet runs on past the end of a shift: a trailer that booked in on the
+   morning may not leave until the evening, under a different officer. So the
+   row records both hands - who took the time in, and who marked it out. */
 function logSet(id,k,v){
   var r = DB.logs.filter(function(x){ return x.id===id; })[0];
   if(!r) return;
-  r[k]=v; logPersist();
+  var had = String(r.timeout||'').trim();
+  r[k]=v;
+  if(k==='timeout'){
+    if(String(v||'').trim()){
+      if(!had || !r.outBy){
+        r.outBy = (window.CLOUD&&CLOUD.user&&CLOUD.user.email)||'';
+        r.outByName = getOfficerName();
+        r.outAt = new Date().toISOString();
+      }
+    } else { r.outBy=''; r.outByName=''; r.outAt=''; }
+  }
+  if(k==='timeout') logStampWho(id, r.outByName || r.outBy);
+  logPersist();
   if(window.logCloudSet) logCloudSet(r);
 }
+/* Only the one cell is touched: re-drawing the whole sheet mid-keystroke would
+   take the cursor away from the officer typing into it. */
+function logStampWho(id, name){
+  var host = $('logrows'); if(!host) return;
+  var cells = host.querySelectorAll('td.lgout');
+  for(var i=0;i<cells.length;i++){
+    if(cells[i].getAttribute('data-row') !== id) continue;
+    var tag = cells[i].querySelector('.logwho');
+    if(tag) tag.remove();
+    if(name) cells[i].insertAdjacentHTML('beforeend', logWho(name, ''));
+    return;
+  }
+}
+/* The shift boundary the current sheet starts from: 06:00 and 18:00. Between
+   midnight and 06:00 the officer is still on the evening shift that began at
+   18:00 the day before. */
+function logShiftStart(now){
+  now = now || new Date();
+  var h = now.getHours();
+  var d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if(h < 6){ d.setDate(d.getDate() - 1); return { date: isoDate(_logISO(d)), min: 18*60 }; }
+  return { date: isoDate(_logISO(d)), min: (h < 18) ? 6*60 : 18*60 };
+}
+function _logISO(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')
+    +'-'+String(d.getDate()).padStart(2,'0');
+}
+/* Where a row sits against the shift now on duty. */
+function logInShift(r, start){
+  var d = isoDate(r.date) || r.date;
+  if(d > start.date) return true;
+  if(d < start.date) return false;
+  var m = (typeof anMin === 'function') ? anMin(r.timein) : null;
+  return m == null ? true : m >= start.min;
+}
+/* The officer on duty gets their own shift's sheet, and above it whatever the
+   shift before left open, so a trailer still on site is never lost between
+   hand-overs. A row that was finished on an earlier shift has been dealt with
+   and does not follow them around. */
 function logToday(){
-  var t=todayStr();
-  /* a gate log reads top-down in the order trucks arrived, like the paper form */
+  var start = logShiftStart();
   /* order by Time In, which is what the officer reads, falling back to when the
      row was created. Two forms pushed in the same millisecond share a ts, so ts
      alone is not a reliable ordering. */
   function key(r){ return String(r.timein||'').padStart(4,'0') + '|' + (r.ts||''); }
-  return DB.logs.filter(function(r){ return r.date===t; })
-    .slice().sort(function(a,b){ return key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0; });
+  return DB.logs.filter(function(r){
+      return logInShift(r, start) || !String(r.timeout||'').trim();
+    })
+    .slice().sort(function(a,b){
+      var ai = logInShift(a, start), bi = logInShift(b, start);
+      /* what the last shift left open sits on top: it is what needs finishing */
+      if(ai !== bi) return ai ? 1 : -1;
+      var ad = isoDate(a.date)||a.date, bd = isoDate(b.date)||b.date;
+      if(ad !== bd) return ad < bd ? -1 : 1;
+      return key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0;
+    });
 }
 var LOG_MIN_ROWS = 14;
 function logCell(v){ return '<td class="logro">'+esc(v||'')+'</td>'; }
+/* a labelled band across the sheet, telling the two blocks apart */
+function logBand(text, cls){
+  return '<tr class="logband '+cls+'"><td colspan="9">'+esc(text)+'</td></tr>';
+}
+/* who took this half of the row, in small print under the time */
+function logWho(name, extra){
+  name = String(name||'').trim();
+  if(!name && !extra) return '';
+  var who = name ? name.split('@')[0] : '';
+  return '<span class="logwho">'+esc([extra, who].filter(Boolean).join(' · '))+'</span>';
+}
 function renderLog(){
   var rows = logToday();
   $('log_loc').textContent   = getLocation();
@@ -961,22 +1289,36 @@ function renderLog(){
   $('log_guard').textContent = getOfficerName()
     || ((window.CLOUD&&CLOUD.user&&CLOUD.user.email||'').split('@')[0]) || '';
   $('log_date').textContent  = todayStr();
+  var start = logShiftStart();
   var head = '<tr>'
     + '<th>Time In</th><th>Time Out</th><th>Out Trailer Number</th><th>Carrier Name</th>'
     + '<th>Tractor Number</th><th>Trailer Number</th><th>Plate Number</th><th>State</th><th>Notes</th>'
     + '</tr>';
-  var body = rows.map(function(r){
+  var carried = rows.filter(function(r){ return !logInShift(r, start); }).length;
+  var body = rows.map(function(r, i){
     var id = esc(r.id);
-    return '<tr>'
-      + logCell(r.timein)
-      + '<td><input value="'+esc(r.timeout)+'" inputmode="numeric"'
-      +   ' oninput="logSet(\''+id+'\',\'timeout\',this.value)"></td>'
+    var over = !logInShift(r, start);
+    var band = '';
+    if(i === 0 && over)
+      band = logBand('Left open by the shift before \u00b7 finish these first', 'carryband');
+    if(carried && i === carried)
+      band = logBand('This shift \u00b7 ' + currentShift() + ' \u00b7 '
+        + (getOfficerName() || 'on duty'), 'shiftband');
+    return band + '<tr'+(over?' class="carried"':'')+'>'
+      + '<td class="logro">'+esc(r.timein||'')
+      +   logWho(r.officerName || r.officer, over ? fmtDate(r.date) : '')+'</td>'
+      + '<td class="lgout" data-row="'+id+'"><input value="'+esc(r.timeout)+'" inputmode="numeric"'
+      +   ' oninput="logSet(\''+id+'\',\'timeout\',this.value)">'
+      +   logWho(r.outByName || r.outBy, '')+'</td>'
       + '<td><input value="'+esc(r.outtrailer)+'" style="text-transform:uppercase"'
       +   ' oninput="logSet(\''+id+'\',\'outtrailer\',this.value)"></td>'
       + logCell(r.carrier) + logCell(r.tractor) + logCell(r.trailer)
       + '<td></td><td></td><td></td>'
       + '</tr>';
   }).join('');
+  if(!carried && rows.length)
+    body = logBand('This shift \u00b7 ' + currentShift() + ' \u00b7 '
+      + (getOfficerName() || 'on duty'), 'shiftband') + body;
   var blanks = Math.max(0, LOG_MIN_ROWS - rows.length);
   for (var i=0; i<blanks; i++) body += '<tr>'+new Array(10).join('<td>&nbsp;</td>')+'</tr>';
   $('logrows').innerHTML = '<div class="ycwrap"><table class="yct logt">'+head+body+'</table></div>';
