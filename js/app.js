@@ -5,12 +5,97 @@ var MEM = {};
 function sget(k){ try{ return localStorage.getItem(k); }catch(e){ return MEM[k]||null; } }
 function sset(k,v){ try{ localStorage.setItem(k,v); }catch(e){ MEM[k]=v; } }
 
-var DB = { orders: [], forms: [] };
+/* Two schedules, and only one of them is the truth.
+
+   DB.office  what the receiving office has sent. This is what the yard works
+              from, and it is the last word on any day it covers.
+   DB.local   a day an officer loaded here from the printed sheet, because the
+              office had not sent it yet. It stands in until the office sends
+              that day, and then it steps aside.
+   DB.orders  what the rest of the app reads: the office copy, plus the local
+              copy for days the office has not covered. Derived, never edited. */
+var DB = { office: [], local: [], forms: [], notes: [] };
+/* DB.orders is what the rest of the app reads, and it is derived. Assigning it
+   still means what it always meant - "this is the schedule the office sent" -
+   so old code, and a device upgrading from before the split, keep working. */
+var _orders = [];
+Object.defineProperty(DB, 'orders', {
+  get: function(){ return _orders; },
+  set: function(v){ DB.office = (v || []).slice(); schedRebuild(); }
+});
 (function load(){
-  try{ var o = sget('gc_orders'); if(o) DB.orders = JSON.parse(o); }catch(e){}
-  try{ var f = sget('gc_forms');  if(f) DB.forms  = JSON.parse(f); }catch(e){}
+  try{ var of = sget('gc_office'); if(of) DB.office = JSON.parse(of); }catch(e){}
+  try{ var lo = sget('gc_local');  if(lo) DB.local  = JSON.parse(lo); }catch(e){}
+  /* a device that was storing one bucket was storing the office's copy */
+  if(!sget('gc_office')){
+    try{ var o = sget('gc_orders'); if(o) DB.office = JSON.parse(o); }catch(e){}
+  }
+  try{ var f = sget('gc_forms'); if(f) DB.forms = JSON.parse(f); }catch(e){}
+  try{ var n = sget('gc_schednotes'); if(n) DB.notes = JSON.parse(n); }catch(e){}
+  schedRebuild();
 })();
-function persist(){ sset('gc_orders', JSON.stringify(DB.orders)); sset('gc_forms', JSON.stringify(DB.forms)); }
+function persist(){
+  sset('gc_office', JSON.stringify(DB.office));
+  sset('gc_local',  JSON.stringify(DB.local));
+  sset('gc_orders', JSON.stringify(DB.orders));   /* for anything still reading it */
+  sset('gc_forms',  JSON.stringify(DB.forms));
+  sset('gc_schednotes', JSON.stringify(DB.notes));
+}
+function schedOfficeDates(){
+  var d = {}; DB.office.forEach(function(o){ d[o.date] = 1; }); return d;
+}
+/* A day the office has sent is the office's day. A local copy of the same day
+   is not merged with it, not diffed into it: it is retired. */
+function schedRebuild(){
+  var have = schedOfficeDates();
+  _orders = DB.office.concat(DB.local.filter(function(o){ return !have[o.date]; }));
+  _orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
+}
+/* true when this day is only on this device, so the screen can say so */
+function schedDayIsLocal(date){
+  var have = schedOfficeDates();
+  return !have[date] && DB.local.some(function(o){ return o.date === date; });
+}
+/* Which bucket a load goes into. The office writes the team's schedule; an
+   officer writes a stand-in for their own device. */
+function schedBucket(){
+  return (typeof isOffice === 'function' && !isOffice() && window.CLOUD && CLOUD.user)
+    ? 'local' : 'office';
+}
+/* ---- what the office sent, against what was loaded here ----
+   Called when the office's copy arrives. It says what differed before the
+   local copy is retired, because an officer may already have worked from it
+   and needs to know the reader got something wrong. */
+function schedReconcile(){
+  var have = schedOfficeDates(), days = {};
+  DB.local.forEach(function(o){ if(have[o.date]) days[o.date] = 1; });
+  var made = [];
+  Object.keys(days).forEach(function(d){
+    var mine = DB.local.filter(function(o){ return o.date === d; });
+    var theirs = DB.office.filter(function(o){ return o.date === d; });
+    var mineBy = {}, theirBy = {};
+    mine.forEach(function(o){ mineBy[o.order] = o; });
+    theirs.forEach(function(o){ theirBy[o.order] = o; });
+    var gone  = mine.filter(function(o){ return !theirBy[o.order]; });
+    var added = theirs.filter(function(o){ return !mineBy[o.order]; });
+    var moved = theirs.filter(function(o){
+      var m = mineBy[o.order];
+      return m && ((+m.cases||0) !== (+o.cases||0) || (+m.pallets||0) !== (+o.pallets||0)
+                || String(m.time||'') !== String(o.time||''));
+    });
+    made.push({ date:d, mine:mine.length, theirs:theirs.length,
+      gone: gone.map(function(o){ return o.order; }),
+      added: added.map(function(o){ return o.order; }),
+      moved: moved.map(function(o){ return o.order; }) });
+  });
+  if(!made.length) return;
+  DB.local = DB.local.filter(function(o){ return !have[o.date]; });
+  DB.notes = made.concat(DB.notes).slice(0, 6);
+}
+function schedNoteDismiss(date){
+  DB.notes = DB.notes.filter(function(n){ return n.date !== date; });
+  persist(); renderSched();
+}
 
 /* ======================= helpers ======================= */
 function $(id){ return document.getElementById(id); }
@@ -316,13 +401,14 @@ function parseCSV(text){
     var o={}; hdr.forEach(function(h,i){o[h]=r[i];}); return o; });
 }
 function mergeOrders(arr){
+  var into = (schedBucket() === 'local') ? DB.local : DB.office;
   var add=0, upd=0;
   arr.map(normalizeRow).forEach(function(n){
     if(!n.order) return;
-    var i = DB.orders.findIndex(function(o){ return o.order===n.order && o.date===n.date; });
-    if(i>=0){ DB.orders[i]=n; upd++; } else { DB.orders.push(n); add++; }
+    var i = into.findIndex(function(o){ return o.order===n.order && o.date===n.date; });
+    if(i>=0){ into[i]=n; upd++; } else { into.push(n); add++; }
   });
-  DB.orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
+  schedRebuild();
   persist(); stat(); renderSched();
   toast('Imported: '+add+' new, '+upd+' updated');
 }
@@ -371,13 +457,16 @@ function schedDeleteDay(date){
 /* separate, because signed in it has to leave the team's copy too, and
    cloud.js wraps this the same way it wraps every other write */
 function schedDropDay(date, when, note){
-  DB.orders = DB.orders.filter(function(o){ return o.date !== date; });
+  DB.office = DB.office.filter(function(o){ return o.date !== date; });
+  DB.local  = DB.local.filter(function(o){ return o.date !== date; });
+  schedRebuild();
   persist(); stat(); renderSched();
   toast(note || ('Deleted ' + (when || date) + '. Load it again when you have a good copy.'));
 }
 function clearAll(){
   if(!confirm('Delete ALL loaded schedule data? Saved forms are kept.')) return;
-  DB.orders=[]; persist(); stat(); renderSched(); toast('Schedule cleared');
+  DB.office=[]; DB.local=[]; DB.notes=[]; schedRebuild();
+  persist(); stat(); renderSched(); toast('Schedule cleared');
 }
 
 /* ---- schedule staging: upload, correct, preview, submit ---- */
@@ -696,8 +785,9 @@ function dayViewConfirm(){
    deleted really goes, instead of lingering from the earlier upload. */
 function publishDay(date, rows){
   var list = rows.map(normalizeRow).filter(function(r){ return r.order; });
-  DB.orders = DB.orders.filter(function(o){ return o.date !== date; }).concat(list);
-  DB.orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
+  var into = (schedBucket() === 'local') ? 'local' : 'office';
+  DB[into] = DB[into].filter(function(o){ return o.date !== date; }).concat(list);
+  schedRebuild();
   persist(); stat(); renderSched();
 }
 function dayViewChrome(){
@@ -805,9 +895,37 @@ function doSearch(){
 function schedHasDay(d){
   return DB.orders.some(function(o){ return o.date === d; });
 }
+/* What the office sent, set against what was loaded here. Shown once, on the
+   schedule, until it is read and dismissed. */
+function schedNotesHTML(){
+  if(!DB.notes || !DB.notes.length) return '';
+  return DB.notes.map(function(n){
+    var bits = [];
+    if(n.theirs !== n.mine)
+      bits.push('<b>'+n.theirs+'</b> order'+(n.theirs===1?'':'s')+', not '+n.mine);
+    if(n.added.length)
+      bits.push('<b>'+n.added.length+'</b> not on your copy ('+esc(n.added.slice(0,4).join(', '))
+        + (n.added.length>4 ? ' and '+(n.added.length-4)+' more' : '')+')');
+    if(n.gone.length)
+      bits.push('<b>'+n.gone.length+'</b> of yours '+(n.gone.length===1?'is':'are')+' not on theirs ('
+        + esc(n.gone.slice(0,4).join(', '))
+        + (n.gone.length>4 ? ' and '+(n.gone.length-4)+' more' : '')+')');
+    if(n.moved.length)
+      bits.push('<b>'+n.moved.length+'</b> with different times or counts');
+    return '<div class="schednote">'
+      + '<button type="button" class="snx" aria-label="Dismiss"'
+      +   ' onclick="schedNoteDismiss(\''+esc(n.date)+'\')">&#10005;</button>'
+      + '<b>The receiving office has sent ' + esc(fmtLongDate(n.date)) + '.</b> '
+      + 'Theirs is the one the yard works from, so it has replaced the copy loaded here.'
+      + (bits.length ? ' It differs: ' + bits.join('; ') + '.'
+                     : ' It matches what was loaded here.')
+      + '</div>';
+  }).join('');
+}
 function renderSched(){
   if(typeof suggestSync==='function') suggestSync();
   schedLoadNote();
+  var nb = $('schednotes'); if(nb) nb.innerHTML = schedNotesHTML();
   var card = $('schedcard'), none = $('schednone');
   if(isOffice()){
     if(card) card.hidden = false;

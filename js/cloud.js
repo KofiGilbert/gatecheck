@@ -281,8 +281,13 @@ function startSync(){
   stopSync();
   var db=CLOUD.db;
   CLOUD.subs.push(db.collection('orders').onSnapshot(function(snap){
-    DB.orders = snap.docs.map(function(d){ return d.data(); });
-    DB.orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
+    /* the office's copy, which is the one the yard works from. Anything an
+       officer loaded here for a day the office has now sent is set against it
+       and then retired - it must never be quietly overwritten, because they
+       may have been working from it. */
+    DB.office = snap.docs.map(function(d){ return d.data(); });
+    schedReconcile();
+    schedRebuild();
     persist(); stat(); renderSched(); doSearch();
     if(typeof routeResync==='function') routeResync();
   }, function(e){ toast('Sync error: '+e.message); }));
