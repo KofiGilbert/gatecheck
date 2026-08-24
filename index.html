@@ -1732,9 +1732,10 @@
     <div class="hint">Pick the check, list the trailers, then release it. The officer on duty
       is told straight away and has one hour from that moment.</div>
     <select id="bk_slot" hidden></select>
+    <div id="dzhost_block"></div>
     <label class="f">Trailers and products</label>
     <textarea id="bk_list" rows="10" placeholder="LR7524, FRIES&#10;R25106, FRIES&#10;H50117, CHICKEN SD"></textarea>
-    <div class="hint">One trailer per line: <b>trailer number, product</b>. A comma is safest, so a trailer number with a space in it is not read as a product.</div>
+    <div class="hint">One trailer per line: <b>trailer number, product</b>. A comma is safest, so a trailer number with a space in it is not read as a product. Anything loaded above lands here first, so it can be checked before it goes.</div>
     <div id="bk_status" class="hint" style="text-align:center;font-size:14px"></div>
     <button class="btn" onclick="blockRelease()">&#128640; Release to the yard</button>
   </div>

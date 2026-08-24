@@ -35,6 +35,15 @@ var DZ_TEXT = {
     paste: 'Paste rows from Excel',
     ph:    'Select the rows in Excel, copy, and paste them here'
   },
+  block: {
+    title: 'Load the trailer list',
+    hint:  'A photo of the block sheet, a spreadsheet, or paste the trailer '
+         + 'numbers in. They land in the box below to be checked before release.',
+    touch: 'Photograph the block sheet with this device, load a spreadsheet, or '
+         + 'paste the numbers in. They land below to be checked before release.',
+    paste: 'Paste trailer numbers',
+    ph:    'One per line, trailer number then product:\nLR7524, FRIES\nR25106, FRIES'
+  },
   yard: {
     title: 'Load the trailer list',
     hint:  'A photo of the block sheet, a spreadsheet, or paste the trailer '
@@ -49,7 +58,7 @@ function dzAttach(hostId, mode){
   var wrap = document.getElementById('dzwrap');
   var host = document.getElementById(hostId);
   if(!wrap || !host) return;
-  DZ_MODE = (mode === 'yard') ? 'yard' : 'schedule';
+  DZ_MODE = DZ_TEXT[mode] ? mode : 'schedule';
   if(wrap.parentNode !== host) host.appendChild(wrap);
   wrap.hidden = false;
   ingPasteClose();
@@ -66,7 +75,7 @@ function dzAttach(hostId, mode){
   if(ta) ta.setAttribute('placeholder', t.ph);
   /* a trailer list never arrives as a Word file or a PDF */
   ['dzpdf','dzdoc'].forEach(function(id){
-    var b = document.getElementById(id); if(b) b.hidden = (DZ_MODE === 'yard');
+    var b = document.getElementById(id); if(b) b.hidden = (DZ_MODE !== 'schedule');
   });
 }
 function dzDetach(){
@@ -370,6 +379,30 @@ function ingYardLand(rows, what){
 function ingYardText(text, what){
   return ingYardLand(ycParseTrailers(String(text || '')), what || 'file');
 }
+/* The office is filling the list it is about to release, not doing a check.
+   The rows land in the box so they can be read and corrected first: nothing
+   goes to the yard because a photo said so. */
+function ingBlockLand(rows, what){
+  var box = document.getElementById('bk_list');
+  if(!box) return false;
+  if(!rows || !rows.length){
+    toast('No trailer numbers found in that ' + (what || 'file') + '.');
+    return false;
+  }
+  var text = rows.map(function(r){
+    return String(r.trailer || '') + (r.product ? ', ' + r.product : '');
+  }).join('\n');
+  var had = String(box.value || '').trim();
+  if(had && !confirm('Replace the ' + had.split(/\n/).length
+      + ' line(s) already in the box with the ' + rows.length + ' just loaded?')) return false;
+  box.value = text;
+  box.dispatchEvent(new Event('input', { bubbles: true }));
+  toast('Loaded ' + rows.length + ' trailers. Check them, then release.');
+  return true;
+}
+function ingBlockText(text, what){
+  return ingBlockLand(ycParseTrailers(String(text || '')), what || 'file');
+}
 function ingYardXlsx(buf){
   var files = fflate.unzipSync(new Uint8Array(buf));
   var dec = new TextDecoder();
@@ -400,7 +433,9 @@ function ingYardXlsx(buf){
         if(cells.length) lines.push(cells.join(' '));
       }
     });
-  return ingYardText(lines.join('\n'), 'spreadsheet');
+  return (DZ_MODE === 'block')
+    ? ingBlockText(lines.join('\n'), 'spreadsheet')
+    : ingYardText(lines.join('\n'), 'spreadsheet');
 }
 
 /* ---------- the one door ---------- */
@@ -422,17 +457,17 @@ function ingestFile(file){
 
   if(kind === 'xlsx')
     return ingBuffer(file).then(function(b){
-      if(DZ_MODE === 'yard') return ingYardXlsx(b);
+      if(DZ_MODE !== 'schedule') return ingYardXlsx(b);
       importXlsx(b);
     });
 
   if(kind === 'text')
     return ingText(file).then(function(t){
-      if(DZ_MODE === 'yard') return ingYardText(t, file.name);
+      if(DZ_MODE !== 'schedule') return ingYardText(t, file.name);
       ingest(t);
     });
 
-  if(DZ_MODE === 'yard' && (kind === 'docx' || kind === 'pdf')){
+  if(DZ_MODE !== 'schedule' && (kind === 'docx' || kind === 'pdf')){
     ingQuiet();
     toast('A trailer list comes as a photo, a spreadsheet, or pasted text.');
     return Promise.resolve();
@@ -448,6 +483,8 @@ function ingestFile(file){
     });
 
   /* a photograph: the reader that was already here, now reachable */
+  if(DZ_MODE === 'block' && typeof ycPhotoTrailers === 'function')
+    return ycPhotoTrailers(file).then(function(rows){ ingBlockLand(rows, 'photo'); });
   if(DZ_MODE === 'yard' && typeof ycImportPhoto === 'function')
     return Promise.resolve(ycImportPhoto(file));
   return Promise.resolve(importPhoto(file));
@@ -508,5 +545,7 @@ document.addEventListener('paste', function(e){
   var text = e.clipboardData.getData('text/plain') || '';
   if(text.indexOf('\t') < 0 && text.split(/\r?\n/).length < 3) return;
   e.preventDefault();
-  if(DZ_MODE === 'yard') ingYardText(text, 'paste'); else ingest(text);
+  if(DZ_MODE === 'block') ingBlockText(text, 'paste');
+  else if(DZ_MODE === 'yard') ingYardText(text, 'paste');
+  else ingest(text);
 });

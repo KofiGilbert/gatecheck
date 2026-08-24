@@ -211,6 +211,32 @@ function ycSlotStatus(slot){
   return { cls:'wait', top:'Awaiting list', arrow:'\u2014', kpi:'\u2014',
            kpiLabel:'not loaded yet', detail:'not loaded yet' };
 }
+/* ---- what the receiving office is waiting on ----
+   The office released a trailer list; the officer files the check. The office
+   should hear about it without watching the board, and should be able to open
+   it, read it and print it from the notice. */
+function bkSeen(){
+  try{ var v = JSON.parse(sget('gc_bkseen') || '[]'); return Array.isArray(v) ? v : []; }
+  catch(e){ return []; }
+}
+function bkMarkSeen(key){
+  var seen = bkSeen();
+  if(seen.indexOf(key) < 0) seen.push(key);
+  try{ sset('gc_bkseen', JSON.stringify(seen.slice(-120))); }catch(e){}
+}
+function bkFresh(){
+  var seen = bkSeen();
+  return (DB.yardchecks || []).filter(function(c){
+    return c && c.date && c.time && seen.indexOf(c.date + '_' + c.time) < 0;
+  }).slice(0, 12);
+}
+function bkFreshCount(){ return bkFresh().length; }
+function notifCheckGo(date, slot){
+  notifClose();
+  bkMarkSeen(date + '_' + slot);
+  if(typeof ycUpdateBadge === 'function') ycUpdateBadge();
+  go('block', false, slot);
+}
 function ycActionable(){
   return ycShiftSlots().filter(function(s){
     var st=ycSlotStatus(s); return st.cls==='ready' || st.cls==='over';
@@ -262,9 +288,11 @@ function ycNotifyReady(){
 var _ycBellWas = 0;
 function ycUpdateBadge(){
   var bell=$('notif'); if(!bell) return;
-  var n = (typeof isOffice==='function' && isOffice()) ? 0 : ycActionable();
+  var office = (typeof isOffice==='function' && isOffice());
+  /* the officer is told what is due; the office is told what has been filed */
+  var n = office ? (blockDue().length + bkFreshCount()) : ycActionable();
   /* a schedule the office has replaced counts too: it is the same bell */
-  n += (typeof DB !== 'undefined' && DB.notes) ? DB.notes.length : 0;
+  if(!office) n += (typeof DB !== 'undefined' && DB.notes) ? DB.notes.length : 0;
   var dot=$('notifn');
   if(dot){ dot.textContent = n ? String(n) : ''; dot.hidden = !n; }
   bell.hidden = !n;
@@ -684,7 +712,10 @@ function ycPhotoScore(text){
     + (up.indexOf('TRAILER')>=0?2:0) + (up.indexOf('PRODUCT')>=0?2:0)
     + (up.indexOf('INSPECTION')>=0?2:0);
 }
-async function ycImportPhoto(file){
+/* The reading and the landing are separate: the officer's photo fills their
+   draft, the office's photo fills the list they are about to release. Same
+   reader either way. */
+async function ycPhotoTrailers(file){
   try{
     ocrStatus('📷 Preparing photo…');
     var im = await loadImageFile(file);
@@ -703,7 +734,8 @@ async function ycImportPhoto(file){
     if(bestScore<1){
       await worker.setParameters({tessedit_pageseg_mode:'6'});
       ocrStatus(null);
-      toast('Could not find a trailer list in that photo. Try flatter and sharper.'); return;
+      toast('Could not find a trailer list in that photo. Try flatter and sharper.');
+      return [];
     }
     ocrStatus('🔎 Reading the trailer list at full quality…');
     var big=preprocess(drawToCanvas(im,2600,bestRot));
@@ -723,25 +755,26 @@ async function ycImportPhoto(file){
     ycParseTrailers(bestText).forEach(function(r){
       if(!rows.some(function(x){return ycNearTrailer(x.trailer, r.trailer);})) rows.push(r);
     });
-    if(!rows.length){ toast('No trailers recognized. Try a flatter photo, or add rows by hand.'); return; }
-    if(YC.rows.length && !confirm('Replace the current '+YC.rows.length+' trailer(s) with the '
-        +rows.length+' found in the photo?')) return;
-    YC.rows = rows;
-    ycSaveDraft(); renderYard();
-    toast('📷 Found '+rows.length+' trailers. Check the list, then enter temps, fuel and the rest.');
+    if(!rows.length) toast('No trailers recognized. Try a flatter photo, or add rows by hand.');
+    return rows;
   }catch(e){
     ocrStatus(null);
     toast('Photo reading failed: '+(e.message||e)+'. Add trailers by hand.');
+    return [];
   }
 }
-(function(){
-  var f=$('ycfile'); if(!f) return;
-  f.addEventListener('change', function(){
-    var file=this.files[0]; if(!file) return;
-    if(!YC) ycLoadDraft();
-    ycImportPhoto(file); this.value='';
-  });
-})();
+/* the officer's own draft */
+async function ycImportPhoto(file){
+  var rows = await ycPhotoTrailers(file);
+  if(!rows || !rows.length) return;
+  if(!YC) ycLoadDraft();
+  if(YC.rows.length && !confirm('Replace the current '+YC.rows.length+' trailer(s) with the '
+      +rows.length+' found in the photo?')) return;
+  YC.rows = rows;
+  ycSaveDraft(); renderYard();
+  if(typeof renderYcGrid === 'function') renderYcGrid();
+  toast('📷 Found '+rows.length+' trailers. Check the list, then enter temps, fuel and the rest.');
+}
 
 /* ======================= receiving office: trailer blocks ======================= */
 function blockSlots(){
@@ -819,7 +852,15 @@ function blockRender(){
 }
 /* The board and a single check are two places, so the browser's own back
    button walks between them and no in-app button has to. */
-function blockPick(slot){ go('block', false, slot); }
+function blockPick(slot){
+  /* opening it from the board counts as having read it */
+  var chk = ycSlotCheck(slot);
+  if(chk){
+    bkMarkSeen(chk.date + '_' + chk.time);
+    if(typeof ycUpdateBadge === 'function') ycUpdateBadge();
+  }
+  go('block', false, slot);
+}
 function blockBoard(){ go('block'); }
 function blockViewSync(sub){
   var board = $('bkboard'), load = $('bkload'), view = $('bkview');
@@ -918,16 +959,10 @@ function blockDue(){
     return away <= BK_LEAD_MIN && away > -60;
   });
 }
-function blockBadge(){
-  var bell = $('notif'); if(!bell) return;
-  if(!(typeof isOffice==='function' && isOffice())) return;
-  var due = blockDue();
-  var dot = $('notifn');
-  if(dot){ dot.textContent = due.length ? String(due.length) : ''; dot.hidden = !due.length; }
-  bell.hidden = !due.length;
-  bell.setAttribute('aria-label', due.length===1
-    ? 'One yard check needs its trailer list' : due.length+' yard checks need trailer lists');
-}
+/* One function owns the bell. This used to set it itself, and then fought
+   ycUpdateBadge for the same element - the office ended up with whichever
+   ran last. */
+function blockBadge(){ ycUpdateBadge(); }
 function officeStat(){
   var el=$('officestat'); if(!el) return;
   var t=ycTodayISO();
@@ -1291,6 +1326,7 @@ function notifSched(){
 }
 function notifRender(){
   var p = $('notifpanel'); if(!p) return;
+  if(typeof isOffice === 'function' && isOffice()){ notifRenderOffice(p); return; }
   var list = ycWaiting(), notes = notifSched(), html = '';
   if(notes.length){
     html += '<div class="nphd">Schedule</div>'
@@ -1314,6 +1350,35 @@ function notifRender(){
   if(list.length || notes.length) html += '<div class="npfoot">Tap one to open it.</div>';
   p.innerHTML = html;
 }
+function notifRenderOffice(p){
+  var due = blockDue(), list = bkFresh(), html = '';
+  if(due.length){
+    html += '<div class="nphd">Trailer lists to release</div>'
+      + due.map(function(slot){
+          return '<button type="button" class="npitem" onclick="notifBlockGo(\''+slot+'\')">'
+            + '<span class="npslot">'+esc(slot.slice(0,2))+'</span>'
+            + '<span class="nptxt"><b>Needs a trailer list</b>'
+            + '<span>Due at '+esc(slot.slice(0,2)+':'+slot.slice(2))+'</span></span></button>';
+        }).join('');
+  }
+  html += '<div class="nphd">Yard checks filed</div>'
+    + (list.length
+        ? list.map(function(c){
+            var escN = (c.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
+            return '<button type="button" class="npitem'+(escN?' over':'')+'"'
+              + ' onclick="notifCheckGo(\''+esc(c.date)+'\',\''+esc(c.time)+'\')">'
+              + '<span class="npslot">'+esc(String(c.time).slice(0,2))+'</span>'
+              + '<span class="nptxt"><b>Yard check completed</b>'
+              + '<span>'+esc(c.name || 'Officer')+' \u00b7 '
+              +   (escN ? escN+' escalation'+(escN===1?'':'s')
+                        : (c.rows||[]).length+' checked')
+              + '</span></span></button>';
+          }).join('')
+        : '<div class="npfoot">Nothing new.</div>');
+  if(due.length || list.length) html += '<div class="npfoot">Tap one to open it.</div>';
+  p.innerHTML = html;
+}
+function notifBlockGo(slot){ notifClose(); go('block', false, slot); }
 function notifSchedGo(date){
   notifClose();
   if(typeof schedNoteRead === 'function') schedNoteRead(date);

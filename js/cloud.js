@@ -318,6 +318,10 @@ function startSync(){
   CLOUD.subs.push(db.collection('yardchecks').orderBy('ts','desc').limit(60).onSnapshot(function(snap){
     DB.yardchecks = snap.docs.map(function(d){ var o=d.data(); o._id=d.id; return o; });
     if(typeof ycPersistAll==='function'){ ycPersistAll(); renderYardHist(); }
+    /* a check the officer has just filed rings the office's bell */
+    if(typeof ycUpdateBadge==='function') ycUpdateBadge();
+    /* the board is the office's screen; an officer has no business drawing it */
+    if(typeof isOffice==='function' && isOffice() && typeof blockRender==='function') blockRender();
     if(typeof routeResync==='function') routeResync();
   }, function(e){}));
   var _em = CLOUD.user.email;

@@ -153,6 +153,10 @@ function homeSection(){ return isOffice() ? 'office' : 'home'; }
 function applyRole(){
   var off = isOffice();
   document.body.classList.toggle('role-office', off);
+  /* The role starts as officer and is corrected once the account document
+     arrives, so the bell has to be recounted: the office was inheriting a
+     count of yard checks that were never theirs to do. */
+  call('ycUpdateBadge');
   var r = curRoute();
   var cur = r.sec, sub = r.sub;
   var shown = document.querySelector('section.on');
@@ -191,6 +195,7 @@ function dzSync(name){
   if(typeof dzAttach !== 'function') return;
   if(name === 'sched')       dzAttach('dzhost_sched', 'schedule');
   else if(name === 'ycgrid') dzAttach('dzhost_yard', 'yard');
+  else if(name === 'block')  dzAttach('dzhost_block', 'block');
   else if(typeof dzDetach === 'function') dzDetach();
 }
 function routeResync(){
@@ -447,8 +452,9 @@ function importPaste(){
   if(typeof ingPasteClose === 'function') ingPasteClose(); else $('paste').value='';
   /* the same box loads a schedule or a trailer list, depending on the screen
      the loader is standing on */
-  if(typeof DZ_MODE !== 'undefined' && DZ_MODE === 'yard') ingYardText(t, 'paste');
-  else ingest(t);
+  if(typeof DZ_MODE === 'undefined' || DZ_MODE === 'schedule') ingest(t);
+  else if(DZ_MODE === 'block') ingBlockText(t, 'paste');
+  else ingYardText(t, 'paste');
 }
 /* One day at a time. Clearing everything is a different button, and asking
    for the day by name is what stops the wrong one going. */
