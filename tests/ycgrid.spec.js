@@ -42,11 +42,10 @@ async function fill(page, i, v) {
   if (v.fuel)   await page.selectOption('#ycm_fuel', v.fuel);
   if (v.intact) await page.selectOption('#ycm_intact', v.intact);
   if (v.door)   await page.selectOption('#ycm_door', v.door);
-  if (v.action) await page.fill('#ycm_action', v.action);
   await page.click('#ycm_save');
   await expect(page.locator('#ycmodal')).toBeHidden();
 }
-const OK = { set:'-10.0', temp:'-9.0', fuel:'3/4', intact:'Y', door:'20' };
+const OK = { set:'-10', temp:'-9.0', fuel:'3/4', intact:'Y', door:'20' };
 
 /* ---- the tabs ---- */
 
@@ -74,7 +73,7 @@ test('a trailer the office never released can still be added', async ({ page }) 
   await expect(page.locator('#ycmodal')).toBeVisible();
   await page.fill('#ycm_trailer', 'H30480');
   await page.fill('#ycm_product', 'FRIES');
-  await page.selectOption('#ycm_set', '-10.0');
+  await page.selectOption('#ycm_set', '-10');
   await page.fill('#ycm_temp', '-8.0');
   await page.selectOption('#ycm_fuel', 'FULL');
   await page.selectOption('#ycm_intact', 'Y');
@@ -92,8 +91,8 @@ test('the card offers the choices the yard actually uses', async ({ page }) => {
   await page.locator('#ycgridwrap .ycgtile').nth(0).click();
 
   const opts = (id) => page.locator(id + ' option').allInnerTexts();
-  expect(await opts('#ycm_set')).toEqual(
-    ['', '-10.0', '34.0', '35.0', '36.0', '37.0', '38.0', '39.0', '40.0', 'DEF', 'Other…']);
+  // the set point only has to say which rule applies
+  expect(await opts('#ycm_set')).toEqual(['', '-10', '34', 'DEF', 'OFF', 'Other…']);
   expect(await opts('#ycm_fuel')).toEqual(['', 'FULL', '3/4', '1/2', '1/4', 'EMPTY']);
   expect(await opts('#ycm_intact')).toEqual(['', 'Y', 'N']);
 
@@ -123,20 +122,16 @@ test('escalate is worked out, never typed', async ({ page }) => {
   // no input in the escalate box until there is something to escalate
   await expect(page.locator('#ycm_esc input')).toHaveCount(0);
 
-  await page.selectOption('#ycm_set', '-10.0');
+  await page.selectOption('#ycm_set', '-10');
   await page.fill('#ycm_temp', '-9.0');
   await page.selectOption('#ycm_fuel', '3/4');
   await page.selectOption('#ycm_intact', 'Y');
   await page.selectOption('#ycm_door', '20');
   await expect(page.locator('#ycm_escbox')).toHaveText('N/A');
-  await expect(page.locator('#ycm_esc')).toBeHidden();
 
   // an empty tank is an escalation, and the reason is written for the officer
   await page.selectOption('#ycm_fuel', 'EMPTY');
-  await expect(page.locator('#ycm_escbox')).toHaveText('*ESCALATE*');
-  await expect(page.locator('#ycm_esc')).toContainText('*ESCALATE*');
-  await expect(page.locator('#ycm_esc')).toContainText('LOW FUEL');
-  await expect(page.locator('#ycm_action')).toBeVisible();   // only now
+  await expect(page.locator('#ycm_escbox')).toHaveText('Escalate');
 });
 
 test('the temperature rules on the poster are the ones enforced', async ({ page }) => {
@@ -153,20 +148,23 @@ test('the temperature rules on the poster are the ones enforced', async ({ page 
     await page.click('#ycm_save');
     return txt;
   };
-  expect(await check('-10.0', '0.0')).toBe('N/A');            // frozen, at the limit
-  expect(await check('-10.0', '0.1')).toBe('*ESCALATE*');     // 0.1 and above is out
-  expect(await check('36.0', '34.0')).toBe('N/A');            // cooler, at the limit
-  expect(await check('36.0', '33.9')).toBe('*ESCALATE*');
-  expect(await check('36.0', '40.0')).toBe('N/A');
-  expect(await check('36.0', '40.1')).toBe('*ESCALATE*');
-  expect(await check('-10.0', 'DEF')).toBe('*ESCALATE*');     // defrost showing
+  expect(await check('-10', '0.0')).toBe('N/A');         // frozen, at the limit
+  expect(await check('-10', '0.1')).toBe('Escalate');    // 0.1 and above is out
+  expect(await check('34', '34.0')).toBe('N/A');         // refrigerated, at the limit
+  expect(await check('34', '33.9')).toBe('Escalate');
+  expect(await check('34', '40.0')).toBe('N/A');
+  expect(await check('34', '40.1')).toBe('Escalate');
+  expect(await check('DEF', '-9.0')).toBe('Escalate');   // defrost showing
+  // a unit that is off escalates in its own right, and is not also judged
+  // against a band it is not in
+  expect(await check('OFF', '55.0')).toBe('Escalate');
 });
 
 test('a temperature must be to the tenth before the card will close', async ({ page }) => {
   await asOfficer(page);
   await openGrid(page);
   await page.locator('#ycgridwrap .ycgtile').nth(0).click();
-  await page.selectOption('#ycm_set', '-10.0');
+  await page.selectOption('#ycm_set', '-10');
   await page.fill('#ycm_temp', '-9');            // no tenth
   await page.click('#ycm_save');
   await expect(page.locator('#ycmodal')).toBeVisible();          // held open
@@ -194,7 +192,7 @@ test('a trailer that escalates is marked differently from one that is fine', asy
   await asOfficer(page);
   await openGrid(page);
   await fill(page, 0, OK);
-  await fill(page, 1, Object.assign({}, OK, { fuel:'1/4', action:'Reported to DC' }));
+  await fill(page, 1, Object.assign({}, OK, { fuel:'1/4' }));
   const tiles = page.locator('#ycgridwrap .ycgtile');
   await expect(tiles.nth(0)).toHaveClass(/done/);
   await expect(tiles.nth(1)).toHaveClass(/esc/);
@@ -246,25 +244,31 @@ test('work survives a refresh part way through', async ({ page }) => {
 test('a released slot the officer has not finished reads as awaiting', async ({ page }) => {
   await asOffice(page);
   await page.evaluate(() => {
-    const slot = ycShiftSlots()[2], date = ycSlotDate(slot);
+    /* a slot whose calendar date is today, whatever hour the tests run at:
+       after midnight the evening shift's 22:00 belongs to yesterday */
+    const slot = ycShiftSlots().filter(s => ycSlotDate(s) === ycTodayISO())[0];
+    const date = ycTodayISO();
     DB.yardslots = [{ id:date+'_'+slot, date, slot, loadedAt:new Date().toISOString(),
                       count:3, trailers:[{trailer:'57775',product:'FE'}] }];
     DB.yardchecks = [];
     ycSlotsPersist(); go('block');
   });
-  const item = page.locator('#bk_hist .histitem').first();
-  await expect(item).toContainText('Awaiting officer');
-  await expect(item).toBeDisabled();
+  const tile = page.locator('#bkboard .slot').filter({ hasText: 'Released' }).first();
+  await expect(tile).toBeVisible();
+  await expect(tile).toContainText('trailer');
 });
 
 test('a completed check opens for the office, on the slot they loaded', async ({ page }) => {
   await asOffice(page);
   const slot = await page.evaluate(() => {
-    const slot = ycShiftSlots()[2], date = ycSlotDate(slot);
+    /* a slot whose calendar date is today, whatever hour the tests run at:
+       after midnight the evening shift's 22:00 belongs to yesterday */
+    const slot = ycShiftSlots().filter(s => ycSlotDate(s) === ycTodayISO())[0];
+    const date = ycTodayISO();
     DB.yardslots = [{ id:date+'_'+slot, date, slot, loadedAt:new Date().toISOString(),
                       count:2, trailers:[{trailer:'57775',product:'FE'}] }];
     DB.yardchecks = [{ date, time:slot, name:'Kobe Mensah', ts:new Date().toISOString(), rows:[
-      { trailer:'57775', product:'FE', set:'-10.0', temp:'-9.0', fuel:'1/4',
+      { trailer:'57775', product:'FE', set:'-10', temp:'-9.0', fuel:'1/4',
         intact:'Y', door:'24', action:'Reported to DC', escalate:['LOW FUEL: ¼ tank or less'] },
       { trailer:'LR7502', product:'FRIES', set:'-10.0', temp:'-2.1', fuel:'3/4',
         intact:'Y', door:'20', action:'', escalate:[] },
@@ -272,11 +276,9 @@ test('a completed check opens for the office, on the slot they loaded', async ({
     ycSlotsPersist(); ycPersistAll(); go('block');
     return slot;
   });
-  const item = page.locator('#bk_hist .histitem').first();
-  await expect(item).toContainText('Completed');
-  await expect(item).toContainText('1 escalation');
-
-  await item.click();
+  const tile = page.locator('#bkboard .slot').filter({ hasText: 'Completed' }).first();
+  await expect(tile).toBeVisible();
+  await tile.click();
   const view = page.locator('#bkview');
   await expect(view).toBeVisible();
   await expect(page.locator('#bkview_title')).toContainText('yard check');
@@ -294,7 +296,10 @@ test('a completed check opens for the office, on the slot they loaded', async ({
 test('the office cannot edit the check it is reading', async ({ page }) => {
   await asOffice(page);
   await page.evaluate(() => {
-    const slot = ycShiftSlots()[2], date = ycSlotDate(slot);
+    /* a slot whose calendar date is today, whatever hour the tests run at:
+       after midnight the evening shift's 22:00 belongs to yesterday */
+    const slot = ycShiftSlots().filter(s => ycSlotDate(s) === ycTodayISO())[0];
+    const date = ycTodayISO();
     DB.yardslots = [{ id:date+'_'+slot, date, slot, loadedAt:new Date().toISOString(),
                       count:1, trailers:[{trailer:'57775',product:'FE'}] }];
     DB.yardchecks = [{ date, time:slot, name:'Kobe', ts:new Date().toISOString(),
@@ -302,7 +307,7 @@ test('the office cannot edit the check it is reading', async ({ page }) => {
               intact:'Y', door:'24', action:'', escalate:[] }] }];
     ycSlotsPersist(); ycPersistAll(); go('block');
   });
-  await page.locator('#bk_hist .histitem').first().click();
+  await page.locator('#bkboard .slot').filter({ hasText:'Completed' }).first().click();
   await expect(page.locator('#bkview input, #bkview select')).toHaveCount(0);
 });
 
@@ -327,10 +332,9 @@ test('out of hours an escalation goes to the walkie, not the office', async ({ p
 test('the escalation is on the record even when it was called in', async ({ page }) => {
   await asOfficer(page);
   await openGrid(page);
-  await fill(page, 0, Object.assign({}, OK, { fuel:'1/4', action:'Called it in' }));
+  await fill(page, 0, Object.assign({}, OK, { fuel:'1/4' }));
   const row = await page.evaluate(() => ycData().rows[0]);
   expect(row.escalate).toContain('LOW FUEL: ¼ tank or less');
-  expect(row.action).toBe('Called it in');
   expect(row.escTo, 'the record must say who it was raised with').toBeTruthy();
   // and a trailer with nothing wrong carries no route
   await fill(page, 1, OK);
@@ -350,4 +354,183 @@ test('clicking a ready check on the board opens the tabs, not the sheet', async 
   await page.locator('#ycgridwrap .ycgtile').nth(0).click();
   await expect(page.locator('#ycmodal')).toBeVisible();
   await expect(page.locator('#ycm_title')).toContainText('57775');
+});
+
+test('the card is one row of boxes and a Save, nothing more', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+
+  const labels = await page.locator('#ycm_body .ycmbox > span').allInnerTexts();
+  expect(labels).toEqual(['TEMP SET POINT','TEMP','FUEL','INTACT (Y/N)','DOOR #','ESCALATE']);
+
+  // all six sit on the same line, as drawn
+  const tops = await page.locator('#ycm_body .ycmbox').evaluateAll(
+    els => els.map(e => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
+
+  // and nothing hangs below the row but the button
+  await expect(page.locator('#ycmodal .ycmfoot button')).toHaveCount(1);
+  await expect(page.locator('#ycm_esc')).toHaveCount(0);
+});
+
+test('an escalation stays inside its own box', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  await fill(page, 0, Object.assign({}, OK, { fuel:'EMPTY' }));
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await expect(page.locator('#ycm_escbox')).toHaveText('Escalate');
+  // the box keeps the shape of every other box on the card
+  expect(await page.locator('#ycm_escbox input').count()).toBe(0);
+  // still one row
+  const tops = await page.locator('#ycm_body .ycmbox').evaluateAll(
+    els => els.map(e => Math.round(e.getBoundingClientRect().top)));
+  expect(new Set(tops).size).toBe(1);
+});
+
+test('a unit that is switched off is an escalation on its own', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await page.selectOption('#ycm_set', 'OFF');
+  await page.fill('#ycm_temp', '12.0');
+  await page.selectOption('#ycm_fuel', 'FULL');
+  await page.selectOption('#ycm_intact', 'Y');
+  await page.selectOption('#ycm_door', '20');
+  await expect(page.locator('#ycm_escbox')).toHaveText('Escalate');
+  await page.click('#ycm_save');
+  await expect(page.locator('#ycgridwrap .ycgtile').nth(0)).toHaveClass(/esc/);
+  const row = await page.evaluate(() => ycData().rows[0]);
+  expect(row.escalate).toContain('UNIT OFF');
+});
+
+/* ---- the trailers page reads like the streaming page it was drawn from ---- */
+
+test('a trailer number with a space is not mistaken for a product', async ({ page }) => {
+  await asOfficer(page);
+  expect(await page.evaluate(() => blockParse(
+    'LR 7540\nLR7541 FRIES\nH20045, CHICKEN SD\n2022\nR25106\tBUNS'
+  ))).toEqual([
+    { trailer:'LR7540',  product:'' },          // a space inside the number
+    { trailer:'LR7541',  product:'FRIES' },     // number then product
+    { trailer:'H20045',  product:'CHICKEN SD' },// comma
+    { trailer:'2022',    product:'' },          // a number is a trailer, not a product
+    { trailer:'R25106',  product:'BUNS' },      // tab
+  ]);
+});
+
+test('the officer can search the trailers on the check', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page, [
+    { trailer:'LR7540', product:'FRIES' },
+    { trailer:'H20045', product:'CHICKEN SD' },
+    { trailer:'LR2325', product:'BUNS' },
+  ]);
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(3);
+
+  await page.fill('#ycg_q', 'LR');
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(2);
+  await page.fill('#ycg_q', 'h200');               // by number, and case does not matter
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(1);
+  await expect(page.locator('#ycgridwrap .ycgtile').first()).toContainText('H20045');
+
+  // a filtered tile still opens its own trailer
+  await page.locator('#ycgridwrap .ycgtile').first().click();
+  await expect(page.locator('#ycm_title')).toContainText('H20045');
+  await page.click('.ycmx');
+
+  await page.fill('#ycg_q', 'ZZZ');
+  await expect(page.locator('#ycgridwrap .ycgnone')).toBeVisible();
+  await page.fill('#ycg_q', '');
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(3);
+});
+
+test('a long list is cut short until See more is tapped', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page, Array.from({length:14}, (_, i) =>
+    ({ trailer:'LR' + (7500+i), product:'FRIES' })));
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(8);
+  const more = page.locator('#ycg_more');
+  await expect(more).toBeVisible();
+  await expect(more).toHaveText('See more (6)');
+  await more.click();
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(14);
+  await expect(more).toBeHidden();
+});
+
+test('the rows are headed Trailers', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  await expect(page.locator('#sec-ycgrid .ycgh')).toHaveText('Trailers');
+});
+
+test('an added trailer left blank never becomes a tile', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  await page.locator('#ycgridwrap .ycgtile.add').click();
+  await expect(page.locator('#ycmodal')).toBeVisible();
+  await page.click('.ycmx');                       // opened, nothing typed, closed
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(3);
+  await expect(page.locator('#ycgridwrap')).not.toContainText('No product');
+});
+
+test('the officer can remove a trailer they added, but not one the office sent',
+  async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  // one from the office: no way to remove it
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await expect(page.locator('.ycmdel')).toHaveCount(0);
+  await page.click('.ycmx');
+
+  // one the officer added: removable
+  await page.locator('#ycgridwrap .ycgtile.add').click();
+  await page.fill('#ycm_trailer', 'H30480');
+  await page.click('#ycm_save');
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(4);
+
+  await page.locator('#ycgridwrap .ycgtile').nth(3).click();
+  await expect(page.locator('.ycmdel')).toBeVisible();
+  page.once('dialog', d => d.accept());
+  await page.click('.ycmdel');
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(3);
+});
+
+test('a trailer number split on its space is mended on an old list', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page, [{ trailer:'LR', product:'7540' }, { trailer:'H20045', product:'FRIES' }]);
+  const tiles = page.locator('#ycgridwrap .ycgtile:not(.add)');
+  await expect(tiles.nth(0)).toContainText('LR7540');
+  await expect(tiles.nth(0)).toContainText('No product');
+});
+
+test('each check keeps its own trailers, and does not lend them to another',
+  async ({ page }) => {
+  await asOfficer(page);
+  const slots = await page.evaluate(() => {
+    const s = ycShiftSlots();
+    const date = ycSlotDate(s[2]);
+    DB.yardslots = [{ id:date+'_'+s[2], date, slot:s[2], loadedAt:new Date().toISOString(),
+      count:2, trailers:[{trailer:'AAA111',product:'FRIES'},{trailer:'BBB222',product:'BUNS'}] }];
+    ycSlotsPersist(); DB.yardchecks = []; ycPersistAll();
+    go('yard');
+    return { a: s[2], b: s[3] };
+  });
+
+  // work the released check
+  await page.evaluate((s) => ycOpenSlot(s), slots.a);
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(2);
+  await fill(page, 0, OK);
+  await expect(page.locator('#ycg_count')).toContainText('1 of 2 checked');
+
+  // a different check, with nothing released, starts empty
+  await page.evaluate((s) => ycOpenSlot(s), slots.b);
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(0);
+  await expect(page.locator('#ycgridwrap')).not.toContainText('AAA111');
+
+  // and the first check still has its own work
+  await page.evaluate((s) => ycOpenSlot(s), slots.a);
+  await expect(page.locator('#ycgridwrap .ycgtile:not(.add)')).toHaveCount(2);
+  await expect(page.locator('#ycg_count')).toContainText('1 of 2 checked');
+  await expect(page.locator('#ycgridwrap .ycgtile').nth(0)).toHaveClass(/done/);
 });

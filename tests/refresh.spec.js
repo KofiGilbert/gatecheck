@@ -54,14 +54,14 @@ test('refreshing inside a yard check comes back to the same slot', async ({ page
   await asOfficer(page);
   const slot = await page.evaluate(() => { go('yard'); const s = ycShiftSlots()[2];
     ycOpenSlot(s); return s; });
-  expect(await page.evaluate(() => location.hash)).toBe('#yardsheet/' + slot);
+  // a check still to be done opens as tabs
+  expect(await page.evaluate(() => location.hash)).toBe('#ycgrid/' + slot);
 
   await page.reload();
-  await expect(page.locator('#sec-yardsheet')).toBeVisible();
+  await expect(page.locator('#sec-ycgrid')).toBeVisible();
   expect(await page.evaluate(() => YC.time)).toBe(slot);
-  expect(await page.evaluate(() => location.hash)).toBe('#yardsheet/' + slot);
-  // the sheet shows that slot's time, not whatever was drafted last
-  await expect(page.locator('#yc_time')).toContainText(slot.slice(0,2));
+  expect(await page.evaluate(() => location.hash)).toBe('#ycgrid/' + slot);
+  await expect(page.locator('#ycg_slot')).toContainText(slot.slice(0,2));
 });
 
 test('a saved check reopens read only after a refresh', async ({ page }) => {
@@ -305,4 +305,92 @@ test('editing a figure moves the total under it', async ({ page }) => {
   await page.locator('#dayview table.dg td input').nth(10).fill('2000');   // Open Cases
   await page.click('#dv_save');
   await expect(page.locator('#dayview table.prn tr.tot')).toContainText('2,000');
+});
+
+/* ---- officers read the same schedule the office publishes ---- */
+
+test('an officer opening the schedule lands straight on today', async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate(() => {
+    const t = isoToday(), y = anShiftDate(t, -1);
+    const mk = (date, order) => ({ date, order, zone:'F', detail:'DROP', time:'700',
+      in_yard:'N', vendor:'MCCAIN CA: CARBERRY', carrier:'DAY&ROSS', contact:'',
+      cases:1134, pallets:21 });
+    DB.orders = [mk(y,'1'), mk(t,'2'), mk(t,'3')];
+    persist(); go('sched');
+  });
+  // no bars to pick through: the sheet is open on today
+  await expect(page.locator('#sched .daybar')).toHaveCount(0);
+  await expect(page.locator('#dayview')).toBeVisible();
+  await expect(page.locator('#dayview table.prn')).toBeVisible();
+  await expect(page.locator('#dayview table.prn tr.tot')).toContainText('2 orders');
+  const today = await page.evaluate(() => isoToday());
+  expect(await page.evaluate(() => location.hash)).toBe('#sched/' + today + '/preview');
+  // yesterday is still on file, just not the officer's business
+  expect(await page.evaluate(() => DB.orders.length)).toBe(3);
+});
+
+test('with nothing booked today the officer is told so', async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate(() => {
+    DB.orders = [{ date: anShiftDate(isoToday(), -1), order:'1', zone:'F', detail:'DROP',
+      time:'700', vendor:'V', carrier:'C', cases:1, pallets:1 }];
+    persist(); go('sched');
+  });
+  await expect(page.locator('#dayview')).toBeHidden();
+  // the message stands on the page; no card, no heading
+  await expect(page.locator('#schednone')).toHaveText('Nothing scheduled for today.');
+  await expect(page.locator('#schedcard')).toBeHidden();
+  await expect(page.locator('#sched .daybar')).toHaveCount(0);
+});
+
+test('an empty database says the schedule is not loaded, not that today is empty',
+  async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate(() => { DB.orders = []; persist(); go('sched'); });
+  await expect(page.locator('#schednone')).toHaveText('The schedule has not been loaded yet.');
+  await expect(page.locator('#schedcard')).toBeHidden();
+});
+
+test('closing today’s sheet takes the officer home, not to a list', async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate(() => {
+    DB.orders = [{ date: isoToday(), order:'1', zone:'F', detail:'DROP', time:'700',
+      vendor:'V', carrier:'C', cases:1, pallets:1 }];
+    persist(); go('sched');
+  });
+  await expect(page.locator('#dayview')).toBeVisible();
+  await page.click('#dv_back');
+  await expect(page.locator('#dayview')).toBeHidden();
+  await expect(page.locator('#sec-home')).toBeVisible();
+});
+
+test('the office still gets every day, with the pencil', async ({ page }) => {
+  await asOffice(page, [ORDER]);
+  await withOrders(page);
+  await page.evaluate(() => go('sched'));
+  await expect(page.locator('#sched .daybar')).toHaveCount(1);
+  await expect(page.locator('#sched [aria-label^="Preview"]')).toHaveCount(1);
+  await expect(page.locator('#sched [aria-label^="Edit"]')).toHaveCount(1);
+});
+
+test('an officer cannot reach the edit sheet, even by address', async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate((o) => { DB.orders = [o]; persist(); }, ORDER);
+  await page.goto('/index.html#sched/2026-08-16/edit');   // an older day, by hand
+  await expect(page.locator('#dayview')).toBeVisible();
+  await expect(page.locator('#dayview table.prn')).toBeVisible();
+  await expect(page.locator('#dayview table.dg')).toHaveCount(0);   // dropped to preview
+  await page.evaluate(() => dayViewMode('edit'));
+  await expect(page.locator('#dayview table.dg')).toHaveCount(0);
+});
+
+test('loading and clearing the schedule stay with the office', async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate((o) => { DB.orders = [o]; persist(); go('sched'); }, ORDER);
+  await page.evaluate(() => { if(!DAYVIEW) return; dayViewClose(); });
+  await page.evaluate(() => go('sched'));
+  await expect(page.locator('#sec-sched button:has-text("Upload spreadsheet")')).toBeHidden();
+  await expect(page.locator('#schedcard')).toBeHidden();      // nothing today
+  await expect(page.locator('#sec-sched button:has-text("Clear all schedule data")')).toBeHidden();
 });

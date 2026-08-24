@@ -145,7 +145,7 @@ test('with nothing filled in it shows the blank form, not a message', async ({ p
   await expect(table).toBeVisible();
   await expect(page.locator('#logrows table tr')).toHaveCount(15);   // header + 14 blank rows
   const heads = page.locator('#logrows table th');
-  await expect(heads).toHaveCount(9);
+  await expect(heads).toHaveCount(10);          // nine columns plus the remove gutter
   await expect(heads.nth(0)).toHaveText('Time In');
   await expect(heads.nth(2)).toHaveText('Out Trailer Number');
   await expect(heads.nth(5)).toHaveText('Trailer Number');
@@ -275,9 +275,11 @@ test('an evening officer closes a row the morning officer opened', async ({ page
   expect(after.officerName).toBe('Kofi Mensah');    // who took it in
   expect(after.outByName).toBe('Vincent Adjei');    // who marked it out
   expect(after.outBy).toBe('evening@npg.com');
-  // and both names are on the sheet
-  await expect(page.locator('#logrows')).toContainText('Kofi Mensah');
-  await expect(page.locator('#logrows')).toContainText('Vincent Adjei');
+  // both hands are on the record; neither is printed across the sheet
+  await expect(page.locator('#logrows')).not.toContainText('Kofi Mensah');
+  await expect(page.locator('#logrows')).not.toContainText('Vincent Adjei');
+  await expect(page.locator('#logrows td.lgout').first())
+    .toHaveAttribute('title', /Vincent Adjei/);
 });
 
 test('clearing a time out clears who marked it', async ({ page }) => {
@@ -348,9 +350,8 @@ test('the two blocks are labelled, and the shift on duty is named', async ({ pag
   const bands = page.locator('#logrows tr.logband');
   await expect(bands).toHaveCount(2);
   await expect(bands.nth(0)).toContainText('Left open by the shift before');
-  await expect(bands.nth(1)).toContainText('6pm - 6am');
-  await expect(bands.nth(1)).toContainText('Vincent Adjei');
-  // the header still says whose shift it is
+  await expect(bands.nth(1)).toContainText('This shift');
+  // the shift and the guard are named once, in the header
   await expect(page.locator('#log_shift')).toHaveText('6pm - 6am');
   await expect(page.locator('#log_guard')).toHaveText('Vincent Adjei');
   // and the carried row is marked out
@@ -365,8 +366,8 @@ test('with nothing left open the sheet is just this shift', async ({ page }) => 
     DB.logs = [{ id:'mine', date:isoToday(), po:'1', timein:'1830', timeout:'' }];
     go('log');
   });
-  await expect(page.locator('#logrows tr.logband')).toHaveCount(1);
-  await expect(page.locator('#logrows tr.logband')).toContainText('This shift');
+  // nothing carried over, so there is no band to tell two blocks apart
+  await expect(page.locator('#logrows tr.logband')).toHaveCount(0);
   await expect(page.locator('#logrows tr.carried')).toHaveCount(0);
 });
 
@@ -391,4 +392,197 @@ test('any officer may close any row, whoever opened it', async ({ page }) => {
     return !!input && !input.disabled && !input.readOnly;
   });
   expect(saved, 'the time out must be editable by whoever is on duty').toBe(true);
+});
+
+/* ---- the truck that comes in with nothing and leaves with a trailer ---- */
+
+test('an officer can write a row by hand, end to end', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  // write on the next blank line, the way you would on the paper form
+  await page.locator('#logrows tr.blank input[data-k="carrier"]').first().fill('POPE');
+
+  const row = page.locator('#logrows tr.hand');
+  await expect(row).toHaveCount(1);
+  // every column on this row is the officer's to fill
+  const cells = row.locator('input');
+  await expect(cells).toHaveCount(9);
+
+  await row.locator('input[data-k="timein"]').fill('2210');
+  await row.locator('input[data-k="tractor"]').fill('T-4412');
+  await row.locator('input[data-k="trailer"]').fill('N/A');   // came in with none
+  await row.locator('input[data-k="outtrailer"]').fill('LR7524');
+  await row.locator('input[data-k="timeout"]').fill('2245');
+
+  const r = await page.evaluate(() => DB.logs[0]);
+  expect(r.manual).toBe(true);
+  expect(r.timein).toBe('2210');
+  expect(r.carrier).toBe('POPE');
+  expect(r.tractor).toBe('T-4412');
+  expect(r.trailer).toBe('N/A');
+  expect(r.outtrailer).toBe('LR7524');
+  expect(r.timeout).toBe('2245');
+  expect(r.outBy).toBe('kofi@martinbrower.com');   // who closed it is still recorded
+});
+
+test('a row from a seal form keeps its own facts', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => {
+    DB.logs = [];
+    logAdd({ datein: todayStr(), po:'8036365', timein:'0700', carrier:'DAY&ROSS',
+             tractor:'T1', trailer:'LR7524' });
+    go('log');
+  });
+  const row = page.locator('#logrows table tr').filter({ hasText:'DAY&ROSS' });
+  await expect(row).toHaveCount(1);
+  await expect(row).not.toHaveClass(/hand/);
+  // the carrier, tractor and trailer came off a signed form: not typed over here
+  await expect(row.locator('td.logro')).toHaveCount(4);
+  await expect(row.locator('td.logdel button')).toHaveCount(0);   // nor removed
+});
+
+test('a hand row can be removed, a form row cannot', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await page.locator('#logrows tr.blank input[data-k="carrier"]').first().fill('POPE');
+  await expect(page.locator('#logrows tr.hand')).toHaveCount(1);
+  page.once('dialog', d => d.accept());
+  await page.locator('#logrows td.logdel button').click();
+  await expect(page.locator('#logrows tr.hand')).toHaveCount(0);
+  expect(await page.evaluate(() => DB.logs.length)).toBe(0);
+});
+
+test('typing into the sheet is never interrupted by a redraw', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await page.locator('#logrows tr.blank input[data-k="carrier"]').first().fill('X');
+  const carrier = page.locator('#logrows tr.hand input[data-k="carrier"]');
+  await carrier.fill('');
+  await carrier.click();
+  await page.keyboard.type('WES');
+  // a snapshot landing mid-word must not take the cursor away
+  await page.evaluate(() => {
+    logPersist();
+    const typing = document.activeElement && document.activeElement.closest('#logrows');
+    if(!typing) renderLog();
+  });
+  await page.keyboard.type('T');
+  await expect(carrier).toBeFocused();
+  await expect(carrier).toHaveValue('WEST');
+  expect(await page.evaluate(() => DB.logs[0].carrier)).toBe('WEST');
+});
+
+test('the shift band does not repeat what the header already says', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => {
+    sset('gc_offname_kofi@martinbrower.com', 'Kobe');
+    DB.logs = [];
+    go('log');
+  });
+  const bands = page.locator('#logrows tr.logband');
+  for (let i = 0; i < await bands.count(); i++) {
+    const t = await bands.nth(i).innerText();
+    expect(t).not.toContain('KOBE');
+    expect(t).not.toMatch(/6AM|6PM/);
+  }
+  await expect(page.locator('#log_shift')).toHaveText(/6am - 6pm|6pm - 6am/);
+  await expect(page.locator('#log_guard')).toHaveText('Kobe');
+});
+
+test('writing on a blank line turns it into a row, and keeps the cursor there',
+  async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await expect(page.locator('#logrows tr.hand')).toHaveCount(0);
+
+  const cell = page.locator('#logrows tr.blank input[data-k="carrier"]').first();
+  await cell.click();
+  await page.keyboard.type('WEST');
+
+  const row = page.locator('#logrows tr.hand');
+  await expect(row).toHaveCount(1);
+  const live = row.locator('input[data-k="carrier"]');
+  await expect(live).toHaveValue('WEST');
+  await expect(live).toBeFocused();               // never had to click back in
+  expect(await page.evaluate(() => DB.logs[0].carrier)).toBe('WEST');
+  expect(await page.evaluate(() => DB.logs[0].timein)).toMatch(/^\d{4}$/);
+});
+
+test('a time typed on a blank line is the time that is kept', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await page.locator('#logrows tr.blank input[data-k="timein"]').first().fill('0415');
+  await expect(page.locator('#logrows tr.hand')).toHaveCount(1);
+  expect(await page.evaluate(() => DB.logs[0].timein)).toBe('0415');
+});
+
+test('there is no Add a row button: the blank lines are the button', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await expect(page.locator('#sec-log button:has-text("Add a row")')).toHaveCount(0);
+  expect(await page.locator('#logrows tr.blank').count()).toBeGreaterThan(5);
+});
+
+/* ---- the time is stamped, and names are offered ---- */
+
+test('clicking into a time box writes the time', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await page.locator('#logrows tr.blank input[data-k="timein"]').first().click();
+  const t = page.locator('#logrows tr.hand input[data-k="timein"]');
+  await expect(t).toHaveValue(/^\d{4}$/);
+  expect(await page.evaluate(() => DB.logs[0].timein)).toMatch(/^\d{4}$/);
+
+  // and the time out the same way, on the row that now exists
+  const out = page.locator('#logrows tr.hand input[data-k="timeout"]');
+  await out.click();
+  await expect(out).toHaveValue(/^\d{4}$/);
+});
+
+test('a time already written is never stamped over', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  await page.locator('#logrows tr.blank input[data-k="timein"]').first().fill('0415');
+  const t = page.locator('#logrows tr.hand input[data-k="timein"]');
+  await expect(t).toHaveValue('0415');
+  await t.click();
+  await expect(t).toHaveValue('0415');            // the click did not restamp it
+});
+
+test('carriers and vendors are offered from the schedule the office uploaded',
+  async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => {
+    DB.orders = [
+      { date:isoToday(), order:'1', carrier:'DAY&ROSS', vendor:'MCCAIN CA: CARBERRY' },
+      { date:isoToday(), order:'2', carrier:'ARNOLD BROS', vendor:'PACTIV LLC' },
+      { date:isoToday(), order:'3', carrier:'DAY&ROSS', vendor:'PACTIV LLC' },
+    ];
+    DB.logs = []; go('log');
+  });
+  const carriers = await page.locator('#dl_carrier option').evaluateAll(
+    els => els.map(e => e.value));
+  expect(carriers).toEqual(['ARNOLD BROS', 'DAY&ROSS']);      // sorted, no repeats
+  const vendors = await page.locator('#dl_vendor option').evaluateAll(
+    els => els.map(e => e.value));
+  expect(vendors).toEqual(['MCCAIN CA: CARBERRY', 'PACTIV LLC']);
+
+  // the log's carrier box draws on them, and still takes free text
+  const cell = page.locator('#logrows tr.blank input[data-k="carrier"]').first();
+  await expect(cell).toHaveAttribute('list', 'dl_carrier');
+  await expect(cell).toHaveAttribute('aria-autocomplete', 'both');
+  await cell.fill('SOME CARRIER NOT ON THE LIST');
+  expect(await page.evaluate(() => DB.logs[0].carrier)).toBe('SOME CARRIER NOT ON THE LIST');
+});
+
+test('the seal form is offered the same names', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => {
+    DB.orders = [{ date:isoToday(), order:'1', carrier:'GENEVA', vendor:'MULLINS FOOD PRODUCTS' }];
+    renderSched(); go('form');
+  });
+  await expect(page.locator('#f_carrier')).toHaveAttribute('list', 'dl_carrier');
+  await expect(page.locator('#f_vendor')).toHaveAttribute('list', 'dl_vendor');
+  const v = await page.locator('#dl_vendor option').evaluateAll(els => els.map(e => e.value));
+  expect(v).toContain('MULLINS FOOD PRODUCTS');
 });

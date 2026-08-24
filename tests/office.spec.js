@@ -47,7 +47,7 @@ test('the office releases a block and the officer is told', async ({ page }) => 
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="block"]');
   await expect(page.locator('#sec-block')).toBeVisible();
-  const slot = await page.evaluate(() => $('bk_slot').value);
+  const slot = await page.evaluate(() => { const s = blockNext(); blockPick(s); return s; });
   await page.fill('#bk_list', 'LR7524 FRIES\nR25106 FRIES\nH50117 CHICKEN');
   await page.click('button:has-text("Release to the yard")');
   await expect(page.locator('#toast')).toContainText('3 trailers');
@@ -55,7 +55,8 @@ test('the office releases a block and the officer is told', async ({ page }) => 
   expect(rec.count).toBe(3);
   expect(rec.trailers[0]).toEqual({ trailer:'LR7524', product:'FRIES' });
   expect(rec.loadedBy).toBe('office@martinbrower.com');
-  await expect(page.locator('#bk_hist')).toContainText('3 trailers');
+  await expect(page.locator('#bkboard .slot').filter({ hasText:'Released' }).first())
+    .toContainText('3 trailers');
 });
 
 test('a released block turns the officer’s card Ready', async ({ page }) => {
@@ -82,13 +83,15 @@ test('the released trailers are already on the officer’s sheet', async ({ page
     renderYardSlots();
   });
   await page.click('#ycslots .slot >> nth=2');
-  const rows = page.locator('#ycrows table tr');
-  await expect(rows.nth(1).locator('input').first()).toHaveValue('LR7524');
-  await expect(rows.nth(2).locator('input').first()).toHaveValue('R25106');
-  await expect(rows.nth(3).locator('input').first()).toHaveValue('H50117');
+  const tiles = page.locator('#ycgridwrap .ycgtile:not(.add)');
+  await expect(tiles).toHaveCount(3);
+  await expect(tiles.nth(0)).toContainText('LR7524');
+  await expect(tiles.nth(1)).toContainText('R25106');
+  await expect(tiles.nth(2)).toContainText('H50117');
   // products came across too, temps are the officer's to fill
-  await expect(rows.nth(1).locator('input').nth(1)).toHaveValue('FRIES');
-  await expect(rows.nth(1).locator('input').nth(3)).toHaveValue('');
+  await expect(tiles.nth(0)).toContainText('FRIES');
+  await tiles.nth(0).click();
+  await expect(page.locator('#ycm_temp')).toHaveValue('');
 });
 
 test('work already typed is never overwritten by a block', async ({ page }) => {
@@ -104,7 +107,8 @@ test('work already typed is never overwritten by a block', async ({ page }) => {
   await page.evaluate(() => { YC.rows[0].temp = '-9.9'; ycSaveDraft(); });
   await page.goBack();
   await page.click('#ycslots .slot >> nth=2');          // same slot again
-  await expect(page.locator('#ycrows table tr').nth(1).locator('input').nth(3)).toHaveValue('-9.9');
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await expect(page.locator('#ycm_temp')).toHaveValue('-9.9');
 });
 
 test('the trailer list parses trailer and product per line', async ({ page }) => {
@@ -222,7 +226,8 @@ test('officers cannot load the schedule at all', async ({ page }) => {
   await page.click('#sec-home .tile[onclick*="sched"]');
   await expect(page.locator('button:has-text("Upload spreadsheet")')).toBeHidden();
   await expect(page.locator('button:has-text("Clear all schedule data")')).toBeHidden();
-  await expect(page.locator('#sched')).toBeVisible();      // but they still read it
+  // they still read it: today's sheet, or a plain word that there is nothing
+  await expect(page.locator('#schednone')).toBeVisible();
 });
 
 /* ---- deep links ---- */

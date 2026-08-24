@@ -13,8 +13,11 @@ service cloud.firestore {
     function signedIn()  { return request.auth != null; }
     function email()     { return request.auth.token.email; }
     function account()   { return get(/databases/$(database)/documents/officers/$(email())).data; }
+    // .get('role', 'officer') rather than .role: an account document that exists
+    // without a role field made this expression error, and an erroring rule is
+    // a denied rule - which locked the officer out of their own gate log.
     function role()      { return signedIn() && exists(/databases/$(database)/documents/officers/$(email()))
-                             ? account().role : 'officer'; }
+                             ? account().get('role', 'officer') : 'officer'; }
     function isOffice()  { return signedIn() && role() == 'office'; }
     function isOfficer() { return signedIn() && role() != 'office'; }
 
@@ -54,15 +57,28 @@ service cloud.firestore {
     match /logs/{id} {
       allow read:   if signedIn();
       allow create: if isOfficer();
+      // A row a form created is that form's record: only the closing fields
+      // move. A row the officer wrote by hand - the truck that arrives with
+      // nothing and leaves with a trailer - is theirs to fill in and remove.
       allow update: if isOfficer()
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                         .hasOnly(['timeout','outtrailer','outBy','outByName','outAt'])
+                    && (
+                      request.resource.data.diff(resource.data).affectedKeys()
+                        .hasOnly(['timeout','outtrailer','outBy','outByName','outAt'])
+                      || (resource.data.manual == true
+                          && request.resource.data.manual == true
+                          && request.resource.data.diff(resource.data).affectedKeys()
+                               .hasOnly(['timein','timeout','carrier','tractor','trailer',
+                                         'outtrailer','plate','state','notes',
+                                         'outBy','outByName','outAt']))
+                    )
                     // the closing officer is stamped by the app, not chosen
                     && (!request.resource.data.diff(resource.data).affectedKeys()
                           .hasAny(['outBy'])
                         || request.resource.data.outBy == ''
                         || request.resource.data.outBy == email());
-      allow delete: if isOffice();
+      allow delete: if isOffice()
+                    || (isOfficer() && resource.data.manual == true
+                        && resource.data.officer == email());
     }
 
     // Account documents carry the role, so only an admin may write them.

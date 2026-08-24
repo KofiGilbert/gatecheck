@@ -1,0 +1,15 @@
+{
+  "name": "Checkpoint",
+  "short_name": "Checkpoint",
+  "description": "Yard checks, gate log and daily activity reports for NPG Security Services at Martin Brower.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2EEE6",
+  "theme_color": "#000E19",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

@@ -155,3 +155,78 @@ test.describe('layout, keyboard and regressions', () => {
     expect(parseFloat(vis), 'card must still be visible with reduced motion').toBe(1);
   });
 });
+
+/* ---- the rules in UI.md, enforced ---- */
+
+test('there is one primary button colour, and it is not a state colour', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  const c = await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.className = 'btn'; b.textContent = 'x';
+    document.body.appendChild(b);
+    const bg = getComputedStyle(b).backgroundColor;
+    b.remove();
+    const v = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    return { bg, blue: v('--blue'), green: v('--green'), red: v('--red') };
+  });
+  const hex = (s) => { const m = s.match(/\d+/g); return m
+    ? '#' + m.slice(0,3).map(n => (+n).toString(16).padStart(2,'0')).join('') : s; };
+  expect(hex(c.bg)).toBe(c.blue.toLowerCase());
+  expect(hex(c.bg)).not.toBe(c.green.toLowerCase());
+  expect(hex(c.bg)).not.toBe(c.red.toLowerCase());
+  // and no green button survives anywhere
+  expect(await page.locator('.btn.grn').count()).toBe(0);
+});
+
+test('every button reacts to a hover, a press and a keyboard focus', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  const rules = await page.evaluate(() => {
+    const want = ['.btn:hover', '.btn:active', '.btn:focus-visible',
+                  '.btn.sec:hover', '.btn.red:hover'];
+    const all = [];
+    for (const sheet of document.styleSheets) {
+      let list; try { list = sheet.cssRules; } catch (e) { continue; }
+      for (const r of list) if (r.selectorText) all.push(r.selectorText);
+    }
+    return want.filter(w => !all.some(s => s.split(',').map(x => x.trim()).includes(w)));
+  });
+  expect(rules, 'these button states have no rule').toEqual([]);
+});
+
+test('a disabled button says why, rather than sitting dead', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => {
+    sset('gc_offname_kofi@martinbrower.com','Kobe');
+    darBuild(); darOver = function(){ return false; }; go('dar');
+  });
+  const b = page.locator('#dar_submit');
+  await expect(b).toBeDisabled();
+  expect(await b.evaluate(e => getComputedStyle(e).cursor)).toBe('not-allowed');
+  // the reason lives beside the button, not inside its label
+  await expect(page.locator('#dar_why')).toBeVisible();
+  expect((await b.innerText()).length, 'the label is a label, not a sentence')
+    .toBeLessThan(24);
+});
+
+test('a primary button is full width wherever it appears', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate(() => {
+    const slot = ycShiftSlots()[2], date = ycSlotDate(slot);
+    DB.yardslots = [{ id:date+'_'+slot, date, slot, loadedAt:new Date().toISOString(),
+      count:1, trailers:[{trailer:'AAA111',product:'FRIES'}] }];
+    ycSlotsPersist(); DB.yardchecks = []; go('yard'); ycOpenSlot(slot);
+  });
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await page.selectOption('#ycm_set', '-10');
+  await page.fill('#ycm_temp', '-9.0');
+  await page.selectOption('#ycm_fuel', 'FULL');
+  await page.selectOption('#ycm_intact', 'Y');
+  await page.selectOption('#ycm_door', '20');
+  await page.click('#ycm_save');
+
+  const btn = await page.locator('#ycg_review').boundingBox();
+  const host = await page.locator('#ycgridwrap').boundingBox();
+  expect(Math.round(btn.width), 'the review button is not the app’s button width')
+    .toBe(Math.round(host.width));
+});

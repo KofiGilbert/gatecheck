@@ -324,7 +324,7 @@ test('the officer is told when a check becomes available', async ({ page }) => {
   await expect(toast).toBeEmpty();
 });
 
-test('the Yard tile carries a badge of what needs doing', async ({ page }) => {
+test('a waiting yard check is announced in the header, not on the tile', async ({ page }) => {
   await H.gotoApp(page, { user: { email: 'kofi@martinbrower.com' } });
   await page.evaluate(() => {
     DB.yardslots = [
@@ -333,9 +333,50 @@ test('the Yard tile carries a badge of what needs doing', async ({ page }) => {
     ];
     ycUpdateBadge();
   });
-  const badge = page.locator('#yardbadge');
-  await expect(badge).toBeVisible();
-  await expect(badge).toHaveText('2');
+  const bell = page.locator('#notif');
+  await expect(bell).toBeVisible();
+  await expect(page.locator('#notifn')).toHaveText('2');
+  await expect(bell).toHaveAttribute('aria-label', /2 yard checks are ready/);
+  // the count is off the tile
+  await expect(page.locator('#sec-home .tile', { hasText: 'Yard Check' })).not.toContainText('2');
+  await expect(page.locator('#yardbadge')).toHaveCount(0);
+
+  // it says what is waiting; it does not carry the officer off
+  await bell.click();
+  const panel = page.locator('#notifpanel');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('#sec-home')).toBeVisible();      // still where they were
+  await expect(panel.locator('.npitem')).toHaveCount(2);
+  await expect(panel).toContainText('Yard checks waiting');
+
+  // going there is a second, deliberate tap
+  await panel.locator('.npitem').first().click();
+  await expect(panel).toBeHidden();
+  await expect(page.locator('#sec-home')).toBeHidden();
+});
+
+test('the message closes on Escape and on a tap outside', async ({ page }) => {
+  await H.gotoApp(page, { user: { email: 'kofi@martinbrower.com' } });
+  await page.evaluate(() => {
+    DB.yardslots = [{ date: ycSlotDate(ycShiftSlots()[1]), slot: ycShiftSlots()[1],
+                      loadedAt: new Date().toISOString() }];
+    ycUpdateBadge();
+  });
+  await page.click('#notif');
+  await expect(page.locator('#notifpanel')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#notifpanel')).toBeHidden();
+
+  await page.click('#notif');
+  await expect(page.locator('#notifpanel')).toBeVisible();
+  await page.mouse.click(200, 600);
+  await expect(page.locator('#notifpanel')).toBeHidden();
+});
+
+test('with nothing waiting there is no bell at all', async ({ page }) => {
+  await H.gotoApp(page, { user: { email: 'kofi@martinbrower.com' } });
+  await page.evaluate(() => { DB.yardslots = []; DB.yardchecks = []; ycUpdateBadge(); });
+  await expect(page.locator('#notif')).toBeHidden();
 });
 
 test('an officer is never blocked from starting a check', async ({ page }) => {
@@ -646,7 +687,7 @@ test('a completed card opens the check that was saved', async ({ page }) => {
   await expect(rows).toHaveCount(3);                 // header + 2 recorded rows
   await expect(rows.nth(1)).toContainText('57729');
   await expect(rows.nth(1)).toContainText('-8.5');
-  await expect(rows.nth(1)).toContainText('Reported to DC');
+  await expect(rows.nth(1)).toContainText('Escalate');
   await expect(rows.nth(2)).toContainText('LR7654');
   // the officer and time it was completed
   await expect(page.locator('#yc_name')).toHaveText('Vincent Adjei');
@@ -691,6 +732,6 @@ test('viewing a saved check leaves the unfinished draft alone', async ({ page })
 test('an escalation on a saved check still reads as one', async ({ page }) => {
   await withSavedCheck(page);
   await page.click('#ycslots .slot >> nth=0');
-  await expect(page.locator('#ycrows table tr').nth(1)).toContainText('ESCALATE');
+  await expect(page.locator('#ycrows table tr').nth(1)).toContainText('Escalate');
   await expect(page.locator('#ycrows table tr').nth(1)).toHaveClass(/esc/);
 });

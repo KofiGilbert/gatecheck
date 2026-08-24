@@ -91,6 +91,8 @@ function cloudInit(){
       CLOUD.user = u;
       if(u){
         CLOUD.ready = true;
+        /* so the next refresh does not flash the login screen at them */
+        sset('gc_wasin', '1');
         /* apply the role we saw last time so there is no flash, then let the
            account document confirm or correct it */
         setRole(sget('gc_role_'+u.email) || 'officer');
@@ -101,6 +103,7 @@ function cloudInit(){
         startSync();
       } else {
         CLOUD.ready = false;
+        sset('gc_wasin', '');
         stopSync();
         var _w2=$('whoami'); if(_w2) _w2.textContent = '';
         var _s2=$('signout'); if(_s2) _s2.style.display = 'none';
@@ -163,8 +166,13 @@ function logCloudSet(r){
   clearTimeout(_logTimers[r.id]);
   _logTimers[r.id] = setTimeout(function(){
     CLOUD.db.collection('logs').doc(r.id)
-      .set({ timeout:r.timeout||'', outtrailer:r.outtrailer||'',
-             outBy:r.outBy||'', outByName:r.outByName||'', outAt:r.outAt||'' }, {merge:true})
+      .set(r.manual
+        ? { timein:r.timein||'', timeout:r.timeout||'', carrier:r.carrier||'',
+            tractor:r.tractor||'', trailer:r.trailer||'', outtrailer:r.outtrailer||'',
+            plate:r.plate||'', state:r.state||'', notes:r.notes||'',
+            outBy:r.outBy||'', outByName:r.outByName||'', outAt:r.outAt||'' }
+        : { timeout:r.timeout||'', outtrailer:r.outtrailer||'',
+            outBy:r.outBy||'', outByName:r.outByName||'', outAt:r.outAt||'' }, {merge:true})
       .catch(function(e){ toast('Log not saved: '+e.message); });
   }, 700);
 }
@@ -186,7 +194,11 @@ function startSync(){
     /* rows written before the gate log stored ISO come back in the old form */
     DB.logs = logMigrate(snap.docs.map(function(d){ return d.data(); }));
     if(typeof logPersist==='function'){ logPersist();
-      if($('sec-log') && $('sec-log').classList.contains('on')) renderLog(); }
+      /* never redraw the sheet out from under a cursor: the snapshot arrives
+         while the officer is still typing into the row that caused it */
+      var typing = document.activeElement && document.activeElement.closest
+        && document.activeElement.closest('#logrows');
+      if(!typing && $('sec-log') && $('sec-log').classList.contains('on')) renderLog(); }
   }, function(e){}));
   /* the receiving office writes one record per slot when it loads the trailer block */
   CLOUD.subs.push(db.collection('yardslots').orderBy('date','desc').limit(120).onSnapshot(function(snap){
@@ -269,6 +281,11 @@ publishDay = function(date, rows){
     b.commit();
   }
 };
+function logCloudDel(id){
+  if(!CLOUD.ready || !id) return;
+  CLOUD.db.collection('logs').doc(id).delete()
+    .catch(function(e){ toast('Row not removed: '+e.message); });
+}
 var _localClearAll = clearAll;
 clearAll = function(){
   if(!CLOUD.ready){ _localClearAll(); return; }

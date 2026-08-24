@@ -6,12 +6,15 @@ async function onForm(page) {
   await expect(page.locator('#login')).toBeHidden();
   await page.click('#sec-home .tile[onclick*="form"]');
   await expect(page.locator('#sec-form')).toBeVisible();
+  /* these tests are about the seal rules, not the paging: show every page so a
+     field can be reached wherever it now lives */
+  await page.evaluate(() => formStepsEls().forEach(el => { el.hidden = false; }));
 }
 
 test('the not-linked hint is gone', async ({ page }) => {
   await onForm(page);
-  await expect(page.locator('#formsrc')).toBeEmpty();
   await expect(page.locator('#sec-form')).not.toContainText('Not linked to an order');
+  await expect(page.locator('#sec-form')).not.toContainText('SLIDE TANDEMS');
 });
 
 /* 1. seal mismatch */
@@ -87,15 +90,37 @@ test('starting a new form clears the draft', async ({ page }) => {
 });
 
 /* 4. inline required marking */
-test('required fields are marked as the officer moves past them', async ({ page }) => {
+test('every empty field is marked the moment the form opens', async ({ page }) => {
   await onForm(page);
   const carrier = page.locator('#f_carrier');
-  await expect(carrier).not.toHaveClass(/miss/);
-  await carrier.click();
-  await page.locator('#f_driver').click();          // blur, still empty
+  // marked on arrival, not only after the officer has been past it
   await expect(carrier).toHaveClass(/miss/);
   await carrier.fill('POPE');
   await expect(carrier).not.toHaveClass(/miss/);
+  // the choices and the signature count too
+  await expect(page.locator('#c_sealtype')).toHaveClass(/miss/);
+  await expect(page.locator('#sigwrap')).toHaveClass(/miss/);
+});
+
+test('a page with something still empty is marked on its dot', async ({ page }) => {
+  await onForm(page);
+  await page.evaluate(() => { formGoStep(0); markAllMissing(); });
+  await expect(page.locator('#f_dots i').nth(0)).toHaveClass(/want/);
+});
+
+test('sending with gaps asks first, and names them', async ({ page }) => {
+  await onForm(page);
+  await page.evaluate(() => { $('f_po').value = '8055968'; formGoStep(3); });
+  await page.click('#f_next');                      // Preview
+  await expect(page.locator('#actions')).toBeVisible({ timeout: 15000 });
+  let msg = '';
+  page.once('dialog', d => { msg = d.message(); d.dismiss(); });
+  await page.click('#actions button');
+  await expect.poll(() => msg).toContain('still empty');
+  expect(msg).toContain('Carrier Name');
+  expect(msg).toContain('Driver Signature');
+  // dismissed, so nothing was filed
+  expect(await page.evaluate(() => DB.forms.length)).toBe(0);
 });
 
 test('PO is not marked missing when the driver has no PO', async ({ page }) => {
