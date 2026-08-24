@@ -2,10 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#000E19">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="assets/icon.svg">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#16436B" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0B121C" media="(prefers-color-scheme: dark)">
 <title>Checkpoint · Martin Brower</title>
 <style>
   :root{
@@ -18,7 +21,11 @@
     --ink:#000E19; --mut:#4C5763;
     --line:#DCD6CA;      /* hairline dividers */
     --bd:#7C899E;        /* control borders, 3.6:1 on the card */
-    --gold:#FFF2CC; --green:#4C6C1A; --red:#C0392B;
+    --sunk:#EAE5DA;
+  --field:#FFFFFF;
+  --press:#F1ECE2;
+  --warn:#FDF4F3;
+  --gold:#FFF2CC; --green:#4C6C1A; --red:#C0392B;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -90,7 +97,7 @@
     min-height:calc(100dvh - 62px);
     padding-bottom:max(14px,env(safe-area-inset-bottom))}
   /* square tiles: cap the grid width so 3 rows of squares still fit the screen */
-  .tiles.office{grid-template-columns:repeat(2,1fr);grid-template-rows:1fr}
+  .tiles.office{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr}
   .tiles{display:grid;gap:12px;grid-template-columns:repeat(2,1fr);
     width:100%;margin:0 auto;
     max-width:min(100%, calc((100dvh - 150px - 24px) * 2 / 3 + 12px))}
@@ -106,7 +113,7 @@
     vertical-align:middle;margin-left:6px}
   .tbadge[hidden]{display:none}
   .tile em{font-style:normal;font-size:clamp(12.5px,1.8vmin,17px);font-weight:600;color:var(--mut)}
-  .tile:active{background:#F1ECE2}
+  .tile:active{background:var(--press)}
   .tile:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
   .homestat{flex:0 0 auto;text-align:center;font-size:12.5px;color:var(--mut);line-height:1.5}
   /* wide and short (landscape iPad, desktop): three across, two down */
@@ -121,7 +128,8 @@
   section.on{display:block}
   .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
     padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(20,40,80,.06)}
-  h2{font-size:15px;margin:0 0 10px;color:var(--blue)}
+  /* --ink flips with the theme; --blue is a surface colour and does not */
+  h2{font-size:15px;margin:0 0 10px;color:var(--ink)}
   label.f{display:block;font-size:12.5px;font-weight:700;color:var(--mut);margin:10px 0 4px;
     text-transform:uppercase;letter-spacing:.4px}
   select{width:100%;padding:12px;border:1.5px solid var(--bd);border-radius:9px;font-size:16px;
@@ -131,19 +139,32 @@
     background:var(--card);color:var(--ink)}
   input:focus,textarea:focus{outline:none;border-color:var(--blue2)}
   .big-search{font-size:24px !important;text-align:center;letter-spacing:2px;font-weight:700}
+  /* One primary action colour for the whole app: Martin Brower black.
+     Green and red are reserved for what the data IS - checked, in range,
+     escalating - so a button can never be mistaken for a state. See UI.md. */
   .btn{display:inline-block;border:none;border-radius:10px;padding:13px 18px;font-size:15.5px;
-    font-weight:700;background:var(--blue);color:#fff;width:100%;margin-top:10px}
-  .btn.sec{background:#EAE5DA;color:var(--blue)}
-  .btn.grn{background:var(--green)}
+    font-weight:700;background:var(--blue);color:#fff;width:100%;margin-top:10px;
+    cursor:pointer;transition:background 130ms ease-out,transform 90ms ease-out}
+  .btn:hover{background:#16232E}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  .btn.sec{background:var(--sunk);color:var(--ink)}
+  .btn.sec:hover{filter:brightness(.95)}
+  .btn.sec:focus-visible{outline-color:var(--blue2)}
+  /* destructive, and only destructive */
   .btn.red{background:#FBE9E7;color:var(--red)}
-  .btn:disabled{opacity:.45}
+  .btn.red:hover{background:#F6DAD6}
+  .btn.red:focus-visible{outline-color:var(--red)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn:disabled:hover{background:var(--blue)}
+  .btn.sec:disabled:hover{background:#EAE5DA}
   .row2{display:flex;gap:10px}
   .row2>*{flex:1}
   .hint{font-size:12.5px;color:var(--mut);line-height:1.45;margin-top:6px}
   .pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:99px;margin-right:5px}
   .pill.live{background:#EDF7D9;color:#3F5A15}
   .pill.drop{background:#FDEBD0;color:#9C640C}
-  .pill.zone{background:#E6E1D7;color:var(--blue)}
+  .pill.zone{background:#E6E1D7;color:#000E19}
   .pill.star{background:#FFF3C4;color:#8A6D00}
   .kv{display:flex;justify-content:space-between;border-bottom:1px dashed var(--line);
     padding:7px 0;font-size:14.5px}
@@ -168,7 +189,7 @@
   .histitem .t1{font-weight:700;font-size:15px}
   .histitem .t2{font-size:12.5px;color:var(--mut)}
   .histbtns button{width:auto;padding:8px 12px;font-size:13px;margin:0 0 0 6px}
-  .schedday{font-weight:800;color:var(--blue);font-size:14px;margin:12px 0 4px}
+  .schedday{font-weight:800;color:var(--ink);font-size:14px;margin:12px 0 4px}
   .schedrow{display:flex;justify-content:space-between;font-size:13.5px;padding:6px 2px;
     border-bottom:1px solid var(--line)}
   .schedrow b{font-variant-numeric:tabular-nums}
@@ -349,6 +370,795 @@
   table.dg tr.d1 td{background:#EEF7EC}
   table.dg tr.d0 .gut,table.dg tr.d1 .gut{background:#EDF0F4}
   table.dg .dgdel{background:none;border:none;color:#C0392B;font-size:14px;padding:4px}
+  /* the sheet totals its own columns, as the printed one does, and stays in
+     view while a long day is scrolled */
+  table.dg tr.dgtot td{position:sticky;bottom:0;z-index:2;background:#EDF0F4;
+    border-top:1px solid #8C97A6;font-size:11.5px;font-weight:700;color:#1F3A5F;
+    padding:6px 7px;white-space:nowrap}
+  table.dg tr.dgtot td.num{text-align:right;font-variant-numeric:tabular-nums}
+  /* one bar per day. The bar itself opens Preview, the safe read-only view;
+     editing a published day stays behind its own icon. */
+  .dayacc{border:1px solid var(--line);border-radius:10px;background:#fff;
+    margin-bottom:10px;overflow:hidden}
+  .daybar{display:flex;align-items:stretch;background:#fff}
+  .dbmain{display:flex;align-items:center;gap:14px;flex:1 1 auto;min-width:0;
+    background:none;border:none;padding:12px 4px 12px 14px;cursor:pointer;
+    font-family:inherit;text-align:left}
+  .dbmain:hover{background:#FBF9F4}
+  .dbmain:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+  .dbtext{flex:1 1 auto;min-width:0}
+  .dbconf{display:block;font-size:9.5px;letter-spacing:.4px;color:#555}
+  .dbdate{display:block;font-size:15px;font-weight:700;color:var(--ink);margin-top:2px}
+  .dbsum{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--mut);
+    white-space:nowrap;font-variant-numeric:tabular-nums}
+  .dbicons{flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 8px 0 4px}
+  .dbico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+    background:none;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1}
+  .dbico:hover{background:#EEF3E2}
+  .dbico:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+  @media (max-width:640px){
+    .dbmain{flex-wrap:wrap;gap:4px 12px}
+    .dbsum{flex:1 1 100%;order:3}
+  }
+  /* a day opened over the whole window */
+  body.dayview-open{overflow:hidden}
+  .dayview{position:fixed;inset:0;z-index:80;background:var(--bg);
+    display:flex;flex-direction:column}
+  .dayview[hidden]{display:none}
+  /* explicit columns, the same as the app header, so the date sits in the
+     true centre of the bar whatever is beside it */
+  .dvbar{flex:0 0 auto;display:grid;grid-template-columns:1fr auto 1fr;
+    align-items:center;gap:10px;background:var(--blue);color:#fff;
+    padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top))}
+  .dvback{grid-column:1;justify-self:start;width:40px;height:40px;background:none;border:none;
+    color:#fff;font-size:20px;line-height:1;border-radius:8px;cursor:pointer}
+  .dvback:hover{background:rgba(255,255,255,.12)}
+  .dvback:focus-visible{outline:3px solid var(--lime);outline-offset:-3px}
+  .dvttl{grid-column:2;min-width:0;text-align:center}
+  .dvdate{display:block;font-size:15px;font-weight:700;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .dvright{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px}
+  .dvseg{flex:0 0 auto;display:flex;gap:2px;padding:3px;border-radius:999px;
+    background:rgba(255,255,255,.12)}
+  /* an officer reads the schedule; only the office switches to the edit sheet.
+     Scoped past .dvseg's own display, which an [hidden] or .officeonly cannot
+     out-rank on its own. */
+  body:not(.role-office) .dayview .dvseg{display:none}
+  .dvseg button{background:none;border:none;color:#D3DAE3;font-family:inherit;
+    font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:999px;cursor:pointer}
+  .dvseg button.on{background:var(--lime);color:var(--blue)}
+  .dvseg button:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  .dvact{font-family:inherit;font-size:12.5px;font-weight:700;
+    padding:9px 16px;border-radius:8px;border:none;cursor:pointer;
+    background:var(--lime);color:var(--blue)}
+  .dvact[hidden]{display:none}
+  /* the sheet IS the screen: no padding, no card, no rounded corners.
+     It meets all four edges the way a spreadsheet does, and scrolls inside itself. */
+  .dvbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+    padding:0;overflow:hidden;background:#fff}
+  .dvbody > *{width:100%;max-width:none;margin:0}
+  .dayview .prnwrap,.dayview .dgwrap{flex:1 1 auto;min-height:0;margin:0;
+    border:0;border-radius:0;max-height:none;overflow:auto;
+    -webkit-overflow-scrolling:touch}
+  .dayview table.prn,.dayview table.dg{width:100%}
+  .dvnote{flex:0 0 auto;background:var(--gold);border:0;
+    border-bottom:1px solid #E4CE86;border-radius:0;
+    padding:10px 16px;font-size:13px;color:#4A3B10}
+  @media (max-width:640px){
+    .dvseg button{padding:7px 12px;font-size:12px}
+    /* a phone has no room for arrow, date and controls on one line, so the
+       controls drop to their own row and the date stays truly centred */
+    .dvbar{grid-template-columns:1fr auto 1fr;row-gap:8px}
+    .dvback{grid-row:1}
+    .dvttl{grid-row:1}
+    .dvright{grid-column:1 / -1;grid-row:2;justify-self:center}
+  }
+  /* ---------- analytics ----------
+     A bento grid: twelve columns, tiles sized by how much a figure matters.
+     Martin Brower's own palette throughout - black, dark green, lime, beige.
+     Called .btile, not .tile: .tile is the home screen's playing card and
+     carries aspect-ratio:1, which turned a full-width strip into a square. */
+  #sec-stats{max-width:1560px;margin:0 auto;padding:16px 16px 40px}
+  .anhead{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:16px}
+  .anchips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .anchip{font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 15px;
+    border-radius:999px;border:1px solid transparent;background:#E7E2D8;color:var(--mut);
+    cursor:pointer;transition:background 140ms ease-out,color 140ms ease-out}
+  .anchip:hover{background:#DED8CC;color:var(--ink)}
+  .anchip.on{background:var(--blue);color:var(--lime)}
+  .anchip:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .anpick{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);font-weight:600}
+  .anpick input{font-family:inherit;font-size:12.5px;padding:6px 9px;border-radius:999px;
+    border:1px solid var(--bd);background:var(--field);color:var(--ink)}
+  .anwhen{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--mut)}
+
+  .bento{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+  .btile{grid-column:span 12;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;
+    box-shadow:0 1px 2px rgba(10,26,25,.04),0 6px 18px rgba(10,26,25,.045)}
+  .c4{grid-column:span 4} .c5{grid-column:span 5}
+  .c7{grid-column:span 7} .c12{grid-column:span 12}
+  .r2{grid-row:span 2}
+  .btile .th{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    margin-bottom:10px;min-height:20px}
+  .btile .th b{font-size:13.5px;font-weight:800;color:var(--ink);letter-spacing:-.1px}
+  .btile .th span{font-size:11px;color:var(--mut);font-weight:600;white-space:nowrap}
+  .btile .tf{margin-top:auto;padding-top:10px;font-size:11px;line-height:1.5;color:var(--mut)}
+  .btile .tf b{color:var(--ink)}
+  .more{font-family:inherit;font-size:11px;font-weight:700;color:var(--blue2);
+    background:none;border:none;cursor:pointer;padding:2px 0;white-space:nowrap}
+  .more:hover{text-decoration:underline}
+  .more:focus-visible{outline:2px solid var(--blue2);outline-offset:2px;border-radius:4px}
+
+  /* the hero: the one tile that answers "is the day all right?" */
+  .btile.hero{background:var(--blue);border-color:#0B1B27;color:#fff;
+    align-items:center;text-align:center}
+  .btile.hero .th{width:100%}
+  .btile.hero .th b{color:#fff} .btile.hero .th span{color:var(--lime)}
+  .btile.hero .tf{color:#AEBAC6;text-align:center;width:100%}
+  .btile.hero .tf b{color:var(--lime)}
+  .btile.alert{border-color:#E3B6AF;background:#FFF7F5}
+
+  .donut{width:150px;height:150px;margin:2px auto 4px;color:#fff;display:block}
+  .donut circle{transition:stroke-dasharray 420ms ease-out}
+  .dmid{text-anchor:middle;font-size:30px;font-weight:800;fill:#fff;
+    font-family:inherit;font-variant-numeric:tabular-nums}
+  .dsub{text-anchor:middle;font-size:11px;font-weight:600;fill:var(--lime);font-family:inherit}
+  .gauge{width:170px;height:110px;margin:4px auto 0;color:var(--ink);display:block}
+  .gauge .g-good{stroke:var(--green)} .gauge .g-due{stroke:#C9A227} .gauge .g-bad{stroke:var(--red)}
+  .gmid{text-anchor:middle;font-size:27px;font-weight:800;fill:var(--ink);
+    font-family:inherit;font-variant-numeric:tabular-nums}
+  .gsub{text-anchor:middle;font-size:10.5px;font-weight:600;fill:var(--mut);font-family:inherit}
+
+  .ankey{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:8px;
+    font-size:10.5px;font-weight:600;color:var(--mut)}
+  .btile.hero .ankey{color:#AEBAC6;justify-content:center}
+  .ankey span{display:flex;align-items:center;gap:5px}
+  .ankey b{color:var(--ink);font-weight:800}
+  .btile.hero .ankey b{color:#fff}
+  .ankey i{width:9px;height:9px;border-radius:2px;display:block;flex:0 0 auto;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.16)}
+
+  /* the strip of plain numbers */
+  .strip{display:grid;grid-template-columns:repeat(6,1fr);gap:0;padding:0;overflow:hidden}
+  .kpi{padding:14px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;
+    gap:1px;border-top:3px solid transparent}
+  .kpi:last-child{border-right:none}
+  .kpi b{font-size:27px;font-weight:800;line-height:1.1;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .kpi > span{font-size:11.5px;font-weight:700;color:var(--mut)}
+  .kpi.k-done{border-top-color:var(--green)} .kpi.k-done b{color:var(--green)}
+  .kpi.k-onsite{border-top-color:#3E7CA8} .kpi.k-onsite b{color:#2F6E8F}
+  .kpi.k-due{border-top-color:#C9A227} .kpi.k-due b{color:#8A6D1F}
+  .kpi.k-bad{border-top-color:var(--red)} .kpi.k-bad b{color:var(--red)}
+  .delta{font-size:10px;font-weight:700;margin-top:2px}
+  .delta.up{color:var(--green)} .delta.down{color:var(--red)} .delta.flat{color:var(--mut)}
+  /* on the no-shows tile the meaning flips: fewer is better */
+  .kpi.k-bad .delta.up{color:var(--red)} .kpi.k-bad .delta.down{color:var(--green)}
+  /* more work booked in is neither good nor bad, so it stays neutral */
+  .kpi.k-plain .delta{color:var(--mut)}
+
+  .big{font-size:30px;font-weight:800;color:var(--ink);line-height:1.1;margin:2px 0 12px;
+    font-variant-numeric:tabular-nums}
+  .big.good{color:var(--green)} .big.bad{color:var(--red)}
+  .big em{display:block;font-size:11px;font-weight:600;font-style:normal;color:var(--mut);
+    margin-top:3px}
+  .brow{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .brow .bl{flex:0 0 84px;font-size:11.5px;font-weight:700;color:var(--ink)}
+  .brow .bt{flex:1 1 auto;position:relative;height:9px;border-radius:5px;background:#E6E1D7}
+  .brow .bt i{display:block;height:100%;border-radius:5px}
+  .brow .bt u{position:absolute;top:-3px;width:2px;height:15px;background:var(--ink);opacity:.4}
+  .brow .bv{flex:0 0 auto;font-size:11.5px;font-weight:700;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .f-good{background:var(--green)} .f-bad{background:var(--red)}
+
+  /* gate load */
+  .gate{display:flex;align-items:flex-end;gap:5px;height:132px;
+    border-bottom:1px solid var(--line);padding-bottom:2px}
+  .gcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:flex-end;height:100%;gap:4px}
+  .gstack{flex:1 1 auto;width:100%;max-width:30px;display:flex;flex-direction:column;
+    justify-content:flex-end;gap:2px}
+  .gcol i{display:block;width:100%;border-radius:3px;min-height:2px}
+  .g-arr{background:var(--green)} .g-due{background:#C9A227;opacity:.5}
+  .gcol em{font-size:9.5px;font-style:normal;color:var(--mut);font-weight:600}
+
+  /* seven-day trend */
+  .trendwrap{display:flex;flex-direction:column}
+  .trend{width:100%;height:128px;display:block}
+  .tarea{fill:#C9A227;fill-opacity:.16}
+  /* the chart is stretched to the tile, so stroke width is kept steady by hand */
+  .trend path{vector-effect:non-scaling-stroke}
+  .tsched{stroke:#C9A227;stroke-width:2;stroke-dasharray:4 4}
+  .tarr{stroke:var(--green);stroke-width:2.5;stroke-linejoin:round}
+  .tdot{fill:var(--green);stroke:var(--card);stroke-width:2;vector-effect:non-scaling-stroke}
+  .tlabs{display:flex;margin-top:5px}
+  .tlabs span{flex:1 1 0;text-align:center;font-size:10px;color:var(--mut);font-weight:600}
+  .tlabs span:first-child{text-align:left} .tlabs span:last-child{text-align:right}
+
+  /* carriers */
+  .clist{display:flex;flex-direction:column;gap:9px}
+  .crow{display:flex;align-items:center;gap:9px}
+  .crow .cn{flex:0 0 108px;font-size:11.5px;font-weight:700;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .crow .cbar{flex:1 1 auto;display:flex;height:9px;border-radius:5px;overflow:hidden;
+    background:#E6E1D7}
+  .crow .cbar i{display:block;height:100%}
+  .c-arr{background:var(--green)} .c-miss{background:var(--red)}
+  .crow .cv{flex:0 0 auto;font-size:11px;font-weight:700;color:var(--mut);
+    font-variant-numeric:tabular-nums}
+  .crow .cp{flex:0 0 38px;text-align:right;font-size:11.5px;font-weight:800;color:var(--mut);
+    font-variant-numeric:tabular-nums}
+  .crow .cp.good{color:var(--green)} .crow .cp.due{color:#8A6D1F} .crow .cp.bad{color:var(--red)}
+
+  /* who to chase */
+  /* scoped past .btile .th span, which would otherwise paint the count grey on
+     red and leave the pill looking like an empty blob */
+  .btile .th .pillc{display:inline-block;min-width:20px;padding:2px 7px;border-radius:999px;
+    font-size:11px;line-height:1.25;font-weight:800;color:#fff;text-align:center;
+    white-space:nowrap}
+  .pillc.noshow{background:var(--red)} .pillc.due{background:#8A6D1F}
+  .chlist{display:flex;flex-direction:column}
+  .chrow{display:flex;align-items:center;gap:10px;padding:7px 0;
+    border-bottom:1px solid #F0ECE3}
+  .chrow:last-child{border-bottom:none}
+  .chrow .cht{flex:0 0 40px;font-size:11.5px;font-weight:800;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .chrow .chv{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+  .chrow .chv b{font-size:12px;font-weight:700;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chrow .chv em{font-size:10.5px;font-style:normal;color:var(--mut)}
+  .chrow .chn{flex:0 0 auto;text-align:right;font-size:12px;font-weight:800;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .chrow .chn em{display:block;font-size:9.5px;font-style:normal;font-weight:600;color:var(--mut)}
+
+  .waiting{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;gap:5px;font-size:12px;font-weight:700;
+    color:var(--mut);padding:16px 4px}
+  .waiting span{font-size:11px;font-weight:500;line-height:1.5;max-width:250px}
+  .waiting.allgood{font-size:30px;color:var(--green)}
+  .btile.blank{align-items:center;justify-content:center;text-align:center;gap:6px;
+    padding:44px 20px;color:var(--mut)}
+  .btile.blank b{font-size:15px;color:var(--ink)}
+  .btile.blank span{font-size:12.5px;line-height:1.5;max-width:420px}
+  .blankmark{font-size:30px;opacity:.5}
+
+  /* the long lists, on their own screen */
+  .antwrap{overflow:auto;height:100%}
+  table.antab{border-collapse:collapse;width:100%;min-width:680px;background:#fff}
+  table.antab th{position:sticky;top:0;z-index:2;text-align:left;background:#EDF0F4;
+    font-size:10.5px;letter-spacing:.3px;color:#5A6472;padding:8px 12px;white-space:nowrap;
+    border-bottom:1px solid var(--line)}
+  table.antab td{font-size:12.5px;padding:8px 12px;border-bottom:1px solid #F0ECE3;
+    white-space:nowrap}
+  table.antab td.num,table.antab th.num{text-align:right;font-variant-numeric:tabular-nums}
+  table.antab td.good{color:var(--green);font-weight:700}
+  table.antab td.bad{color:var(--red);font-weight:700}
+  table.antab td.due{color:#8A6D1F;font-weight:700}
+
+  @media (max-width:1180px){
+    .c4,.c5{grid-column:span 6} .c7{grid-column:span 6}
+    .strip{grid-template-columns:repeat(3,1fr)}
+    .kpi:nth-child(3n){border-right:none}
+    .kpi:nth-child(-n+3){border-bottom:1px solid var(--line)}
+  }
+  @media (max-width:760px){
+    #sec-stats{padding:12px 10px 32px}
+    .c4,.c5,.c7{grid-column:span 12}
+    .r2{grid-row:span 1}
+    .anwhen{margin-left:0;width:100%}
+    .strip{grid-template-columns:repeat(2,1fr)}
+    .kpi{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .kpi:nth-child(2n){border-right:none}
+    .kpi b{font-size:23px}
+    .crow .cn{flex:0 0 88px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .donut circle{transition:none}
+  }
+  /* who took each half of a gate log row */
+  .logwho{display:block;font-size:8.5px;line-height:1.3;color:#6B7480;font-weight:600;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+  /* a row the shift before left open, still owed a time out */
+  table.logt tr.carried td{background:#FFF6DF}
+  table.logt tr.carried td:first-child{box-shadow:inset 3px 0 0 #C9A227}
+  /* the band that tells the two blocks apart */
+  table.logt tr.logband td{padding:5px 10px;font-size:9.5px;font-weight:800;
+    letter-spacing:.5px;text-transform:uppercase;border:none}
+  table.logt tr.carryband td{background:#F3E4BC;color:#6A5312}
+  table.logt tr.shiftband td{background:var(--blue);color:var(--lime)}
+  /* ---------- yard check, trailer by trailer ----------
+     The tabs follow the streaming-app rows Kofi asked for: wide, short, centred,
+     one label to a tab. The card follows his drawing: one row of boxes across,
+     with SAVE beneath. */
+  #sec-ycgrid{max-width:1240px;margin:0 auto;padding:16px 16px 40px}
+  .ycghead{margin-bottom:12px}
+  .ycgtop{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .ycgslot{font-size:30px;font-weight:800;color:var(--ink);letter-spacing:-.6px}
+  .ycgmeta{font-size:12.5px;color:var(--mut);font-weight:600}
+  .ycgtrack{height:6px;border-radius:3px;background:#E6E1D7;overflow:hidden;margin:10px 0 6px}
+  .ycgfill{display:block;height:100%;background:var(--blue2);border-radius:3px;width:0;
+    transition:width 220ms ease-out}
+  .ycgfill.full{background:var(--green)}
+  .ycgcount{font-size:12px;font-weight:700;color:var(--mut)}
+  .ycgnote{font-size:12.5px;line-height:1.5;color:var(--mut);margin-bottom:14px}
+  .ycgnote[hidden]{display:none}
+  /* the search sits above the rows, the way a streaming app puts it */
+  .ycgsearch{position:relative;margin:14px 0 18px}
+  .ycgmag{position:absolute;left:16px;top:50%;transform:translateY(-50%);
+    font-size:16px;opacity:.55;pointer-events:none}
+  .ycgsearch input{width:100%;font-family:inherit;font-size:17px;font-weight:500;
+    padding:15px 16px 15px 46px;border-radius:10px;border:1px solid var(--bd);
+    background:var(--field);color:var(--ink)}
+  .ycgsearch input::placeholder{color:var(--mut)}
+  .ycgsearch input:focus{outline:3px solid var(--blue2);outline-offset:1px}
+  .ycgh{margin:0 0 12px;font-size:24px;font-weight:800;color:var(--ink);letter-spacing:-.4px}
+  .ycgnone{grid-column:1 / -1;padding:26px 4px;text-align:center;font-size:13.5px;
+    color:var(--mut)}
+  .ycgmore{display:block;margin:16px auto 0;font-family:inherit;font-size:14px;
+    font-weight:700;color:var(--ink);background:none;border:none;cursor:pointer;
+    padding:10px 18px}
+  .ycgmore:hover{text-decoration:underline}
+  .ycgmore[hidden]{display:none}
+  .ycgrid{display:grid;gap:14px;grid-template-columns:repeat(4,1fr)}
+  .ycgtile{position:relative;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:3px;min-height:96px;padding:16px 14px;border-radius:10px;
+    cursor:pointer;text-align:center;font-family:inherit;background:#2F3640;
+    border:none;color:#fff}
+  .ycgtile:hover{background:#3A424D}
+  .ycgtile:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .ycgtile b{font-size:21px;font-weight:700;letter-spacing:-.2px;line-height:1.15}
+  .ycgtile em{font-style:normal;font-size:12.5px;color:#AEB6BF;font-weight:500}
+  .ycgmark{position:absolute;top:8px;right:11px;font-size:13px;line-height:1;opacity:.9}
+  .ycgtile.done{background:var(--green)}
+  .ycgtile.done:hover{background:#5A7F1F}
+  .ycgtile.done em{color:#DCEBC0}
+  .ycgtile.esc{background:var(--red)}
+  .ycgtile.esc:hover{background:#CF4839}
+  .ycgtile.esc em{color:#FADBD6}
+  .ycgtile.add{background:transparent;border:2px dashed var(--bd);color:var(--mut)}
+  .ycgtile.add:hover{background:#F3EEE4}
+  .ycgtile.add b{font-size:15px;color:var(--ink);font-weight:700}
+  .ycgtile.add em{color:var(--mut)}
+  .ycgact{margin-top:26px}
+  /* display:flex above would otherwise beat the hidden attribute */
+  .ycgact[hidden]{display:none}
+
+  /* The card over the middle of the screen. The backdrop is blurred so the
+     card is plainly the only thing in play, and it grows with the screen it
+     opens on rather than staying phone-sized on an iPad. */
+  body.ycmodal-open{overflow:hidden}
+  .ycmwrap{position:fixed;inset:0;z-index:90;display:flex;align-items:center;
+    justify-content:center;padding:20px}
+  .ycmwrap[hidden]{display:none}
+  .ycmscrim{position:absolute;inset:0;background:rgba(6,12,18,.5);
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .ycmcard{position:relative;z-index:1;width:min(1100px,96vw);max-height:92dvh;
+    overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:20px;
+    box-shadow:0 24px 70px rgba(6,12,18,.4);padding:26px 28px 24px}
+  @media (prefers-reduced-motion:no-preference){
+    .ycmcard{animation:ycmin 160ms ease-out}
+  }
+  @keyframes ycmin{from{opacity:0;transform:translateY(10px) scale(.985)}}
+  /* the trailer is the title, and it sits in the middle, as drawn */
+  .ycmhead{position:relative;text-align:center;margin-bottom:20px}
+  .ycmhead b{display:block;font-size:27px;font-weight:800;color:var(--ink);
+    letter-spacing:-.5px;padding:0 44px}
+  .ycmx{position:absolute;top:-4px;right:-4px;width:38px;height:38px;border:none;
+    background:#EDE8DE;border-radius:10px;font-size:15px;color:var(--mut);cursor:pointer}
+  .ycmx:hover{background:#E3DCCF}
+  .ycmx:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  /* one row of boxes, each labelled over the middle of its own box */
+  .ycmrow{display:flex;gap:12px;align-items:flex-start}
+  .ycmnew{display:flex;gap:12px;margin-bottom:14px}
+  .ycmnew .ycmbox{flex:1 1 0}
+  .ycmbox{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:7px}
+  .ycmbox.wide{flex:1 1 100%}
+  .ycmbox > span{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+    color:var(--mut);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ycmbox input,.ycmbox select{font-family:inherit;font-size:19px;font-weight:700;
+    padding:16px 10px;border-radius:12px;border:1.5px solid var(--bd);background:var(--field);
+    color:var(--ink);width:100%;text-align:center}
+  .ycmbox select{text-align-last:center}
+  .ycmbox input:focus,.ycmbox select:focus{outline:3px solid var(--blue2);outline-offset:1px}
+  /* Other, waiting on a value: the box itself says so */
+  .ycmset.want{border-color:var(--red);background:#FDF4F2}
+  .ycmset.want::placeholder{color:var(--red);opacity:.75}
+  .ycmescbox{font-size:19px;font-weight:700;padding:16px 10px;border-radius:12px;
+    border:1.5px solid var(--bd);background:var(--field);color:var(--mut);text-align:center;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ycmescbox.on{background:#FCEEEC;border-color:var(--red);color:var(--red);font-weight:800}
+  .ycmdel{display:block;margin:0 0 16px auto;font-family:inherit;font-size:12.5px;
+    font-weight:700;color:var(--red);background:none;border:none;cursor:pointer;padding:4px 0}
+  .ycmdel:hover{text-decoration:underline}
+  .ycmfoot{margin-top:22px}
+  .ycmfoot .btn{width:100%;font-size:18px;padding:17px}
+  @media (max-width:820px){
+    .ycmcard{padding:18px 16px}
+    .ycmhead b{font-size:22px}
+    .ycmrow{flex-wrap:wrap}
+    .ycmrow .ycmbox{flex:1 1 30%;min-width:130px}
+    .ycmbox.esc{flex:1 1 100%}
+  }
+  @media (max-width:560px){
+    .ycmrow .ycmbox{flex:1 1 45%}
+  }
+  @media (max-width:900px){
+    .ycgrid{grid-template-columns:repeat(3,1fr)}
+    .ycmrow{flex-wrap:wrap}
+    .ycmrow .ycmbox{flex:1 1 30%;min-width:120px}
+  }
+  @media (max-width:620px){
+    #sec-ycgrid{padding:12px 12px 32px}
+    .ycgrid{grid-template-columns:repeat(2,1fr)}
+    .ycgtile b{font-size:18px}
+    .ycmrow .ycmbox{flex:1 1 45%}
+    .ycmbox.esc{flex:1 1 100%}
+    .ycmcard{padding:16px 14px}
+    .ycmfoot .btn{width:100%}
+    .ycmhead b{font-size:19px}
+  }
+  /* a released slot the officer has finished */
+  button.histitem{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+    font-family:inherit;cursor:pointer}
+  button.histitem[disabled]{cursor:default;opacity:.75}
+  .hstate{margin-left:auto;flex:0 0 auto;font-size:11px;font-weight:800;
+    letter-spacing:.3px;color:var(--green);white-space:nowrap}
+  .hstate.esc{color:var(--red)}
+  .hstate.wait{color:var(--mut)}
+  .bkvmeta{padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+  .bkvmeta b{display:block;font-size:14px;color:var(--ink)}
+  .bkvmeta span{display:block;font-size:11.5px;color:var(--mut);margin-top:2px}
+  #bkview .dvbody{background:#fff}
+  .schednone{display:flex;align-items:center;justify-content:center;text-align:center;
+    min-height:52dvh;padding:24px;font-size:15px;font-weight:600;color:var(--mut)}
+  .schednone[hidden]{display:none}
+  /* The seal form, one page at a time. It is worked on a phone or an iPad in a
+     yard, so the page it is on fills the screen and the two buttons sit under
+     the last field, not above the first one. */
+  /* Widening a form does not help: a field should be as wide as what goes in
+     it, and stretched fields read worse, not better. What was wrong was the
+     card hanging at the top of an empty screen, so the short pages now sit in
+     the middle of it and the long ones still start at the top and scroll. */
+  /* an id beats section{display:none}, so the layout is put on .on only -
+     otherwise the form shows on every other screen too */
+  #sec-form.on{max-width:820px;margin:0 auto;display:flex;flex-direction:column;
+    min-height:calc(100dvh - 118px)}
+  #sec-form .fstep{margin-top:auto}
+  #sec-form .fnav{margin-bottom:auto}
+  .fhead{text-align:center;margin-bottom:12px}
+  .fhead em{display:block;font-style:normal;font-size:13px;font-weight:700;color:var(--mut)}
+  .fdots{display:flex;justify-content:center;gap:6px;margin-top:9px}
+  .fdots i{width:34px;height:4px;border-radius:2px;background:#DCD6CA;display:block}
+  .fdots i.on{background:var(--blue2)}
+  .fdots i.done{background:var(--green)}
+  .fstep[hidden]{display:none}
+  /* the officer who signed in is the officer who verified it: not a box to type
+     somebody else's name into */
+  #f_verified{background:#EFEBE2;color:var(--mut);cursor:default}
+  .fstep .card{padding:18px 18px 20px}
+  /* bigger targets: these are filled standing up, often with gloves on */
+  #sec-form .fstep input[type=text],#sec-form .fstep input:not([type]),
+  #sec-form .fstep select{font-size:17px;padding:14px 12px}
+  #sec-form .fstep .choice button{font-size:15px;padding:14px 10px}
+  .fnav{display:flex;gap:10px;margin-top:16px}
+  .fnav[hidden],.fhead[hidden]{display:none}
+  .fnavb{flex:0 0 auto;font-family:inherit;font-size:15px;font-weight:700;
+    min-height:54px;padding:10px 22px;border-radius:12px;border:1px solid var(--bd);
+    background:var(--field);color:var(--ink);cursor:pointer}
+  .fnavb.pri{flex:1 1 auto;background:var(--blue);border-color:var(--blue);color:#fff;
+    font-size:16px}
+  .fnavb:hover{background:#F6F3EC}
+  .fnavb.pri:hover{background:#16232E}
+  .fnavb[hidden]{display:none}
+  .fnavb:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  /* a yard check that is ready is news wherever the officer is, so it is told
+     in the header rather than only on the tile they are not looking at */
+  .hdrbell{flex:0 0 auto;position:relative;width:38px;height:38px;
+    border:none;border-radius:10px;background:rgba(255,255,255,.10);color:#fff;
+    font-size:17px;line-height:1;cursor:pointer;margin-right:8px}
+  .hdrbell:hover{background:rgba(255,255,255,.18)}
+  .hdrbell:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  .hdrbell[hidden]{display:none}
+  .ndot{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 5px;
+    border-radius:999px;background:var(--red);color:#fff;font-size:10.5px;font-weight:800;
+    line-height:18px;text-align:center}
+  @media (prefers-reduced-motion:no-preference){
+    .hdrbell.ring{animation:bellring 1.6s ease-out 2}
+  }
+  @keyframes bellring{0%,100%{transform:rotate(0)}12%{transform:rotate(-12deg)}
+    24%{transform:rotate(10deg)}36%{transform:rotate(-6deg)}48%{transform:rotate(4deg)}}
+  /* the bell tells the officer what is waiting; it does not move them */
+  .hdrprof{position:relative}
+  .notifpanel{position:absolute;top:calc(100% + 10px);right:0;z-index:40;width:min(340px,88vw);
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 14px 44px rgba(6,12,18,.28);overflow:hidden;text-align:left}
+  .notifpanel[hidden]{display:none}
+  .nphd{padding:11px 14px;border-bottom:1px solid var(--line);font-size:11px;
+    font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--mut)}
+  .npitem{display:flex;align-items:center;gap:11px;width:100%;padding:12px 14px;
+    background:none;border:none;border-bottom:1px solid #F0ECE3;cursor:pointer;
+    font-family:inherit;text-align:left}
+  .npitem:last-child{border-bottom:none}
+  .npitem:hover{background:#F6F2E9}
+  .npitem:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
+  .npslot{flex:0 0 auto;width:44px;height:38px;border-radius:9px;display:grid;
+    place-items:center;font-size:15px;font-weight:800;color:#fff;background:var(--blue2)}
+  .npitem.over .npslot{background:var(--red)}
+  .nptxt{flex:1 1 auto;min-width:0}
+  .nptxt b{display:block;font-size:13px;font-weight:700;color:var(--ink)}
+  .nptxt span{display:block;font-size:11.5px;color:var(--mut);margin-top:1px}
+  .npfoot{padding:10px 14px;font-size:11.5px;color:var(--mut);background:#F6F2E9}
+  /* the office's board: the same playing cards the officer sees */
+  #sec-block{max-width:1400px;margin:0 auto}
+  .bkshift{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+    color:var(--mut);margin:18px 0 10px}
+  .bkslots{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .bkkey{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px}
+  .bkkey .lg{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
+    color:var(--mut)}
+  .bkkey .lg i{width:11px;height:11px;border-radius:3px;display:block;background:var(--c,#B4ADA1)}
+  .bkprint{margin-left:auto;font-family:inherit;font-size:12.5px;font-weight:700;
+    padding:9px 18px;border-radius:9px;border:none;background:var(--lime);color:var(--blue);
+    cursor:pointer}
+  #bkload[hidden]{display:none}
+  @media (prefers-reduced-motion:no-preference){
+    .slot.glow{animation:bkglow 2.4s ease-in-out infinite}
+  }
+  @keyframes bkglow{0%,100%{box-shadow:0 0 0 3px var(--lime)}
+    50%{box-shadow:0 0 0 3px var(--lime),0 0 20px 3px rgba(190,249,27,.5)}}
+  .slot.glow{box-shadow:0 0 0 3px var(--lime)}
+  @media (max-width:900px){ .bkslots{grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:520px){ .bkslots{grid-template-columns:repeat(2,1fr)} }
+  /* printing a completed check: the sheet, nothing round it */
+  @media print{
+    header,#bkboard,#bkload,.dvbar,.toast,#drawer{display:none !important}
+    #bkview{position:static !important;height:auto !important}
+    #bkview .dvbody{overflow:visible !important;height:auto !important}
+    body{background:#fff}
+  }
+  /* the box that caused an escalation says so by being marked */
+  table.ycsheet td.bad{background:#FCEEEC}
+  table.ycsheet td.bad input,table.ycsheet td.bad select{color:var(--red);font-weight:800}
+  table.ycsheet td.ycro.bad{color:var(--red);font-weight:800}
+  .escyes{display:block;text-align:center;font-size:13px;font-weight:800;color:var(--red);
+    padding:8px 6px}
+  .escno{display:block;text-align:center;font-size:13px;font-weight:700;color:var(--green);
+    padding:8px 6px}
+  /* what is still empty, marked where it sits */
+  #sec-form .choice.miss{outline:2px solid var(--red);outline-offset:4px;border-radius:10px}
+  #sec-form #sigwrap.miss{border-color:var(--red);background:var(--warn)}
+  #sec-form .chk.miss label{color:var(--red);font-weight:700}
+  .fdots i.want{background:var(--red)}
+  .fdots i.want.on{background:var(--red);box-shadow:0 0 0 2px rgba(192,57,43,.3)}
+  /* ---------- daily activity report ---------- */
+  #sec-dar{max-width:1000px;margin:0 auto}
+  .darbrand{text-align:center;margin-bottom:14px}
+  .darbrand b{display:block;font-size:34px;font-weight:800;letter-spacing:-1px;color:var(--ink)}
+  .darbrand span{display:block;font-size:11px;font-weight:700;letter-spacing:3px;color:var(--mut)}
+  .darbrand em{display:block;font-style:normal;font-size:16px;font-weight:700;
+    color:var(--ink);margin-top:6px}
+  .darmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .darmeta > div{min-width:0}
+  .darmeta span{display:block;font-size:9.5px;font-weight:800;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--mut)}
+  .darmeta b{display:block;font-size:14px;font-weight:700;color:var(--ink);margin-top:2px}
+  .darrow2{display:flex;flex-wrap:wrap;gap:16px;align-items:end;margin-top:16px}
+  .darinclbl,.darhandlbl{font-size:9.5px;font-weight:800;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--mut);display:flex;flex-direction:column;gap:6px}
+  .darhandlbl{flex:1 1 220px}
+  .darincs{display:flex;gap:8px}
+  .darinc{font-family:inherit;font-size:14px;font-weight:700;padding:11px 22px;
+    border-radius:10px;border:1.5px solid var(--bd);background:var(--field);color:var(--ink);cursor:pointer}
+  .darinc.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .darhandlbl input{font-family:inherit;font-size:15px;font-weight:600;padding:11px 12px;
+    border-radius:10px;border:1.5px solid var(--bd);background:var(--field);color:var(--ink);width:100%}
+  .darnote{margin:14px 0 10px;text-align:center}
+  table.dartab{border-collapse:collapse;width:100%;background:#fff;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  table.dartab th{background:#F1EDE4;font-size:10px;font-weight:800;letter-spacing:.6px;
+    text-align:left;padding:9px 12px;color:var(--mut);border-bottom:1px solid var(--line)}
+  table.dartab th.t,table.dartab td.t{width:88px}
+  table.dartab td{border-bottom:1px solid #F0ECE3;padding:8px 12px;vertical-align:middle}
+  table.dartab td.t{font-size:14px;font-weight:800;color:var(--ink)}
+  table.dartab tr:last-child td{border-bottom:none}
+  table.dartab textarea{width:100%;font-family:inherit;font-size:14px;line-height:1.45;
+    padding:9px 10px;border-radius:8px;border:1px solid transparent;background:#FBF8F2;
+    color:var(--ink);resize:vertical}
+  table.dartab textarea:focus{outline:3px solid var(--blue2);outline-offset:1px;background:#fff}
+  /* a line the officer rewrote is theirs, and says so */
+  table.dartab tr.own td.t{color:var(--blue2)}
+  table.dartab tr.own textarea{background:#EEF4E4;border-color:#C6D8A8}
+  .darundo{margin-top:5px;font-family:inherit;font-size:11px;font-weight:700;
+    color:var(--blue2);background:none;border:none;cursor:pointer;padding:2px 0}
+  .darundo:hover{text-decoration:underline}
+  @media (max-width:640px){
+    .darmeta{grid-template-columns:repeat(2,1fr)}
+    table.dartab th.t,table.dartab td.t{width:56px}
+  }
+  /* the DAR as it is filed on paper */
+  .darpaper{background:#fff;border:1px solid var(--line);border-radius:12px;
+    padding:26px 28px 30px;color:#111}
+  .dphead{display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:start;
+    margin-bottom:22px}
+  .dpleft div,.dpright div{font-size:13.5px;line-height:1.9;white-space:nowrap}
+  .dpleft span,.dpright span{font-weight:700;margin-right:6px}
+  .dpleft b,.dpright b{font-weight:600;border-bottom:1px solid #111;padding:0 10px 1px}
+  .dpright{text-align:right}
+  .dpright b.ring{border:1.5px solid #1B3A8A;border-radius:50%;padding:2px 9px;
+    color:#1B3A8A;font-weight:700}
+  .dpright b:not(.ring){border-bottom:none}
+  .dpright div:first-child b{border-bottom:none}
+  .dpbrand{text-align:center}
+  .dpbrand b{display:block;font-size:38px;font-weight:800;letter-spacing:-1.5px;color:#8A8A8A}
+  .dpbrand span{display:block;font-size:10px;font-weight:700;letter-spacing:3.5px;color:#8A8A8A}
+  .dpbrand em{display:block;font-style:normal;font-size:16px;font-weight:700;
+    color:#111;margin-top:8px}
+  table.dpt{border-collapse:collapse;width:100%;border:1.5px solid #111}
+  table.dpt th{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-align:left;
+    padding:7px 12px;border-bottom:1.5px solid #111;border-right:1.5px solid #111}
+  table.dpt th:last-child{border-right:none}
+  table.dpt td{font-size:13.5px;padding:11px 12px;border-bottom:1px solid #111;
+    border-right:1.5px solid #111;line-height:1.4}
+  table.dpt td:last-child{border-right:none}
+  table.dpt tr:last-child td{border-bottom:none}
+  table.dpt th.t,table.dpt td.t{width:92px;font-weight:700}
+  .dpsign{margin-top:30px;font-size:13.5px}
+  .dpsign span{font-weight:700;margin-right:10px}
+  .dpsign b{font-weight:600;border-bottom:1px solid #111;padding:0 60px 1px}
+  .daract{display:flex;flex-direction:column;gap:10px}
+  .daract .btn[hidden]{display:none}
+  @media (max-width:720px){
+    .dphead{grid-template-columns:1fr;text-align:left}
+    .dpright{text-align:left}
+    .darpaper{padding:18px 14px 22px}
+    table.dpt th.t,table.dpt td.t{width:58px}
+  }
+  /* the DAR's status line and its Yes/No */
+  .darlive{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;
+    background:#EEF4E4;border:1px solid #C6D8A8;border-radius:10px;
+    padding:11px 14px;margin:14px 0 12px;font-size:12.5px;color:#41541D;line-height:1.5}
+  .darlive[hidden]{display:none}
+  .darlive b{font-weight:800}
+  .darlive .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+    flex:0 0 auto;align-self:center}
+  @media (prefers-reduced-motion:no-preference){
+    .darlive .dot{animation:darpulse 2.4s ease-in-out infinite}
+  }
+  @keyframes darpulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .dpinc{font-family:inherit;font-size:13.5px;font-weight:600;color:#111;
+    background:none;border:none;padding:2px 9px;cursor:pointer;border-radius:50%}
+  .dpinc:hover{background:#EFEBE2}
+  .dpinc.ring{border:1.5px solid #1B3A8A;color:#1B3A8A;font-weight:700}
+  .dpinc:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .daract .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .darwhy{text-align:center;margin-top:-4px}
+  /* Paper stays paper. The gate log, the yard check and the daily report are
+     documents: they get emailed and printed, and a printed page is white. In
+     dark mode they read as a sheet lying on a dark desk, which is what they
+     are. Everything the officer types into is a control, not a document, and
+     lifts off the card instead. */
+  .darpaper,.ycwrap,.prnwrap,.dgwrap,#bkview .dvbody,.antwrap{color-scheme:light}
+  .darwhy[hidden]{display:none}
+  /* a row the officer wrote by hand, rather than one a form created */
+  table.logt tr.hand td{background:#FBF8F2}
+  table.logt tr.hand td:first-child{box-shadow:inset 3px 0 0 var(--blue2)}
+  /* a blank line reads as paper until something is written on it */
+  table.logt tr.blank input{background:transparent}
+  table.logt td.logdel{text-align:center;padding:0}
+  table.logt td.logdel button{background:none;border:none;color:var(--red);
+    font-size:13px;padding:6px;cursor:pointer}
+  table.logt td.logdel button:hover{color:#9C2E22}
+  /* the account menu: a panel under the profile, not a sheet off the side */
+  .profbtn{display:flex;align-items:center;gap:9px;background:none;border:none;
+    padding:4px 6px;border-radius:10px;cursor:pointer;min-width:0;font-family:inherit}
+  .profbtn:hover{background:rgba(255,255,255,.10)}
+  .profbtn:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  .usermenu{position:absolute;top:calc(100% + 10px);right:0;z-index:45;
+    width:min(292px,90vw);background:var(--card);border:1px solid var(--line);
+    border-radius:16px;box-shadow:0 16px 46px rgba(6,12,18,.32);
+    padding:8px;text-align:left;overflow:hidden}
+  .usermenu[hidden]{display:none}
+  @media (prefers-reduced-motion:no-preference){
+    .usermenu{animation:umin 130ms ease-out}
+  }
+  @keyframes umin{from{opacity:0;transform:translateY(-6px)}}
+  .umwho{display:flex;align-items:center;gap:11px;padding:10px 12px 12px}
+  .umav{width:38px;height:38px;border-radius:50%;background:#EDE8DE;flex:0 0 auto;
+    display:grid;place-items:center;font-size:19px}
+  .umtext{min-width:0}
+  .umtext b{display:block;font-size:14px;font-weight:800;color:var(--ink);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .umtext span{display:block;font-size:11.5px;color:var(--mut);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .umloc{margin-top:3px;font-size:10.5px !important;font-weight:700;
+    letter-spacing:.4px;text-transform:uppercase;color:var(--blue2) !important}
+  .umloc:empty{display:none}
+  .umfoot{padding:8px 12px 4px;font-size:10.5px;color:var(--mut)}
+  .umsep{height:1px;background:var(--line);margin:4px 6px}
+  .usermenu .ditem{display:flex;align-items:center;gap:12px;width:100%;
+    background:none;border:none;border-radius:10px;padding:11px 12px;cursor:pointer;
+    font-family:inherit;font-size:14.5px;font-weight:600;color:var(--ink);text-align:left}
+  .usermenu .ditem:hover{background:#F3EFE6}
+  .usermenu .ditem:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
+  .usermenu .ditem.ddanger{color:var(--red)}
+  .usermenu .ditem.ddanger:hover{background:#FBECEA}
+  .usermenu .ditem span{font-size:16px;line-height:1;flex:0 0 auto}
+  .usermenu .ditem[hidden]{display:none}
+  /* nothing to go back to on the home screen */
+  #menubtn[hidden]{visibility:hidden;display:block}
+  /* ---------- settings: how the app looks and behaves ---------- */
+  :root{--ui-scale:1}
+  body{zoom:var(--ui-scale)}
+  .prow{display:flex;align-items:center;gap:14px;padding:14px 0;
+    border-bottom:1px solid var(--line)}
+  .prow:last-child{border-bottom:none}
+  .prow.col{flex-direction:column;align-items:stretch;gap:10px}
+  .ptext{flex:1 1 auto;min-width:0}
+  .ptext b{display:block;font-size:14.5px;font-weight:700;color:var(--ink)}
+  .ptext span{display:block;font-size:12px;line-height:1.5;color:var(--mut);margin-top:2px}
+  .pseg{display:flex;gap:6px;background:var(--sunk);padding:4px;border-radius:12px}
+  .pseg-b{flex:1 1 0;font-family:inherit;font-size:13.5px;font-weight:700;
+    padding:11px 8px;border:none;border-radius:9px;background:none;color:var(--mut);
+    cursor:pointer}
+  .pseg-b:hover{color:var(--ink)}
+  .pseg-b.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(10,26,25,.16)}
+  .pseg-b:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
+  .pswitch{flex:0 0 auto;width:52px;height:31px;border-radius:999px;border:none;
+    background:#CFC8BA;position:relative;cursor:pointer;transition:background 150ms ease-out}
+  .pswitch i{position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform 150ms ease-out}
+  .pswitch.on{background:var(--blue2)}
+  .pswitch.on i{transform:translateX(21px)}
+  .pswitch:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .pinstall{flex:0 0 auto;font-family:inherit;font-size:13.5px;font-weight:700;
+    padding:10px 18px;border-radius:10px;border:none;background:var(--blue);color:#fff;
+    cursor:pointer}
+  .pinstall:hover{background:#16232E}
+  .pdone{flex:0 0 auto;font-size:18px;color:var(--green)}
+
+  /* ---------- dark ----------
+     Only the tokens move. The printed sheets stay on white on purpose: they
+     are paper, they get emailed and printed, and paper is not dark. */
+  :root[data-theme="dark"]{
+    --bg:#0B1117; --card:#141C24; --ink:#EEF2F6; --mut:#9BA7B4;
+    --line:#25313C; --bd:#3C4A57; --gold:#3A3016; --sunk:#1D2831;
+    --field:#1B2530; --press:#233040; --warn:#2A1A19;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0B1117; --card:#141C24; --ink:#EEF2F6; --mut:#9BA7B4;
+      --line:#25313C; --bd:#3C4A57; --gold:#3A3016; --sunk:#1D2831;
+      --field:#1B2530; --press:#233040; --warn:#2A1A19;
+    }
+  }
+  /* saved forms, as a diary */
+  .hday{margin-bottom:18px}
+  .hday:last-child{margin-bottom:0}
+  .hdayhd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:0 2px 7px;border-bottom:1px solid var(--line);margin-bottom:4px}
+  .hdayhd b{font-size:13px;font-weight:800;color:var(--ink)}
+  .hdayhd span{font-size:11px;font-weight:600;color:var(--mut)}
+  .histitem{display:flex;align-items:center;gap:12px;padding:11px 2px;
+    border-bottom:1px solid var(--line)}
+  .histitem:last-child{border-bottom:none}
+  .htime{flex:0 0 46px;font-size:13px;font-weight:800;color:var(--mut);
+    font-variant-numeric:tabular-nums}
+  .hmain{flex:1 1 auto;min-width:0}
+  .hmain .t1{font-size:14px;font-weight:700;color:var(--ink)}
+  .hmain .t2{font-size:11.5px;color:var(--mut);margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hseal{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.4px;
+    padding:4px 9px;border-radius:999px;background:var(--sunk);color:var(--mut)}
+  .hseal.bad{background:#FCEEEC;color:var(--red)}
+  :root[data-theme="dark"] .hseal.bad{background:#2A1A19}
+  .histbtns{flex:0 0 auto;display:flex;gap:4px}
+  .hbtn{width:34px;height:34px;border:none;border-radius:9px;background:none;
+    color:var(--mut);font-size:14px;cursor:pointer}
+  .hbtn:hover{background:var(--sunk);color:var(--ink)}
+  .hbtn.del:hover{background:#FCEEEC;color:var(--red)}
+  :root[data-theme="dark"] .hbtn.del:hover{background:#2A1A19}
+  .hbtn:focus-visible{outline:3px solid var(--blue2);outline-offset:-2px}
   /* the printed sheet */
   .prnwrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
   table.prn{border-collapse:collapse;width:100%;min-width:1040px;background:#fff;color:#111}
@@ -390,7 +1200,7 @@
     display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;
     background:var(--red);margin-top:1px}
   /* 4. required fields the officer has left empty */
-  #sec-form input.miss{border-color:var(--red);background:#FDF4F3}
+  #sec-form input.miss{border-color:var(--red);background:var(--warn)}
   .warn{background:#FFF6E5;border:1px solid #F5D488;border-radius:9px;padding:10px;
     font-size:13px;color:#7A5A00;margin-top:8px;line-height:1.4}
 
@@ -611,45 +1421,132 @@
 </div>
 <header>
   <div class="hdr">
-    <button id="menubtn" class="hdrbtn" onclick="openMenu()" aria-label="Open menu"
-      aria-controls="drawer" aria-expanded="false">&#9776;</button>
+    <button id="menubtn" class="hdrbtn" onclick="goBack()" aria-label="Back">&#8592;</button>
     <h1 id="hdrtitle"></h1>
     <div class="hdrprof">
-      <div class="hpwho">
-        <b class="hpname" id="hdrname"></b>
-        <span class="hpmail" id="hdrmail"></span>
-      </div>
-      <span class="hpavatar" aria-hidden="true">&#128100;</span>
+      <button id="notif" class="hdrbell" onclick="notifToggle(event)" hidden
+        aria-haspopup="true" aria-expanded="false" aria-controls="notifpanel"
+        aria-label="Yard checks waiting"><span aria-hidden="true">&#128276;</span>
+        <span class="ndot" id="notifn"></span></button>
+      <div id="notifpanel" class="notifpanel" role="dialog"
+        aria-label="Yard checks waiting" hidden></div>
+      <button id="profbtn" class="profbtn" onclick="openMenu(event)"
+        aria-haspopup="true" aria-expanded="false" aria-controls="drawer"
+        aria-label="Account and menu">
+        <span class="hpwho">
+          <b class="hpname" id="hdrname"></b>
+          <span class="hpmail" id="hdrmail"></span>
+        </span>
+        <span class="hpavatar" aria-hidden="true">&#128100;</span>
+      </button>
+    <div id="drawer" class="usermenu" role="dialog" aria-label="Account and menu" hidden>
+      <!-- The name and email are in the header, an inch above this panel, so
+           they are not repeated here. Gate log and Yard check are tiles on the
+           home screen, so they are not repeated either. What is left is only
+           what has no other route. -->
+      <button class="ditem" id="um_home" onclick="menuGo('home')"><span aria-hidden="true">&#127968;</span>Home</button>
+      <button class="ditem" onclick="menuGo('hist')"><span aria-hidden="true">&#128193;</span>Saved forms</button>
+      <button class="ditem" onclick="menuGo('settings')"><span aria-hidden="true">&#9881;&#65039;</span>Settings</button>
+      <div class="umsep"></div>
+      <button class="ditem ddanger" onclick="closeMenu();doSignOut()"><span aria-hidden="true">&#9099;</span>Sign out</button>
+      <div class="umfoot">Checkpoint v1.0</div>
+    </div>
     </div>
   </div>
 </header>
 
 <!-- ============ SLIDE-IN MENU ============ -->
-<div id="drawer" class="drawer" hidden>
-  <div class="drawerbg" onclick="closeMenu()"></div>
-  <div class="drawerpanel" role="dialog" aria-modal="true" aria-label="Menu">
-    <h2 class="dhead">Menu</h2>
-    <button class="ditem" onclick="menuGo('home')"><span aria-hidden="true">&#127968;</span>Home</button>
-    <button class="ditem" onclick="menuGo('log')"><span aria-hidden="true">&#128203;</span>Gate log</button>
-    <button class="ditem" onclick="menuGo('yard')"><span aria-hidden="true">&#128667;</span>Yard check</button>
-    <button class="ditem" onclick="menuGo('hist')"><span aria-hidden="true">&#128193;</span>Saved forms</button>
-    <div class="dsep"></div>
-    <button class="ditem" onclick="menuGo('settings')"><span aria-hidden="true">&#9881;&#65039;</span>Settings</button>
-    <button class="ditem ddanger" onclick="closeMenu();doSignOut()"><span aria-hidden="true">&#9099;</span>Sign out</button>
-    <div class="dfoot">Checkpoint v1.0<br>NPG Security Services<br><span id="d_loc"></span></div>
-  </div>
-</div>
 <!-- ============ HOME ============ -->
 <section id="sec-home" class="on">
   <div class="tiles">
     <button class="tile" onclick="go('search')"><span class="tico" aria-hidden="true">&#128269;</span><b>Search</b><em>Find an order</em></button>
     <button class="tile" onclick="go('sched')"><span class="tico" aria-hidden="true">&#128197;</span><b>Schedule</b><em>Today's loads</em></button>
-    <button class="tile" onclick="go('form')"><span class="tico" aria-hidden="true">&#128221;</span><b>Seal Form</b><em>Seal verification</em></button>
-    <button class="tile" onclick="go('yard')"><span class="tico" aria-hidden="true">&#128667;</span><b>Yard <span class="tbadge" id="yardbadge" hidden></span></b><em>Trailer inspection</em></button>
+    <button class="tile" onclick="go('form')"><span class="tico" aria-hidden="true">&#128221;</span><b>Sign In</b><em>Seal Verification</em></button>
+    <button class="tile" onclick="go('yard')"><span class="tico" aria-hidden="true">&#128667;</span><b>Yard Check</b><em>Trailer inspection</em></button>
     <button class="tile" onclick="go('log')"><span class="tico" aria-hidden="true">&#128203;</span><b>Log</b><em>Gate log</em></button>
-    <button class="tile" onclick="go('hist')"><span class="tico" aria-hidden="true">&#128193;</span><b>Saved</b><em>Saved forms</em></button>
+    <button class="tile" onclick="go('dar')"><span class="tico" aria-hidden="true">&#128220;</span><b>DAR</b><em>Daily activity report</em></button>
   </div>
   <div class="homestat" id="datastat">No schedule loaded yet</div>
+</section>
+
+<!-- ============ YARD CHECK, TRAILER BY TRAILER ============ -->
+<section id="sec-ycgrid">
+  <div class="ycghead">
+    <div class="ycgtop">
+      <span class="ycgslot" id="ycg_slot"></span>
+    </div>
+    <div class="ycgtrack"><span class="ycgfill" id="ycg_bar"></span></div>
+    <div class="ycgcount" id="ycg_count"></div>
+  </div>
+  <div class="ycgsearch">
+    <span class="ycgmag" aria-hidden="true">&#128269;</span>
+    <input type="search" id="ycg_q" placeholder="Trailer number or product"
+      aria-label="Search the trailers on this check" oninput="ycGridSearch(this.value)">
+  </div>
+  <h2 class="ycgh">Trailers</h2>
+  <div class="ycgnote" id="ycg_note" hidden></div>
+  <div class="ycgrid" id="ycgridwrap"></div>
+  <button type="button" class="ycgmore" id="ycg_more" onclick="ycGridMore()" hidden></button>
+  <div class="ycgact" id="ycg_actions" hidden>
+    <button class="btn" id="ycg_review" onclick="ycGridReview()">Review and submit</button>
+  </div>
+</section>
+
+<!-- ============ DAILY ACTIVITY REPORT ============ -->
+<section id="sec-dar">
+  <!-- the sheet as it will be filed; Edit is for what the app got wrong -->
+  <div class="card darhead" id="darhead" hidden>
+    <div class="darrow2">
+      <label class="darinclbl">Any Incident?
+        <span class="darincs">
+          <button type="button" class="darinc" data-v="Yes"
+            onclick="darSet('incident','Yes');renderDar()">Yes</button>
+          <button type="button" class="darinc" data-v="No"
+            onclick="darSet('incident','No');renderDar()">No</button>
+        </span>
+      </label>
+      <label class="darhandlbl">Hands over to
+        <input id="dar_hand" placeholder="Officer's name"
+          oninput="darSet('handover',this.value)">
+      </label>
+    </div>
+    <div class="hint darnote">The app wrote this from the yard checks and the gate log.
+      Correct anything it has wrong.</div>
+  </div>
+
+  <!-- a quiet status line, not a notification: nothing is being asked of the
+       officer, they are only being told what the app is doing -->
+  <div class="darlive" id="dar_live" role="status">
+    <span class="dot" aria-hidden="true"></span>
+    <b>Filling itself as you work.</b>
+    <span>Every yard check and every trailer signed in or out is written in
+      automatically. Nothing to do until the end of your shift.</span>
+  </div>
+  <div id="darbody"></div>
+
+  <div class="card daract">
+    <button class="btn" id="dar_submit" onclick="darSubmit()">Submit to manager</button>
+    <div class="hint darwhy" id="dar_why" hidden></div>
+    <button class="btn sec" id="dar_edit" onclick="darMode('edit')">Edit</button>
+    <button class="btn sec" id="dar_done" onclick="darMode('preview')" hidden>Done editing</button>
+  </div>
+</section>
+
+<!-- ============ ANALYTICS ============ -->
+<section id="sec-stats">
+  <div class="anhead">
+    <div class="anchips" role="group" aria-label="Period">
+      <button type="button" class="anchip" data-kind="today"     onclick="anSetRange('today')">Today</button>
+      <button type="button" class="anchip" data-kind="yesterday" onclick="anSetRange('yesterday')">Yesterday</button>
+      <button type="button" class="anchip" data-kind="d7"        onclick="anSetRange('d7')">Last 7 days</button>
+      <button type="button" class="anchip" data-kind="d30"       onclick="anSetRange('d30')">Last 30 days</button>
+      <label class="anpick">A day
+        <input type="date" id="an_day" onchange="anSetRange('day', this.value)">
+      </label>
+    </div>
+    <div class="anwhen" id="an_range"></div>
+  </div>
+  <div id="statsbody"></div>
 </section>
 
 <main>
@@ -659,29 +1556,36 @@
     <button class="tile" onclick="go('sched')"><span class="tico" aria-hidden="true">&#128197;</span>
       <b>Schedule</b><em>Upload today&rsquo;s orders</em></button>
     <button class="tile" onclick="go('block')"><span class="tico" aria-hidden="true">&#128230;</span>
-      <b>Trailer blocks <span class="tbadge" id="blockbadge" hidden></span></b><em>Load a yard check</em></button>
-  </div>
+      <b>Trailer blocks</b><em>Load a yard check</em></button>
+      <button class="tile" onclick="go('stats')"><span class="tico" aria-hidden="true">&#128202;</span>
+      <b>Analytics</b><em>Arrivals, carriers and trends</em></button>
+</div>
   <div class="homestat" id="officestat"></div>
 </section>
 
 <!-- ============ TRAILER BLOCK ============ -->
 <section id="sec-block">
-  <div class="card">
-    <h2>Load a yard check</h2>
+  <!-- the office loads any of the day's twelve checks, so it sees all twelve -->
+  <div id="bkboard">
+    <div class="bkshift">Morning shift</div>
+    <div class="bkslots" id="bk_am"></div>
+    <div class="bkshift">Evening shift</div>
+    <div class="bkslots" id="bk_pm"></div>
+    <div class="bkkey" id="bk_key"></div>
+  </div>
+
+  <div class="card" id="bkload" hidden>
+    <h2 id="bk_title">Load a yard check</h2>
     <div class="hint">Pick the check, list the trailers, then release it. The officer on duty
       is told straight away and has one hour from that moment.</div>
-    <label class="f">Yard check</label>
-    <select id="bk_slot"></select>
+    <select id="bk_slot" hidden></select>
     <label class="f">Trailers and products</label>
-    <textarea id="bk_list" rows="10" placeholder="LR7524 FRIES&#10;R25106 FRIES&#10;H50117 CHICKEN"></textarea>
-    <div class="hint">One trailer per line: trailer number first, then the product.</div>
+    <textarea id="bk_list" rows="10" placeholder="LR7524, FRIES&#10;R25106, FRIES&#10;H50117, CHICKEN SD"></textarea>
+    <div class="hint">One trailer per line: <b>trailer number, product</b>. A comma is safest, so a trailer number with a space in it is not read as a product.</div>
     <div id="bk_status" class="hint" style="text-align:center;font-size:14px"></div>
     <button class="btn" onclick="blockRelease()">&#128640; Release to the yard</button>
   </div>
-  <div class="card">
-    <h2>Released today</h2>
-    <div id="bk_hist"></div>
-  </div>
+  
 </section>
 
 <!-- ============ SEARCH ============ -->
@@ -720,100 +1624,116 @@
     <button class="btn" onclick="schedPreview()">&#128065; Preview</button>
     <div id="schedpreview"></div>
     <div id="schedactions" hidden>
-      <button class="btn grn" onclick="schedSubmit()">&#9989; Submit to the yard</button>
+      <button class="btn" onclick="schedSubmit()">&#9989; Submit to the yard</button>
       <button class="btn red" onclick="schedDiscard()">Discard</button>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="schedcard">
     <h2>Loaded orders <span id="cnt" style="color:var(--mut);font-weight:600"></span></h2>
     <div id="sched"></div>
     <button class="btn red officeonly" onclick="clearAll()">&#128465; Clear all schedule data</button>
   </div>
+  <!-- nothing to show is not worth a card of its own -->
+  <div class="schednone" id="schednone" hidden></div>
 </section>
 
 <!-- ============ SEAL FORM ============ -->
 <section id="sec-form">
-  <div class="card" style="text-align:center;padding:10px">
-    <div style="font-weight:800;font-size:17px">Seal Verification Form</div>
-    <div class="banner">*** DRIVER MUST SLIDE TANDEMS BACK ***</div>
-    <div class="hint" id="formsrc"></div>
+  <!-- The form is worked one page at a time: an officer at the gate fills what
+       is in front of them, hands the phone over on the last page, and reads the
+       whole thing once before it goes anywhere. -->
+  <div class="fhead" id="f_head">
+    <em id="f_stepno"></em>
+    <div class="fdots" id="f_dots" aria-hidden="true"></div>
   </div>
 
-  <div class="card">
-    <h2>Load details (auto-filled)</h2>
-    <div class="row2">
-      <div><label class="f">Date In</label><input type="text" id="f_datein" placeholder="MM/DD/YY"></div>
-      <div><label class="f">Time In</label>
-        <div class="tinrow"><input type="text" id="f_timein" placeholder="HHMM">
-        <button type="button" class="nowbtn" onclick="stampTimeIn()">Now</button></div></div>
+  <div class="fstep" data-name="Load details" hidden>
+    <div class="card">
+      <h2>Load details (auto-filled)</h2>
+      <div class="hint" id="formsrc"></div>
+      <div class="row2">
+        <div><label class="f">Date In</label><input type="text" id="f_datein" placeholder="MM/DD/YY"></div>
+        <div><label class="f">Time In</label>
+          <div class="tinrow"><input type="text" id="f_timein" placeholder="HHMM">
+          <button type="button" class="nowbtn" onclick="stampTimeIn()">Now</button></div></div>
+      </div>
+      <label class="f">Appt Time</label><input type="text" id="f_appt" placeholder="e.g. 730">
+      <label class="f">PO Number</label>
+      <div class="row2">
+        <select id="f_pomode" onchange="poMode()" style="flex:0.5">
+          <option value="po">PO</option>
+          <option value="na">N/A (no PO)</option>
+        </select>
+        <input type="text" id="f_po" inputmode="numeric" style="flex:1.5" placeholder="80xxxxx">
+      </div>
+      <div class="hint">Driver has no PO? Pick <b>N/A</b> and fill the form manually.</div>
+      <label class="f">Trailer Number</label><input type="text" id="f_trailer">
+      <label class="f">Tractor Number</label><input type="text" id="f_tractor">
+      <div class="hint">Used for the NPG gate log only. It is not printed on the form sent to the receiving office.</div>
+      <label class="f">Carrier Name</label><input type="text" id="f_carrier" list="dl_carrier" autocomplete="off" aria-autocomplete="both">
+      <label class="f">Vendor (reference)</label><input type="text" id="f_vendor" list="dl_vendor" autocomplete="off" aria-autocomplete="both">
     </div>
-    <label class="f">Appt Time</label><input type="text" id="f_appt" placeholder="e.g. 730">
-    <label class="f">PO Number</label>
-    <div class="row2">
-      <select id="f_pomode" onchange="poMode()" style="flex:0.5">
-        <option value="po">PO</option>
-        <option value="na">N/A (no PO)</option>
-      </select>
-      <input type="text" id="f_po" inputmode="numeric" style="flex:1.5" placeholder="80xxxxx">
-    </div>
-    <div class="hint">Driver has no PO? Pick <b>N/A</b> and fill the form manually.</div>
-    <label class="f">Trailer Number</label><input type="text" id="f_trailer">
-    <label class="f">Tractor Number</label><input type="text" id="f_tractor">
-    <div class="hint">Used for the NPG gate log only. It is not printed on the form sent to the receiving office.</div>
-    <label class="f">Carrier Name</label><input type="text" id="f_carrier">
-    <label class="f">Vendor (reference)</label><input type="text" id="f_vendor">
   </div>
 
-  <div class="card">
-    <h2>Driver: hand the phone to the driver</h2>
-    <div class="row2">
-      <div><label class="f">Initials</label><input type="text" id="f_initials" maxlength="5" style="text-transform:uppercase"></div>
-      <div><label class="f">Driver Name (print)</label><input type="text" id="f_driver"></div>
+  <div class="fstep" data-name="Refer &amp; Fuel" hidden>
+    <div class="card">
+      <h2>Refer &amp; Fuel</h2>
+      <div class="row2">
+        <div><label class="f">Refer Setting</label><input type="text" id="f_reefset"></div>
+        <div><label class="f">Refer Actual</label><input type="text" id="f_reefact"></div>
+      </div>
+      <label class="f">Fuel Level (circle one) <i>(N/A for dry loads)</i></label>
+      <div class="choice" id="c_fuel"></div>
+      <label class="f">Verified by</label>
+      <input type="text" id="f_verified" readonly tabindex="-1">
     </div>
-    <label class="f">Driver Signature</label>
-    <div id="sigwrap">
-      <canvas id="sig"></canvas>
-      <button class="btn sec" id="sigclear" onclick="clearSig()">Clear</button>
-    </div>
-    <div class="hint" style="font-style:italic">"The above load has been in my control and has not been tampered with during transit."</div>
-    <div class="chk"><input type="checkbox" id="f_photoid"><label for="f_photoid">Driver's Photo ID has been checked</label></div>
   </div>
 
-  <div class="card">
-    <h2>Refer &amp; Fuel</h2>
-    <div class="row2">
-      <div><label class="f">Refer Setting</label><input type="text" id="f_reefset"></div>
-      <div><label class="f">Refer Actual</label><input type="text" id="f_reefact"></div>
+  <div class="fstep" data-name="Seal" hidden>
+    <div class="card">
+      <h2>Seal</h2>
+      <label class="f">Seal Type (circle one)</label>
+      <div class="choice" id="c_sealtype"></div>
+      <label class="f">Seal Number on Trailer</label><input type="text" id="f_sealtrailer">
+      <label class="f">Seal Number on BOL</label><input type="text" id="f_sealbol">
+      <div id="sealwarn" class="sealwarn" role="status"></div>
+      <label class="f">Seal Condition (circle one)</label>
+      <div class="choice" id="c_sealcond"></div>
+      <div class="chk"><input type="checkbox" id="f_locked"><label for="f_locked">Trailer was locked upon arrival <i>(LTL loads only!)</i></label></div>
     </div>
-    <label class="f">Fuel Level (circle one) <i>(N/A for dry loads)</i></label>
-    <div class="choice" id="c_fuel"></div>
-    <label class="f">Verified by</label><input type="text" id="f_verified">
-    <div class="hint">Auto-filled with your first name from Settings (⚙ top-right).</div>
   </div>
 
-  <div class="card">
-    <h2>Seal</h2>
-    <label class="f">Seal Type (circle one)</label>
-    <div class="choice" id="c_sealtype"></div>
-    <label class="f">Seal Number on Trailer</label><input type="text" id="f_sealtrailer">
-    <label class="f">Seal Number on BOL</label><input type="text" id="f_sealbol">
-    <div id="sealwarn" class="sealwarn" role="status"></div>
-    <label class="f">Seal Condition (circle one)</label>
-    <div class="choice" id="c_sealcond"></div>
-    <div class="chk"><input type="checkbox" id="f_locked"><label for="f_locked">Trailer was locked upon arrival <i>(LTL loads only!)</i></label></div>
+  <div class="fstep" data-name="Driver" hidden>
+    <div class="card">
+      <h2>Driver: hand the phone to the driver</h2>
+      <div class="row2">
+        <div><label class="f">Initials</label><input type="text" id="f_initials" maxlength="5" style="text-transform:uppercase"></div>
+        <div><label class="f">Driver Name (print)</label><input type="text" id="f_driver"></div>
+      </div>
+      <label class="f">Driver Signature</label>
+      <div id="sigwrap">
+        <canvas id="sig"></canvas>
+        <button class="btn sec" id="sigclear" onclick="clearSig()">Clear</button>
+      </div>
+      <div class="hint" style="font-style:italic">"The above load has been in my control and has not been tampered with during transit."</div>
+      <div class="chk"><input type="checkbox" id="f_photoid"><label for="f_photoid">Driver's Photo ID has been checked</label></div>
+    </div>
   </div>
 
-  <div class="card">
-    <button class="btn" onclick="previewForm()">👁 Preview &amp; check form</button>
-    <div class="hint" style="text-align:center">Preview first. The save and email buttons appear under the preview.</div>
-    <div id="preview"></div>
-    <div id="actions" style="display:none">
-      <button class="btn grn" onclick="saveForm()">✅ Save completed form</button>
-      <button class="btn" onclick="emailForm()">📧 Email to receiving office</button>
-      <button class="btn sec" onclick="shareForm()">📤 Share another way (AirDrop / apps)</button>
+  <div class="fstep" data-name="Preview" hidden>
+    <div class="card">
+      <div id="preview"></div>
+      <div id="actions" style="display:none">
+        <button class="btn" onclick="pushForm()">Submit</button>
+      </div>
+      <button class="btn sec" onclick="resetForm(true)">Start a new blank form</button>
     </div>
-    <button class="btn red" onclick="resetForm(true)">Start a new blank form</button>
+  </div>
+
+  <div class="fnav" id="f_nav">
+    <button type="button" class="fnavb" id="f_back" onclick="formStep(-1)">Back</button>
+    <button type="button" class="fnavb pri" id="f_next" onclick="formStep(1)">Next</button>
   </div>
 </section>
 
@@ -839,14 +1759,6 @@
 <!-- ============ YARD CHECK SHEET ============ -->
 <section id="sec-yardsheet">
   <div id="ycviewbar" class="viewbar" hidden></div>
-  <div class="card yconly">
-    <input type="file" id="ycfile" accept="image/*" style="display:none">
-    <button class="btn" onclick="document.getElementById('ycfile').click()">&#128247; Import trailer list from photo</button>
-    <div class="hint" style="text-align:center">Photograph the printed Trailer Inspection Log and
-      the app fills in the trailer numbers and products for you.</div>
-    <div id="ycocrstatus"></div>
-  </div>
-
   <div class="card ycdoc">
     <div class="ycbrand">
       <img class="yclogo" src="assets/mb-logo.png" alt="Martin Brower">
@@ -869,14 +1781,8 @@
   </div>
 
   <div class="card yconly">
-    <button class="btn" onclick="ycPreview()">&#128065; Preview &amp; check log</button>
-    <div class="hint" style="text-align:center">Preview first. Save and email appear under the preview.</div>
     <div id="ycpreview"></div>
-    <div id="ycactions" style="display:none">
-      <button class="btn grn" onclick="ycSave()">&#9989; Save yard check</button>
-      <button class="btn" onclick="ycEmail()">&#128231; Email to receiving office</button>
-      <button class="btn sec" onclick="ycShare()">&#128228; Share another way</button>
-    </div>
+    <button class="btn" onclick="ycSubmit()">&#9989; Submit to receiving office</button>
   </div>
   <div class="card viewonly">
     <button class="btn" onclick="ycEmail()">&#128231; Email this record again</button>
@@ -905,6 +1811,11 @@
 <!-- ============ SETTINGS ============ -->
 <section id="sec-settings">
   <div class="card">
+    <h2>Appearance and sound</h2>
+    <div id="prefsbody"></div>
+  </div>
+
+  <div class="card">
     <h2>Officer</h2>
     <label class="f">Your first name</label>
     <input type="text" id="set_offname" placeholder="e.g. Kofi">
@@ -917,6 +1828,9 @@
     <h2>Receiving office email</h2>
     <input type="text" id="set_email" inputmode="email" autocomplete="email" placeholder="receiving@yourcompany.com">
     <div class="hint">Where completed forms go. Shared with the whole team once you're signed in.</div>
+    <label class="f">Manager (Daily Activity Report)</label>
+    <input type="text" id="set_manager" inputmode="email" placeholder="manager@npgsecurity.com">
+    <div class="hint">Where the Daily Activity Report goes at the end of a shift.</div>
     <label class="f">CC (copies)</label>
     <input type="text" id="set_cc" inputmode="email" placeholder="person1@company.com, person2@company.com">
     <div class="hint">Everyone listed here gets a copy of every form. Add more addresses separated by
@@ -928,21 +1842,90 @@
       setup (Claude gives you the steps). Shared with the whole team.
       If it's empty, the Email button falls back to opening your mail app instead.</div>
   </div>
-  <button class="btn sec" onclick="go('form')">← Back to Seal Form</button>
 </section>
 
 <!-- ============ OCR REVIEW OVERLAY ============ -->
 <div id="review" style="display:none;position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:50;overflow:auto">
   <div style="background:#fff;margin:14px;border-radius:14px;padding:14px;max-width:680px;margin-left:auto;margin-right:auto">
-    <h2 style="color:var(--blue);margin:0 0 6px">Check what the photo says</h2>
+    <h2 style="margin:0 0 6px">Check what the photo says</h2>
     <div class="hint" id="revmsg" style="margin-bottom:8px"></div>
     <label class="f">Schedule date for these orders</label>
     <input type="date" id="revdate" style="width:100%;padding:11px;border:1.5px solid var(--line);border-radius:9px;font-size:16px">
     <div id="revrows" style="margin-top:10px"></div>
-    <button class="btn grn" onclick="confirmReview()">✅ Add these orders</button>
+    <button class="btn" onclick="confirmReview()">✅ Add these orders</button>
     <button class="btn red" onclick="closeReview()">Cancel</button>
   </div>
 </div>
+<script>
+/* An officer who was signed in a moment ago is signed in now. Firebase takes a
+   beat to confirm it, and painting the login screen while it does is a flash of
+   a screen they never asked for. So the overlay is taken down before the first
+   paint and only put back if the check actually comes back signed out. */
+(function(){
+  try{
+    if(localStorage.getItem('gc_wasin') === '1'){
+      var o = document.getElementById('login');
+      if(o){ o.style.display = 'none'; o.classList.remove('gc-checking'); }
+    }
+  }catch(e){}
+})();
+</script>
+
+<!-- a published day, opened over the whole window -->
+<div id="dayview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="dv_date" hidden>
+  <div class="dvbar">
+    <button type="button" id="dv_back" class="dvback" aria-label="Back to the schedule"
+      onclick="dayViewClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="dv_date"></b></span>
+    <span class="dvright">
+      <span class="dvseg" role="group" aria-label="View mode">
+        <button type="button" id="dv_preview" onclick="dayViewMode('preview')">Preview</button>
+        <button type="button" id="dv_edit" onclick="dayViewMode('edit')">Edit</button>
+      </span>
+      <button type="button" id="dv_save" class="dvact" onclick="dayViewSave()" hidden>Save</button>
+      <button type="button" id="dv_confirm" class="dvact" onclick="dayViewConfirm()" hidden>Confirm</button>
+    </span>
+  </div>
+  <div class="dvbody" id="dv_body"></div>
+</div>
+<!-- a long analytics list, on its own screen -->
+<div id="anlist" class="dayview" role="dialog" aria-modal="true" aria-labelledby="anlist_title" hidden>
+  <div class="dvbar">
+    <button type="button" id="anlist_back" class="dvback" aria-label="Back to the dashboard"
+      onclick="anListClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="anlist_title"></b></span>
+    <span class="dvright"></span>
+  </div>
+  <div class="dvbody" id="anlist_body"></div>
+</div>
+<!-- the office reads a completed yard check -->
+<div id="bkview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="bkview_title" hidden>
+  <div class="dvbar">
+    <button type="button" id="bkview_back" class="dvback" aria-label="Back to trailer blocks"
+      onclick="blockViewClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="bkview_title"></b></span>
+    <span class="dvright"><button type="button" class="bkprint"
+      onclick="window.print()">Print</button></span>
+  </div>
+  <div class="dvbody" id="bkview_body"></div>
+</div>
+<!-- one trailer, on a card in the middle of the screen -->
+<div id="ycmodal" class="ycmwrap" role="dialog" aria-modal="true" aria-labelledby="ycm_title" hidden>
+  <div class="ycmscrim" onclick="ycModalClose()"></div>
+  <div class="ycmcard">
+    <div class="ycmhead">
+      <b id="ycm_title"></b>
+      <button type="button" class="ycmx" aria-label="Close" onclick="ycModalClose()">&#10005;</button>
+    </div>
+    <div class="ycmbody" id="ycm_body"></div>
+    <div class="ycmfoot">
+      <button type="button" class="btn" id="ycm_save" onclick="ycModalSave()">Save</button>
+    </div>
+  </div>
+</div>
+<!-- names the office has already typed on the schedule -->
+<datalist id="dl_carrier"></datalist>
+<datalist id="dl_vendor"></datalist>
 <div class="toast" id="toast"></div>
 <canvas id="paper" width="1275" height="1650" style="display:none"></canvas>
 <script src="js/app.js"></script>
@@ -955,4 +1938,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/cloud.js"></script>
 <script src="js/yard.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/dar.js"></script>
+<script src="js/prefs.js"></script>
 </body>

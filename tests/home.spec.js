@@ -11,11 +11,13 @@ test('the app opens on a menu of six tiles', async ({ page }) => {
   await expect(page.locator('#sec-home')).toBeVisible();
   const tiles = page.locator('#sec-home .tile');
   await expect(tiles).toHaveCount(6);
-  for (const label of ['Search','Schedule','Seal Form','Yard','Log','Saved'])
+  for (const label of ['Search','Schedule','Sign In','Yard Check','Log','DAR'])
     await expect(page.locator('#sec-home .tile', { hasText: label })).toHaveCount(1);
   await expect(page.locator('nav')).toHaveCount(0);          // the old tab bar is gone
   await expect(page.locator('#hdrtitle')).toBeEmpty();       // no wordmark in the bar
-  await expect(page.locator('#menubtn')).toBeVisible();
+  // nothing behind home, so no back arrow; the menu lives on the profile
+  await expect(page.locator('#menubtn')).toBeHidden();
+  await expect(page.locator('#profbtn')).toBeVisible();
 });
 
 test('the screen title is centred in the bar', async ({ page }) => {
@@ -59,16 +61,31 @@ test('name and email are always visible beside the profile icon', async ({ page 
   }
 });
 
-test('only the menu icon opens the menu, not the profile', async ({ page }) => {
+test('the menu opens from the profile it belongs to', async ({ page }) => {
   await signedIn(page);
-  // the profile is display-only: no button, no handler
-  const prof = page.locator('.hdrprof');
-  expect(await prof.evaluate(el => el.tagName)).not.toBe('BUTTON');
-  expect(await prof.evaluate(el => !!el.getAttribute('onclick'))).toBe(false);
-  await prof.click();
-  await expect(page.locator('#drawer'), 'profile must not open the menu').toBeHidden();
-  await page.click('#menubtn');
+  await expect(page.locator('#drawer')).toBeHidden();
+  await expect(page.locator('#profbtn')).toHaveAttribute('aria-expanded', 'false');
+  await page.click('#profbtn');
   await expect(page.locator('#drawer')).toBeVisible();
+  await expect(page.locator('#profbtn')).toHaveAttribute('aria-expanded', 'true');
+  // it hangs under the profile, on the right, not off the side of the screen
+  const p = await page.locator('#profbtn').boundingBox();
+  const m = await page.locator('#drawer').boundingBox();
+  expect(m.y).toBeGreaterThan(p.y + p.height - 2);
+  expect(Math.round(m.x + m.width)).toBeGreaterThan(page.viewportSize().width / 2);
+  // tapping the profile again puts it away
+  await page.click('#profbtn');
+  await expect(page.locator('#drawer')).toBeHidden();
+});
+
+test('the back arrow appears only where there is something behind', async ({ page }) => {
+  await signedIn(page);
+  await expect(page.locator('#menubtn')).toBeHidden();
+  await page.click('#sec-home .tile[onclick*="log"]');
+  await expect(page.locator('#menubtn')).toBeVisible();
+  await page.click('#menubtn');
+  await expect(page.locator('#sec-home')).toBeVisible();
+  await expect(page.locator('#menubtn')).toBeHidden();
 });
 
 test('tiles are square', async ({ page }) => {
@@ -85,39 +102,42 @@ test('tiles are square', async ({ page }) => {
   }
 });
 
-test('the menu slides in under a MENU heading', async ({ page }) => {
+test('the menu lists every screen it should', async ({ page }) => {
   await signedIn(page);
   await expect(page.locator('#drawer')).toBeHidden();
-  await page.click('#menubtn');
+  await page.click('#profbtn');
   const d = page.locator('#drawer');
   await expect(d).toBeVisible();
-  await expect(page.locator('.drawerpanel')).toHaveAttribute('aria-modal', 'true');
-  // the panel is headed "Menu"; the officer identity lives in the header bar
-  await expect(page.locator('.dhead')).toHaveText('Menu');
-  await expect(page.locator('#drawer .davatar')).toHaveCount(0);
+  // a menu, not a screen: it does not take the app modal
+  await expect(page.locator('#drawer')).not.toHaveAttribute('aria-modal', 'true');
+  // the header names the account an inch above; the panel does not repeat it
   await expect(page.locator('#drawer')).not.toContainText('kofi@martinbrower.com');
-  for (const label of ['Home','Gate log','Yard check','Saved forms','Settings','Sign out'])
+  // Home is offered from anywhere but the home screen itself
+  for (const label of ['Saved forms','Settings','Sign out'])
     await expect(page.locator('.ditem', { hasText: label })).toHaveCount(1);
+  // the tiles' own screens are not repeated here
+  for (const label of ['Gate log','Yard check','Search','Schedule','DAR'])
+    await expect(page.locator('.ditem', { hasText: label })).toHaveCount(0);
   // every item is a comfortable target
-  const n = await page.locator('.ditem').count();
+  const items = page.locator('.ditem:visible');
+  const n = await items.count();
   for (let i = 0; i < n; i++) {
-    const b = await page.locator('.ditem').nth(i).boundingBox();
+    const b = await items.nth(i).boundingBox();
     expect(b.height, `menu item ${i}`).toBeGreaterThanOrEqual(44);
   }
 });
 
 test('the menu closes on backdrop, Escape, and on choosing an item', async ({ page }) => {
   await signedIn(page);
-  await page.click('#menubtn');
-  const w = page.viewportSize().width;
-  await page.mouse.click(w - 10, 200);          // backdrop, clear of the panel
+  await page.click('#profbtn');
+  await page.mouse.click(20, 600);              // anywhere outside the panel
   await expect(page.locator('#drawer')).toBeHidden();
 
-  await page.click('#menubtn');
+  await page.click('#profbtn');
   await page.keyboard.press('Escape');
   await expect(page.locator('#drawer')).toBeHidden();
 
-  await page.click('#menubtn');
+  await page.click('#profbtn');
   await page.click('.ditem:has-text("Settings")');
   await expect(page.locator('#drawer')).toBeHidden();
   await expect(page.locator('#sec-settings')).toBeVisible();
@@ -125,10 +145,11 @@ test('the menu closes on backdrop, Escape, and on choosing an item', async ({ pa
 
 test('opening the menu moves focus into it and restores it on close', async ({ page }) => {
   await signedIn(page);
-  await page.click('#menubtn');
+  await page.click('#profbtn');
   expect(await page.evaluate(() => document.activeElement.className)).toContain('ditem');
+  expect(await page.evaluate(() => document.activeElement.hidden)).toBe(false);
   await page.keyboard.press('Escape');
-  expect(await page.evaluate(() => document.activeElement.id)).toBe('menubtn');
+  expect(await page.evaluate(() => document.activeElement.id)).toBe('profbtn');
 });
 
 test('the tiles fill the screen on a phone and an iPad', async ({ page }) => {
@@ -195,7 +216,7 @@ test('back walks the whole trail, not just one step', async ({ page }) => {
 test('back closes an open menu before it navigates', async ({ page }) => {
   await signedIn(page);
   await page.click('#sec-home .tile[onclick*="yard"]');
-  await page.click('#menubtn');
+  await page.click('#profbtn');
   await expect(page.locator('#drawer')).toBeVisible();
   await page.goBack();
   await expect(page.locator('#drawer')).toBeHidden();
@@ -204,7 +225,7 @@ test('back closes an open menu before it navigates', async ({ page }) => {
 test('every tile reaches a real screen', async ({ page }) => {
   await signedIn(page);
   const map = { search:'sec-search', sched:'sec-sched', form:'sec-form',
-                yard:'sec-yard', log:'sec-log', hist:'sec-hist' };
+                yard:'sec-yard', log:'sec-log', dar:'sec-dar' };
   for (const [key, id] of Object.entries(map)) {
     await page.click(`.tile[onclick*="${key}"]`);
     await expect(page.locator('#' + id), `tile ${key}`).toBeVisible();
@@ -223,7 +244,7 @@ test('the section title is shown in full, or not at all', async ({ page }) => {
       clipped: el.scrollWidth > el.clientWidth + 1,
     }));
     if (st.shown) {
-      await expect(t).toHaveText('Seal Form');
+      await expect(t).toHaveText('Seal Verification');
       expect(st.clipped, `${v.width}px: title is clipped`).toBe(false);
     }
     // whatever happens to the title, the identity must survive
@@ -237,4 +258,45 @@ test('the schedule summary moved off the header onto the menu', async ({ page })
   await signedIn(page);
   await expect(page.locator('#sec-home #datastat')).toBeVisible();
   await expect(page.locator('header #datastat')).toHaveCount(0);
+});
+
+test('the menu does not offer the screen you are already on', async ({ page }) => {
+  await signedIn(page);
+  await page.click('#profbtn');
+  await expect(page.locator('#um_home')).toBeHidden();
+  await page.keyboard.press('Escape');
+
+  await page.click('#sec-home .tile[onclick*="log"]');
+  await page.click('#profbtn');
+  await expect(page.locator('#um_home')).toBeVisible();
+  await page.click('#um_home');
+  await expect(page.locator('#sec-home')).toBeVisible();
+});
+
+test('the menu repeats nothing the header already shows', async ({ page }) => {
+  await signedIn(page);
+  await page.evaluate(() => {
+    sset('gc_offname_kofi@martinbrower.com', 'Kobe Mensah');
+    menuFill();
+  });
+  await expect(page.locator('#hdrname')).toHaveText('Kobe Mensah');
+  await expect(page.locator('#hdrmail')).toHaveText('kofi@martinbrower.com');
+  await page.click('#profbtn');
+  const panel = await page.locator('#drawer').innerText();
+  expect(panel).not.toContain('Kobe Mensah');
+  expect(panel).not.toContain('kofi@martinbrower.com');
+});
+
+test('every menu item leads somewhere that has no tile of its own', async ({ page }) => {
+  await signedIn(page);
+  await page.click('#sec-home .tile[onclick*="log"]');     // off home, so Home shows
+  await page.click('#profbtn');
+  const items = await page.locator('.ditem:visible').evaluateAll(
+    els => els.map(e => (e.getAttribute('onclick') || '')));
+  const tiles = await page.locator('#sec-home .tile').evaluateAll(
+    els => els.map(e => (e.getAttribute('onclick') || '')
+      .replace(/^go\('|'\)$/g, '')));
+  for (const t of tiles)
+    expect(items.some(i => i.includes("menuGo('" + t + "')")),
+      'the menu repeats the ' + t + ' tile').toBe(false);
 });

@@ -74,3 +74,58 @@ test('resolving signed in hides the overlay without flashing the form', async ({
   expect(await page.evaluate(() =>
     [...document.body.children].filter(el => el.hasAttribute('inert')).length), 'inert released').toBe(0);
 });
+
+/* ---- a refresh while signed in must not flash the login screen ---- */
+
+async function sampleLogin(page, opts) {
+  await page.route('**/firebasejs/**',
+    r => r.fulfill({ contentType:'application/javascript', body:'' }));
+  await page.addInitScript(H.FB_STUB, opts);
+  await page.addInitScript(() => {
+    window.__samples = [];
+    const tick = () => {
+      const o = document.getElementById('login');
+      if (o) window.__samples.push(getComputedStyle(o).display);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+test('refreshing while signed in never shows the login screen', async ({ page }) => {
+  // Firebase takes a beat to confirm the session; that beat used to be a flash
+  await sampleLogin(page, { user:{ email:'kofi@martinbrower.com' }, authDelay: 400 });
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.__fb && window.__fb.settled);
+  await page.waitForTimeout(100);
+
+  await page.evaluate(() => { window.__samples = []; });
+  await page.reload();
+  await page.waitForFunction(() => window.__fb && window.__fb.settled);
+  await page.waitForTimeout(200);
+
+  const seen = await page.evaluate(() => window.__samples);
+  expect(seen.length, 'no frames were sampled').toBeGreaterThan(10);
+  expect([...new Set(seen)], 'the login screen painted during a refresh').toEqual(['none']);
+  await expect(page.locator('#sec-home')).toBeVisible();
+});
+
+test('a session that has actually ended still gets the login screen', async ({ page }) => {
+  // the flag says they were signed in, but the check comes back empty
+  await sampleLogin(page, { user: null, authDelay: 120 });
+  await page.addInitScript(() => {
+    try{ localStorage.setItem('gc_wasin', '1'); }catch(e){}
+  });
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.__fb && window.__fb.settled);
+  await expect(page.locator('#login')).toBeVisible();
+  await expect(page.locator('#lg_email')).toBeVisible();
+});
+
+test('signing out clears the flag, so the next visit shows the login', async ({ page }) => {
+  await H.gotoApp(page, { user:{ email:'kofi@martinbrower.com' } });
+  expect(await page.evaluate(() => sget('gc_wasin'))).toBe('1');
+  await page.evaluate(() => doSignOut());
+  await expect(page.locator('#login')).toBeVisible();
+  expect(await page.evaluate(() => sget('gc_wasin'))).toBe('');
+});

@@ -91,6 +91,8 @@ function cloudInit(){
       CLOUD.user = u;
       if(u){
         CLOUD.ready = true;
+        /* so the next refresh does not flash the login screen at them */
+        sset('gc_wasin', '1');
         /* apply the role we saw last time so there is no flash, then let the
            account document confirm or correct it */
         setRole(sget('gc_role_'+u.email) || 'officer');
@@ -101,6 +103,7 @@ function cloudInit(){
         startSync();
       } else {
         CLOUD.ready = false;
+        sset('gc_wasin', '');
         stopSync();
         var _w2=$('whoami'); if(_w2) _w2.textContent = '';
         var _s2=$('signout'); if(_s2) _s2.style.display = 'none';
@@ -163,7 +166,13 @@ function logCloudSet(r){
   clearTimeout(_logTimers[r.id]);
   _logTimers[r.id] = setTimeout(function(){
     CLOUD.db.collection('logs').doc(r.id)
-      .set({ timeout:r.timeout||'', outtrailer:r.outtrailer||'' }, {merge:true})
+      .set(r.manual
+        ? { timein:r.timein||'', timeout:r.timeout||'', carrier:r.carrier||'',
+            tractor:r.tractor||'', trailer:r.trailer||'', outtrailer:r.outtrailer||'',
+            plate:r.plate||'', state:r.state||'', notes:r.notes||'',
+            outBy:r.outBy||'', outByName:r.outByName||'', outAt:r.outAt||'' }
+        : { timeout:r.timeout||'', outtrailer:r.outtrailer||'',
+            outBy:r.outBy||'', outByName:r.outByName||'', outAt:r.outAt||'' }, {merge:true})
       .catch(function(e){ toast('Log not saved: '+e.message); });
   }, 700);
 }
@@ -175,15 +184,21 @@ function startSync(){
     DB.orders = snap.docs.map(function(d){ return d.data(); });
     DB.orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
     persist(); stat(); renderSched(); doSearch();
+    if(typeof routeResync==='function') routeResync();
   }, function(e){ toast('Sync error: '+e.message); }));
   CLOUD.subs.push(db.collection('forms').orderBy('ts','desc').limit(200).onSnapshot(function(snap){
     DB.forms = snap.docs.map(function(d){ var o=d.data(); o._id=d.id; return o; });
     persist(); renderHist();
   }, function(e){}));
   CLOUD.subs.push(db.collection('logs').orderBy('ts','desc').limit(300).onSnapshot(function(snap){
-    DB.logs = snap.docs.map(function(d){ return d.data(); });
+    /* rows written before the gate log stored ISO come back in the old form */
+    DB.logs = logMigrate(snap.docs.map(function(d){ return d.data(); }));
     if(typeof logPersist==='function'){ logPersist();
-      if($('sec-log') && $('sec-log').classList.contains('on')) renderLog(); }
+      /* never redraw the sheet out from under a cursor: the snapshot arrives
+         while the officer is still typing into the row that caused it */
+      var typing = document.activeElement && document.activeElement.closest
+        && document.activeElement.closest('#logrows');
+      if(!typing && $('sec-log') && $('sec-log').classList.contains('on')) renderLog(); }
   }, function(e){}));
   /* the receiving office writes one record per slot when it loads the trailer block */
   CLOUD.subs.push(db.collection('yardslots').orderBy('date','desc').limit(120).onSnapshot(function(snap){
@@ -196,6 +211,7 @@ function startSync(){
   CLOUD.subs.push(db.collection('yardchecks').orderBy('ts','desc').limit(60).onSnapshot(function(snap){
     DB.yardchecks = snap.docs.map(function(d){ var o=d.data(); o._id=d.id; return o; });
     if(typeof ycPersistAll==='function'){ ycPersistAll(); renderYardHist(); }
+    if(typeof routeResync==='function') routeResync();
   }, function(e){}));
   var _em = CLOUD.user.email;
   CLOUD.subs.push(db.collection('officers').doc(_em).onSnapshot(function(doc){
@@ -240,6 +256,36 @@ mergeOrders = function(arr){
   }
   toast('Imported '+list.length+' orders, shared with the whole team.');
 };
+/* An edited day is published whole: rows the office removed are deleted from
+   the shared schedule, not just dropped from this browser. */
+var _localPublishDay = publishDay;
+publishDay = function(date, rows){
+  var list = rows.map(normalizeRow).filter(function(r){ return r.order; });
+  var keep = {}; list.forEach(function(r){ keep[r.date+'_'+r.order] = 1; });
+  var gone = DB.orders.filter(function(o){ return o.date === date; })
+    .map(function(o){ return o.date+'_'+o.order; })
+    .filter(function(id){ return !keep[id]; });
+  _localPublishDay(date, rows);
+  if(!CLOUD.ready) return;
+  var db = CLOUD.db, ops = [];
+  list.forEach(function(o){
+    o.updatedBy = CLOUD.user.email;
+    ops.push(['set', db.collection('orders').doc(o.date+'_'+o.order), o]);
+  });
+  gone.forEach(function(id){ ops.push(['del', db.collection('orders').doc(id)]); });
+  for(var i=0;i<ops.length;i+=400){
+    var b = db.batch();
+    ops.slice(i,i+400).forEach(function(op){
+      if(op[0]==='set') b.set(op[1], op[2]); else b.delete(op[1]);
+    });
+    b.commit();
+  }
+};
+function logCloudDel(id){
+  if(!CLOUD.ready || !id) return;
+  CLOUD.db.collection('logs').doc(id).delete()
+    .catch(function(e){ toast('Row not removed: '+e.message); });
+}
 var _localClearAll = clearAll;
 clearAll = function(){
   if(!CLOUD.ready){ _localClearAll(); return; }

@@ -6,7 +6,15 @@ try{ var _yc0 = sget('gc_ycs'); if(_yc0) DB.yardchecks = JSON.parse(_yc0); }catc
 function ycPersistAll(){ try{ sset('gc_ycs', JSON.stringify(DB.yardchecks.slice(0,40))); }catch(e){} }
 
 var YC_SLOTS = ['0000','0200','0400','0600','0800','1000','1200','1400','1600','1800','2000','2200'];
-var YC_FUELS = ['FULL','3/4','1/2','1/4','E'];
+var YC_FUELS = ['FULL','3/4','1/2','1/4','EMPTY'];
+/* The set point is only there to say which rule applies: -10 means the frozen
+   band (0.0 or less), 34 means the refrigerated band (34.0 to 40.0). DEF and
+   OFF are states of the unit, not temperatures. Anything else is typed. */
+var YC_SETPOINTS = ['-10','34','DEF','OFF'];
+/* A trailer is either on a dock door - always even, 2 up to 46 - or sitting in
+   the yard on no door at all. */
+var YC_DOORS = ['N/A'];
+for(var _d=2; _d<=46; _d+=2) YC_DOORS.push(String(_d));
 var YC = null;
 
 function ycBlank(){
@@ -16,7 +24,27 @@ function ycBlank(){
     time: slot, name: getOfficerName(), rows: [] };
 }
 function ycRowBlank(){ return {trailer:'',product:'',set:'',temp:'',type:'',fuel:'',intact:'',door:'',action:''}; }
-function ycSaveDraft(){ try{ sset('gc_ycdraft', JSON.stringify(YC)); }catch(e){} }
+/* Every check keeps its own draft. One shared draft meant the trailers typed
+   for the 00:00 check turned up on the 02:00 one. */
+function _ycKey(y){ return (y && y.date && y.time) ? y.date+'_'+y.time : ''; }
+function ycDrafts(){
+  try{ return JSON.parse(sget('gc_ycdrafts')||'{}') || {}; }catch(e){ return {}; }
+}
+function ycSaveDraft(){
+  try{
+    sset('gc_ycdraft', JSON.stringify(YC));            /* what is open now */
+    var k = _ycKey(YC); if(!k || YC_VIEW) return;
+    var all = ycDrafts();
+    all[k] = YC;
+    var keys = Object.keys(all).sort();
+    while(keys.length > 24) delete all[keys.shift()];   /* two days of checks */
+    sset('gc_ycdrafts', JSON.stringify(all));
+  }catch(e){}
+}
+function ycDraftFor(date, slot){
+  var d = ycDrafts()[date+'_'+slot];
+  return (d && d.rows) ? d : null;
+}
 function ycLoadDraft(){
   try{ var d=sget('gc_ycdraft'); if(d){ YC=JSON.parse(d); return; } }catch(e){}
   YC = ycBlank();
@@ -26,22 +54,40 @@ function ycLoadDraft(){
 function ycIsTenth(v){ return /^-?\d+\.\d$/.test(String(v).trim()); }
 function ycIsNumLoose(v){ return /^-?\d+(\.\d)?$/.test(String(v).trim()); }
 function ycAutoType(row){
-  if(String(row.set).toUpperCase()==='DEF') return row.type||'';
+  var v = String(row.set).toUpperCase();
+  if(v==='DEF' || v==='OFF') return v==='OFF' ? '' : (row.type||'');
   if(ycIsNumLoose(row.set)){ return parseFloat(row.set) <= 0 ? 'FROZEN' : 'COOLER'; }
   return row.type||'';
 }
+function ycBadFields(row){
+  var out={}, f=String(row.fuel||'').toUpperCase(), v=String(row.set||'').trim().toUpperCase();
+  if(v==='DEF') out.set=1;
+  if(v==='OFF') out.set=1;
+  if(String(row.temp||'').trim().toUpperCase()==='DEF') out.temp=1;
+  if(f==='1/4'||f==='E'||f==='EMPTY') out.fuel=1;
+  if(!out.temp && ycIsTenth(row.temp)){
+    var t=parseFloat(row.temp), ty=row.type||ycAutoType(row);
+    if((ty==='FROZEN' && t>=0.05) || (ty==='COOLER' && (t<33.95||t>40.05))) out.temp=1;
+  }
+  return out;
+}
 function ycEval(row){
   var reasons = [];
-  var setDef = String(row.set).trim().toUpperCase()==='DEF';
+  var setV = String(row.set).trim().toUpperCase();
   var tmpDef = String(row.temp).trim().toUpperCase()==='DEF';
-  if(setDef || tmpDef) reasons.push('DEF (DEFROST) SHOWING');
+  if(setV==='DEF' || tmpDef) reasons.push('DEF (DEFROST) SHOWING');
+  /* a unit that is switched off is a problem in itself: there is no band to
+     judge the temperature against, and that is exactly the point */
+  if(setV==='OFF') reasons.push('UNIT OFF');
   if(!tmpDef && ycIsTenth(row.temp)){
     var t = parseFloat(row.temp);
     var type = row.type || ycAutoType(row);
     if(type==='FROZEN' && t >= 0.05) reasons.push('TEMP OUT OF RANGE: frozen must be 0.0° or less');
     if(type==='COOLER' && (t < 33.95 || t > 40.05)) reasons.push('TEMP OUT OF RANGE: cooler must be 34.0° to 40.0°');
   }
-  if(row.fuel==='1/4' || row.fuel==='E') reasons.push('LOW FUEL: ¼ tank or less');
+  var f = String(row.fuel||'').toUpperCase();
+  /* 'E' is how older checks recorded an empty tank */
+  if(f==='1/4' || f==='E' || f==='EMPTY') reasons.push('LOW FUEL: ¼ tank or less');
   return reasons;
 }
 
@@ -213,11 +259,24 @@ function ycNotifyReady(){
   }
   ycUpdateBadge();
 }
+var _ycBellWas = 0;
 function ycUpdateBadge(){
-  var b=$('yardbadge'); if(!b) return;
-  var n=ycActionable();
-  b.textContent = n? String(n) : '';
-  b.hidden = !n;
+  var bell=$('notif'); if(!bell) return;
+  var n = (typeof isOffice==='function' && isOffice()) ? 0 : ycActionable();
+  var dot=$('notifn');
+  if(dot){ dot.textContent = n ? String(n) : ''; dot.hidden = !n; }
+  bell.hidden = !n;
+  if(!n) notifClose();
+  var p = $('notifpanel'); if(p && !p.hidden) notifRender();
+  bell.setAttribute('aria-label',
+    n===1 ? 'One yard check is ready' : n+' yard checks are ready');
+  /* it only rings when the number goes up: a standing count is not news */
+  if(n > _ycBellWas){
+    bell.classList.remove('ring');
+    void bell.offsetWidth;
+    bell.classList.add('ring');
+  }
+  _ycBellWas = n;
 }
 /* the countdown has to keep moving while the officer is looking at the board */
 var _ycTick=null;
@@ -233,8 +292,20 @@ function ycStopTicking(){ if(_ycTick){ clearInterval(_ycTick); _ycTick=null; } }
 var YC_VIEW = null, _ycDraftStash = null;
 /* A completed slot opens the check that was saved, read only. The officer's
    own unfinished draft is put aside and restored on the way out. */
+/* A check still to be done opens as tabs, one trailer at a time. A check
+   already saved opens as the sheet it was filed as. */
 function ycOpenSlot(slot){
+  go(ycSlotCheck(slot) ? 'yardsheet' : 'ycgrid', false, slot);
+}
+/* Loading the slot is separate from navigating to it, so a refresh on
+   #yardsheet/0800 brings back the same check rather than an empty sheet. */
+function ycRestoreSlot(slot){
   if(!YC) ycLoadDraft();
+  if(YC_VIEW === slot) return;
+  /* Only skip when there is work in progress for this slot. A blank draft
+     already carries the current slot's time, so without the row check the
+     trailers the office released would never be loaded at all. */
+  if(!YC_VIEW && YC && YC.time === slot && YC.rows.length && !ycSlotCheck(slot)) return;
   var saved = ycSlotCheck(slot);
   if(saved){
     if(!YC_VIEW) _ycDraftStash = JSON.parse(JSON.stringify(YC));
@@ -249,23 +320,31 @@ function ycOpenSlot(slot){
   } else {
     ycExitView();
     var prevTime = YC.time;
+    var date = ycSlotDate(slot);
     /* the slot fixes the date and time; the signed-in officer fixes the name */
+    if(prevTime !== slot) ycSaveDraft();          /* keep the check being left */
     YC.time = slot;
-    YC.date = ycSlotDate(slot);
+    YC.date = date;
     YC.name = getOfficerName();
-    /* the office released the trailers for this check, so start from those.
-       Only when moving to a different check, or when nothing has been typed:
-       work already in progress is never overwritten. */
     var rec = ycSlotRecord(slot);
-    if(rec && rec.trailers && rec.trailers.length && (prevTime !== slot || !YC.rows.length)){
-      YC.rows = rec.trailers.map(function(t){
+    if(prevTime !== slot){
+      /* whatever was typed for another check stays with that check */
+      var mine = ycDraftFor(date, slot);
+      if(mine) YC.rows = mine.rows;
+      else if(rec && rec.trailers && rec.trailers.length){
+        YC.rows = rec.trailers.map(ycFixPair).map(function(t){
+          return { trailer:(t.trailer||'').toUpperCase(), product:(t.product||'').toUpperCase(),
+                   set:'', temp:'', type:'', fuel:'', intact:'', door:'', action:'' };
+        });
+      } else YC.rows = [];
+    } else if(!YC.rows.length && rec && rec.trailers && rec.trailers.length){
+      YC.rows = rec.trailers.map(ycFixPair).map(function(t){
         return { trailer:(t.trailer||'').toUpperCase(), product:(t.product||'').toUpperCase(),
                  set:'', temp:'', type:'', fuel:'', intact:'', door:'', action:'' };
       });
     }
     ycSaveDraft();
   }
-  go('yardsheet');
 }
 function ycExitView(){
   if(!YC_VIEW) return;
@@ -305,13 +384,8 @@ function renderYard(){
     + '<th style="min-width:76px">FUEL</th>'
     + '<th style="min-width:74px">INTACT<br>(Y or N)</th>'
     + '<th style="min-width:70px">DOOR #</th>'
-    + '<th style="min-width:230px">*ESCALATE*<br>ACTION (if any was taken)</th>'
-    + '<th style="min-width:34px"></th></tr>';
+    + '<th style="min-width:150px">*ESCALATE*</th></tr>';
   var body = YC.rows.map(function(r,i){ return ycRowHTML(r,i); }).join('');
-  var blanks = YC_VIEW? 0 : Math.max(0, YC_MIN_ROWS - YC.rows.length);
-  for(var b=0;b<blanks;b++){
-    body += '<tr>'+new Array(10).join('<td class="ycblank">&nbsp;</td>')+'</tr>';
-  }
   $('ycrows').innerHTML = '<div class="ycwrap"><table class="yct ycsheet">'+head+body+'</table></div>';
   YC.rows.forEach(function(r,i){ ycBanner(i); });
   ycSummary();
@@ -323,80 +397,35 @@ function ycSelHTML(i,k,list,cur){
 }
 function ycCell(v){ return '<td class="ycro">'+esc(v||'')+'</td>'; }
 function ycRowHTML(r,i){
+  var bad = ycBadFields(r);
+  var m = function(k){ return bad[k] ? ' class="bad"' : ''; };
   if(YC_VIEW){
     return '<tr id="ycr'+i+'">'
       + ycCell(String(r.trailer||'').toUpperCase()) + ycCell(String(r.product||'').toUpperCase())
-      + ycCell(r.set) + ycCell(r.temp) + ycCell(r.fuel) + ycCell(r.intact) + ycCell(r.door)
-      + '<td id="ycb'+i+'"></td><td></td></tr>';
+      + '<td class="ycro'+(bad.set?' bad':'')+'">'+esc(r.set||'')+'</td>'
+      + '<td class="ycro'+(bad.temp?' bad':'')+'">'+esc(r.temp||'')+'</td>'
+      + '<td class="ycro'+(bad.fuel?' bad':'')+'">'+esc(r.fuel||'')+'</td>'
+      + ycCell(r.intact) + ycCell(r.door)
+      + '<td id="ycb'+i+'"></td></tr>';
   }
   return '<tr id="ycr'+i+'">'
     +'<td><input style="font-weight:800;text-transform:uppercase" placeholder="LR7524" value="'+esc(r.trailer)+'" oninput="ycSet('+i+',\'trailer\',this.value,true)"></td>'
     +'<td><input style="text-transform:uppercase" placeholder="FRIES" value="'+esc(r.product)+'" oninput="ycSet('+i+',\'product\',this.value,true)"></td>'
-    +'<td><input placeholder="-10.0 / DEF" value="'+esc(r.set)+'" oninput="ycSet('+i+',\'set\',this.value,true)" onblur="ycBlurSet('+i+',this)"></td>'
-    +'<td><input placeholder="-9.9 / DEF" value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)"></td>'
-    +'<td>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
+    +'<td'+m('set')+'><input value="'+esc(r.set)+'" oninput="ycSet('+i+',\'set\',this.value,true)" onblur="ycBlurSet('+i+',this)"></td>'
+    +'<td'+m('temp')+'><input value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)"></td>'
+    +'<td'+m('fuel')+'>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
     +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
     +'<td><input placeholder="N/A" value="'+esc(r.door)+'" oninput="ycSet('+i+',\'door\',this.value,true)"></td>'
     +'<td id="ycb'+i+'"></td>'
-    +'<td><button class="delx" onclick="ycDel('+i+')">\u2715</button></td>'
     +'</tr>';
 }
+/* One word. The reason is shown by the box that caused it, not spelled out. */
 function ycBanner(i){
   var r = YC.rows[i], el = $('ycb'+i), tr = $('ycr'+i); if(!el) return;
-  var reasons = ycEval(r);
-  if(tr) tr.classList.toggle('esc', reasons.length>0);
-  if(reasons.length){
-    el.innerHTML = '<div class="escmsg">🚨 *ESCALATE*: '+reasons.map(esc).join(' · ')+'</div>'
-      + (YC_VIEW
-          ? '<div class="ycro" style="padding:2px 8px 7px;white-space:normal">'+esc(r.action||'\u2014')+'</div>'
-          : '<input style="font-size:13.5px" placeholder="Action taken…" value="'+esc(r.action)+'" oninput="ycSet('+i+',\'action\',this.value,true)">');
-  } else if(r.temp && (ycIsTenth(r.temp) || String(r.temp).toUpperCase()==='DEF')){
-    el.innerHTML = '<div class="okmsg">N/A · in range ✓</div>';
-  } else el.innerHTML = '';
-}
-function ycSet(i,k,v,noRender){
-  var r = YC.rows[i]; if(!r) return;
-  if(k==='type'){ r[k] = (r[k]===v? '' : v); }
-  else r[k] = v;
-  if(k==='set'){ var at=ycAutoType(r); if(at) r.type=at; }
-  ycSaveDraft();
-  if(noRender){
-    if(k==='set'){ var tEl=$('yctype'+i); if(tEl) tEl.querySelectorAll('button').forEach(function(b){ b.classList.toggle('sel', b.textContent===r.type); }); }
-    ycBanner(i); ycSummary();
-  } else renderYard();
-  if(window.invalidateYcPreview) invalidateYcPreview();
-}
-function ycDef(i,k){ YC.rows[i][k]='DEF'; ycSaveDraft(); renderYard(); }
-function ycBlurTemp(i,el){
-  var v = el.value.trim();
-  if(v.toUpperCase()==='DEF' && v!=='DEF'){ el.value='DEF'; ycSet(i,'temp','DEF',true); return; }
-  if(!v || v==='DEF') return;
-  if(!ycIsTenth(v)){
-    toast('Temp must be recorded to the tenth, e.g. '+(ycIsNumLoose(v)? v+'.0 (if that is the true reading)':'-10.0'));
-    el.style.borderColor = '#E74C3C';
-  } else el.style.borderColor = '';
-}
-function ycBlurSet(i,el){
-  var v = el.value.trim();
-  if(v.toUpperCase()==='DEF' && v!=='DEF'){ el.value='DEF'; ycSet(i,'set','DEF',true); return; }
-  if(!v || v==='DEF') return;
-  if(ycIsNumLoose(v) && v.indexOf('.')<0){ el.value = v+'.0'; ycSet(i,'set',el.value,true); }
-}
-function ycDel(i){ YC.rows.splice(i,1); ycSaveDraft(); renderYard(); }
-function ycAdd(){ YC.rows.push(ycRowBlank()); ycSaveDraft(); renderYard();
-  setTimeout(function(){ var e=document.querySelector('#ycr'+(YC.rows.length-1)+' input'); if(e) e.focus(); },50); }
-function ycCopyLast(){
-  var last = DB.yardchecks && DB.yardchecks[0];
-  if(!last || !last.rows || !last.rows.length){ toast('No previous yard check to copy from'); return; }
-  YC.rows = last.rows.map(function(r){
-    return {trailer:r.trailer, product:r.product, set:r.set, temp:'', type:r.type, fuel:'', intact:'', door:'', action:''};
-  });
-  ycSaveDraft(); renderYard();
-  toast('Copied '+YC.rows.length+' trailers from the last check. Enter fresh temps.');
-}
-function ycNew(){
-  if(!confirm('Start a new blank yard check? The current one is discarded unless saved.')) return;
-  YC = ycBlank(); ycSaveDraft(); renderYard(); $('ycpreview').innerHTML=''; invalidateYcPreview();
+  var esc_n = ycEval(r).length;
+  if(tr) tr.classList.toggle('esc', esc_n>0);
+  el.className = esc_n ? 'escyes' : 'escno';
+  el.textContent = esc_n ? 'Escalate' : 'N/A';
 }
 function ycSummary(){
   var n = YC.rows.length, esc_n = 0;
@@ -405,7 +434,7 @@ function ycSummary(){
     +(esc_n? '<span style="color:var(--red);font-weight:800">'+esc_n+' escalation'+(esc_n>1?'s':'')+'</span>'
            : '<span style="color:var(--green);font-weight:700">no escalations</span>')) : '';
 }
-function invalidateYcPreview(){ var a=$('ycactions'); if(a) a.style.display='none'; }
+function invalidateYcPreview(){}
 
 /* ---------- validation + preview ---------- */
 function ycProblems(){
@@ -445,13 +474,14 @@ function ycData(){
     date:YC.date, time:YC.time, name:YC.name||getOfficerName(),
     rows: YC.rows.map(function(r){ var reasons=ycEval(r);
       return {trailer:r.trailer,product:r.product,set:r.set,temp:r.temp,type:r.type,
-        fuel:r.fuel,intact:r.intact,door:r.door,action:r.action,escalate:reasons}; }) };
+        fuel:r.fuel,intact:r.intact,door:r.door,action:r.action,escalate:reasons,
+        /* who it was raised with; the call is external, the record is not */
+        escTo: reasons.length ? (r.escTo || ycEscalateRoute()) : ''}; }) };
 }
 function ycFmtDate(iso){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')) return iso||'';
   var p=iso.split('-'); return p[1]+'/'+p[2]+'/'+p[0];
 }
-
 /* ---------- render the paper log ---------- */
 function drawYardPaper(d, done){
   var cv=$('paper'), g=cv.getContext('2d');
@@ -716,39 +746,110 @@ function blockSlots(){
   /* the office loads for any check in the coming day, not just the live shift */
   return YC_SLOTS.slice();
 }
+/* Which check the office should load next: the first that has not been
+   released and whose hour has not already gone by. */
+function blockNext(){
+  return blockSlots().filter(function(s){
+    return !ycSlotRecord(s) && !ycSlotWindowClosed(s);
+  })[0] || '';
+}
+function blockSlotState(slot){
+  if(ycSlotCheck(slot))  return { cls:'done', label:'Completed' };
+  if(ycSlotRecord(slot)) return { cls:'rel',  label:'Released' };
+  if(slot === blockNext()) return { cls:'next', label:'Load this one' };
+  return { cls:'', label: ycSlotWindowClosed(slot) ? 'Not loaded' : 'Not loaded yet' };
+}
+/* The office reads the same playing cards the officer does: same shape, same
+   palette, same words on top. Only the states differ, because loading a check
+   is a different job from working one. */
+function blockTile(slot){
+  var chk = ycSlotCheck(slot), rec = ycSlotRecord(slot);
+  var next = slot === blockNext();
+  var n = rec ? ycSlotTrailers(rec) : 0;
+  var st;
+  if(chk){
+    var escN = (chk.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
+    st = { cls: escN? 'esc':'done', top:'Completed', arrow: escN? '\u26a0':'\u2713',
+           kpi: escN ? escN+' esc' : (chk.rows||[]).length+' checked',
+           detail: 'The officer has filed this check' };
+  } else if(rec){
+    st = { cls:'ready', top:'Released', arrow:'\u2192', kpi:n+' trailer'+(n===1?'':'s'),
+           detail:'Released at '+ycHHMM(rec.loadedAt)+', waiting on the officer' };
+  } else if(next){
+    st = { cls:'due', top:'Load this one', arrow:'\u2191', kpi:'Add trailers',
+           detail:'This is the next check to release' };
+  } else {
+    st = { cls:'past', top:'Not loaded', arrow:'\u2014', kpi:'\u2014',
+           detail:'No trailer list released' };
+  }
+  var hh = slot.slice(0,2);
+  return '<button class="slot '+st.cls+(next?' glow':'')+'"'
+    + ' aria-label="'+esc(hh+':00 \u2014 '+st.top+', '+st.detail)+'"'
+    + ' title="'+esc(hh+':00 \u2014 '+st.detail)+'"'
+    + ' onclick="blockPick(\''+slot+'\')">'
+    + '<span class="top">'+esc(st.top)+'</span>'
+    + '<span class="hero"><b>'+hh+'</b></span>'
+    + '<span class="band"><span class="arw" aria-hidden="true">'+st.arrow+'</span>'
+    +   '<span class="kpi">'+esc(st.kpi)+'</span></span>'
+    + '</button>';
+}
 function blockRender(){
-  var sel=$('bk_slot'); if(!sel) return;
-  var cur = sel.value;
-  sel.innerHTML = blockSlots().map(function(s){
-    var rec = ycSlotRecord(s), done = ycSlotCheck(s);
-    var note = done? ' — completed' : (rec? ' — released':'');
-    return '<option value="'+s+'"'+(s===cur?' selected':'')+'>'
-      + s.slice(0,2)+':'+s.slice(2)+esc(note)+'</option>';
-  }).join('');
-  if(!cur){
-    /* default to the next check that has not been released */
-    var next = blockSlots().filter(function(s){ return !ycSlotRecord(s) && !ycSlotWindowClosed(s); })[0];
-    if(next) sel.value = next;
+  var am = $('bk_am'), pm = $('bk_pm');
+  if(am) am.innerHTML = YC_SHIFT_AM.map(blockTile).join('');
+  if(pm) pm.innerHTML = YC_SHIFT_PM.map(blockTile).join('');
+  var key = $('bk_key');
+  if(key) key.innerHTML = [['due','Load this one'], ['ready','Released'],
+      ['done','Completed'], ['esc','Escalations'], ['past','Not loaded']]
+    .map(function(k){ return '<span class="lg '+k[0]+'"><i></i>'+k[1]+'</span>'; }).join('');
+
+  var sel=$('bk_slot');
+  if(sel){
+    var cur = sel.value;
+    sel.innerHTML = blockSlots().map(function(s){
+      var rec = ycSlotRecord(s), done = ycSlotCheck(s);
+      var note = done? ' \u2014 completed' : (rec? ' \u2014 released':'');
+      return '<option value="'+s+'"'+(s===cur?' selected':'')+'>'
+        + ycSlotLabel(s)+esc(note)+'</option>';
+    }).join('');
+    if(cur) sel.value = cur;
   }
   blockStatus();
-  var h=$('bk_hist');
-  if(h){
-    var t = ycTodayISO();
-    var rows = (DB.yardslots||[]).filter(function(r){ return r && r.date===t; })
-      .sort(function(a,b){ return a.slot<b.slot?-1:1; });
-    h.innerHTML = rows.length
-      ? rows.map(function(r){
-          var n = ycSlotTrailers(r);
-          return '<div class="histitem"><div>'
-            + '<div class="t1">'+esc(r.slot.slice(0,2)+':'+r.slot.slice(2))+' &middot; '
-            +   n+' trailer'+(n===1?'':'s')+'</div>'
-            + '<div class="t2">released '+esc(ycHHMM(r.loadedAt))
-            +   (r.loadedBy? ' by '+esc(String(r.loadedBy).split('@')[0]) : '')+'</div>'
-            + '</div></div>';
-        }).join('')
-      : '<div class="empty">Nothing released yet today.</div>';
+}
+/* The board and a single check are two places, so the browser's own back
+   button walks between them and no in-app button has to. */
+function blockPick(slot){ go('block', false, slot); }
+function blockBoard(){ go('block'); }
+function blockViewSync(sub){
+  var board = $('bkboard'), load = $('bkload'), view = $('bkview');
+  if(!board) return;
+  var slot = String(sub||'').trim();
+  var chk = slot ? ycSlotCheck(slot) : null;
+
+  if(view){
+    view.hidden = !chk;
+    document.body.classList.toggle('dayview-open', !!chk);
+    if(chk){
+      $('bkview_title').textContent = ycSlotLabel(chk.time) + ' yard check';
+      $('bkview_body').innerHTML = ycCheckHTML(chk);
+      var b=$('bkview_back'); if(b) b.focus();
+    }
   }
-  blockBadge();
+  board.hidden = !!slot;
+  if(load){
+    load.hidden = !slot || !!chk;
+    if(!load.hidden){
+      var sel=$('bk_slot'); if(sel) sel.value = slot;
+      var rec = ycSlotRecord(slot);
+      $('bk_title').textContent = 'Load the ' + ycSlotLabel(slot) + ' yard check';
+      var t=$('bk_list');
+      if(t){
+        /* the list already released is what the office edits, not a blank box */
+        t.value = rec ? (rec.trailers||[]).map(function(x){
+          return x.trailer + (x.product ? ', ' + x.product : ''); }).join('\n') : '';
+      }
+      blockStatus();
+    }
+  }
 }
 function blockStatus(){
   var sel=$('bk_slot'), st=$('bk_status'); if(!sel||!st) return;
@@ -761,9 +862,19 @@ function blockParse(text){
   var out=[], seen={};
   String(text||'').split(/\n/).forEach(function(line){
     var t = line.trim(); if(!t) return;
-    var m = t.match(/^([A-Za-z0-9\-]+)[\s,;]+(.*)$/);
-    var trailer = (m? m[1] : t).toUpperCase();
-    var product = (m? m[2] : '').trim().toUpperCase();
+    /* A comma or a tab is what separates the trailer from the product. Without
+       one, "LR 7540" is a trailer number typed with a space in it, not a
+       trailer called LR carrying a product called 7540. */
+    var trailer, product = '';
+    var d = t.match(/^([^,;\t]+)[,;\t]+(.*)$/);
+    if(d){ trailer = d[1]; product = d[2]; }
+    else {
+      var w = t.match(/^(\S+)\s+(.*)$/);
+      if(w && /\d/.test(w[1]) && /[A-Za-z]/.test(w[2])){ trailer = w[1]; product = w[2]; }
+      else trailer = t.replace(/\s+/g, '');
+    }
+    trailer = String(trailer).trim().toUpperCase();
+    product = String(product).trim().toUpperCase();
     if(!trailer || seen[trailer]) return;
     seen[trailer]=1;
     out.push({ trailer:trailer, product:product });
@@ -787,18 +898,33 @@ function blockRelease(){
   DB.yardslots.unshift(entry);
   ycSlotsPersist();
   if(window.blockCloudSave) blockCloudSave(entry);
-  $('bk_list').value='';
-  blockRender();
+  blockBoard();
   toast('Released '+trailers.length+' trailer'+(trailers.length===1?'':'s')+' for '
     + slot.slice(0,2)+':'+slot.slice(2)+'. The officer has one hour.');
 }
+/* The office is told fifteen minutes before a check is due, so the trailer
+   list is out before the officer needs it. The tile carries no number: the
+   bell in the header is where news lives. */
+var BK_LEAD_MIN = 15;
+function blockDue(){
+  var now = new Date(), m = now.getHours()*60 + now.getMinutes();
+  return blockSlots().filter(function(s){
+    if(ycSlotRecord(s)) return false;
+    var at = parseInt(s.slice(0,2),10) * 60;
+    var away = at - m;
+    if(away < -60) away += 1440;          /* the next one round the clock */
+    return away <= BK_LEAD_MIN && away > -60;
+  });
+}
 function blockBadge(){
-  var b=$('blockbadge'); if(!b) return;
-  /* checks still to be released before their time comes round */
-  var n = blockSlots().filter(function(s){
-    return !ycSlotRecord(s) && !ycSlotCheck(s) && !ycSlotWindowClosed(s);
-  }).length;
-  b.textContent = n? String(n):''; b.hidden = !n;
+  var bell = $('notif'); if(!bell) return;
+  if(!(typeof isOffice==='function' && isOffice())) return;
+  var due = blockDue();
+  var dot = $('notifn');
+  if(dot){ dot.textContent = due.length ? String(due.length) : ''; dot.hidden = !due.length; }
+  bell.hidden = !due.length;
+  bell.setAttribute('aria-label', due.length===1
+    ? 'One yard check needs its trailer list' : due.length+' yard checks need trailer lists');
 }
 function officeStat(){
   var el=$('officestat'); if(!el) return;
@@ -811,3 +937,365 @@ function officeStat(){
 (function(){
   var s=$('bk_slot'); if(s) s.addEventListener('change', blockStatus);
 })();
+
+/* ================= the officer's check, trailer by trailer =================
+   The board sends the officer here, not to the full sheet. One tab per trailer
+   released for the slot, the way a streaming app lays out its rows; tapping one
+   opens a card with only that trailer's boxes on it. The sheet is still the
+   record, and the officer reads it whole before it goes anywhere - but nobody
+   fills a nine-column grid on a phone in a cold yard.
+*/
+/* "LR" carrying a product called "7540" is a trailer number that was split on
+   its space. Fixed at the source, and mended here for lists already released. */
+function ycFixPair(r){
+  var t = String(r.trailer||'').trim(), p = String(r.product||'').trim();
+  if(t && p && /^\d+$/.test(p) && !/\d/.test(t)){ r.trailer = t + p; r.product = ''; }
+  return r;
+}
+function ycSlotLabel(t){
+  t = String(t||''); return t.length===4 ? t.slice(0,2)+':'+t.slice(2) : t;
+}
+function ycRowDone(r){
+  return !!(String(r.set||'').trim() && String(r.temp||'').trim()
+    && r.fuel && r.intact && String(r.door||'').trim());
+}
+function ycGridOpen(slot){ go('ycgrid', false, slot); }
+function ycGridBack(){ go('yard'); }
+
+var YCG_Q = '', YCG_ALL = false, YCG_FIRST = 8;
+function ycGridSearch(v){ YCG_Q = String(v||'').trim().toUpperCase(); renderYcGrid(); }
+function ycGridMore(){ YCG_ALL = true; renderYcGrid(); }
+
+function renderYcGrid(){
+  var host = $('ycgridwrap'); if(!host) return;
+  if(!YC) ycLoadDraft();
+  /* a row with no trailer number is not a trailer. These crept in before the
+     card refused to keep a blank one; they are cleared out on sight. */
+  var kept = (YC.rows || []).filter(function(r, k){
+    return String(r.trailer||'').trim() || k === YCM;
+  }).map(ycFixPair);
+  if(kept.length !== (YC.rows||[]).length){ YC.rows = kept; ycSaveDraft(); }
+  else YC.rows = kept;
+  var rows = YC.rows;
+  var done = rows.filter(ycRowDone).length;
+  var escN = rows.filter(function(r){ return ycRowDone(r) && ycEval(r).length; }).length;
+  var all  = rows.length > 0 && done === rows.length;
+
+  $('ycg_slot').textContent = ycSlotLabel(YC.time);
+  $('ycg_count').textContent = done + ' of ' + rows.length + ' checked'
+    + (escN ? ' \u00b7 ' + escN + ' to escalate' : '');
+  $('ycg_bar').style.width = (rows.length ? Math.round(done/rows.length*100) : 0) + '%';
+  $('ycg_bar').className = 'ycgfill' + (all ? ' full' : '');
+
+  /* keep each trailer's real position, so tapping a tile still opens the right
+     row after the list has been filtered */
+  var shown = rows.map(function(r, i){ return { r:r, i:i }; });
+  /* the officer searches for a trailer, by its number */
+  if(YCG_Q) shown = shown.filter(function(x){
+    return String(x.r.trailer||'').toUpperCase().indexOf(YCG_Q) >= 0;
+  });
+  var over = 0;
+  if(!YCG_Q && !YCG_ALL && shown.length > YCG_FIRST){
+    over = shown.length - YCG_FIRST;
+    shown = shown.slice(0, YCG_FIRST);
+  }
+
+  var tiles = shown.map(function(x){
+    var r = x.r, i = x.i;
+    var ok = ycRowDone(r);
+    var bad = ok && ycEval(r).length;
+    var state = bad ? 'Escalate' : ok ? 'Checked' : 'To do';
+    return '<button type="button" class="ycgtile'
+      + (bad ? ' esc' : ok ? ' done' : '') + '" onclick="ycModalOpen(' + i + ')"'
+      + ' aria-label="' + esc(String(r.trailer||'Trailer '+(i+1))) + ', '
+      +   esc(String(r.product||'no product')) + ', ' + state + '">'
+      + (ok ? '<span class="ycgmark">' + (bad ? '\u26a0' : '\u2713') + '</span>' : '')
+      + '<b>' + esc(String(r.trailer||'').toUpperCase() || '\u2014') + '</b>'
+      + '<em>' + esc(String(r.product||'').toUpperCase() || 'No product') + '</em>'
+      + '</button>';
+  }).join('');
+
+  host.innerHTML = tiles
+    + (YCG_Q ? '' :
+       '<button type="button" class="ycgtile add" onclick="ycGridAdd()"'
+       + ' aria-label="Add a trailer that is not on the list">'
+       + '<b>+ Add trailer</b><em>Not on the list</em></button>');
+  if(YCG_Q && !shown.length)
+    host.innerHTML = '<div class="ycgnone">No trailer matches \u201c' + esc(YCG_Q) + '\u201d.</div>';
+
+  var more = $('ycg_more');
+  more.hidden = !over;
+  more.textContent = 'See more (' + over + ')';
+
+  var act = $('ycg_actions');
+  act.hidden = !all;
+  $('ycg_review').textContent = 'Review and submit';
+  var note = $('ycg_note');
+  note.textContent = rows.length
+    ? (all ? 'Every trailer is checked. Read the sheet before it goes to the receiving office.'
+           : '')
+    : 'The receiving office has not released a trailer list for this check yet. '
+      + 'Add the trailers you can see in the yard.';
+  note.hidden = !note.textContent;
+}
+function ycGridAdd(){
+  YCG_Q = ''; var q=$('ycg_q'); if(q) q.value='';
+  var r = ycRowBlank();
+  r.added = true;          /* the officer's own, so the officer may remove it */
+  YC.rows.push(r);
+  ycSaveDraft();
+  /* straight into the card: re-drawing the grid first would sweep the blank
+     row away before the officer had a chance to type into it */
+  ycModalOpen(YC.rows.length - 1);
+}
+function ycGridReview(){ go('yardsheet', false, YC.time); }
+
+/* ---- one trailer, on a card in the middle of the screen ---- */
+var YCM = -1, YCM_OTHER = false;
+function ycModalOpen(i){
+  if(!YC.rows[i]) return;
+  YCM = i;
+  YCM_OTHER = false;
+  ycModalRender();
+  var m = $('ycmodal');
+  m.hidden = false;
+  document.body.classList.add('ycmodal-open');
+  var f = m.querySelector('input,select'); if(f) f.focus();
+}
+function ycModalClose(){
+  /* a trailer the officer opened and left blank was never really added */
+  var r = YC.rows[YCM];
+  if(r && r.added && !String(r.trailer||'').trim()){ YC.rows.splice(YCM,1); ycSaveDraft(); }
+  YCM = -1;
+  var m = $('ycmodal'); if(m) m.hidden = true;
+  document.body.classList.remove('ycmodal-open');
+  renderYcGrid();
+}
+function ycmSel(k, list, cur, extra){
+  return '<select id="ycm_'+k+'" onchange="ycmSet(\''+k+'\',this.value)"'
+    + (extra||'') + '><option value=""></option>'
+    + list.map(function(v){
+        return '<option'+(String(cur)===String(v)?' selected':'')+'>'+esc(v)+'</option>'; }).join('')
+    + '</select>';
+}
+function ycModalRender(){
+  var r = YC.rows[YCM]; if(!r) return;
+  var known = YC_SETPOINTS.indexOf(String(r.set)) >= 0;
+  /* "Other" clears the value, so the choice itself has to be remembered or the
+     box would vanish the moment it appeared */
+  var other = YCM_OTHER || (String(r.set||'').trim() && !known);
+  $('ycm_title').textContent = (String(r.trailer||'').toUpperCase() || 'New trailer')
+    + (r.product ? ' \u2014 ' + String(r.product).toUpperCase() : '');
+  function box(label, inner, cls){
+    return '<div class="ycmbox'+(cls? ' '+cls : '')+'"><span>'+esc(label)+'</span>'
+      + inner + '</div>';
+  }
+  $('ycm_body').innerHTML =
+      (String(r.trailer||'').trim() ? '' :
+        '<div class="ycmnew">'
+        + box('Trailer #', '<input id="ycm_trailer" value="'+esc(r.trailer||'')+'"'
+            + ' placeholder="LR7524" style="text-transform:uppercase"'
+            + ' oninput="ycmSet(\'trailer\',this.value)">')
+        + box('Product', '<input id="ycm_product" value="'+esc(r.product||'')+'"'
+            + ' placeholder="FRIES" style="text-transform:uppercase"'
+            + ' oninput="ycmSet(\'product\',this.value)">')
+        + '</div>')
+    + (r.added ? '<button type="button" class="ycmdel" onclick="ycModalDelete()">'
+        + 'Remove this trailer</button>' : '')
+    + '<div class="ycmrow">'
+    +   box('Temp set point',
+          /* Other turns this one box into a box you type in: a second box below
+             it was one more thing to look at for no reason. */
+          other
+            ? '<input class="ycmset' + (String(r.set||'').trim() ? '' : ' want') + '"'
+              + ' id="ycm_setother" value="'+esc(r.set)+'" placeholder="Other"'
+              + ' oninput="ycmSet(\'set\',this.value)"'
+              + ' onblur="ycmOtherOut()">'
+            : ycmSel('set', YC_SETPOINTS.concat(['Other\u2026']), r.set))
+    +   box('Temp', '<input id="ycm_temp" value="'+esc(r.temp||'')+'" placeholder="-9.1"'
+          + ' oninput="ycmSet(\'temp\',this.value)">')
+    +   box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
+    +   box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
+    +   box('Door #', ycmSel('door', YC_DOORS, r.door))
+    +   box('Escalate', '<div class="ycmescbox" id="ycm_escbox">N/A</div>', 'esc')
+    + '</div>';
+  ycModalEsc();
+}
+/* the escalate box is never typed into: it says what the rules say */
+function ycModalEsc(){
+  var r = YC.rows[YCM]; if(!r) return;
+  var reasons = ycEval(r);
+  if(reasons.length){ if(!r.escTo) r.escTo = ycEscalateRoute(); }
+  else if(r.escTo){ r.escTo = ''; }
+  var cell = $('ycm_escbox'); if(!cell) return;
+  /* one word, the same shape as every other box. The reason and the action
+     taken belong on the sheet the officer reads before submitting, not
+     crammed into a box on the card. */
+  cell.textContent = reasons.length ? 'Escalate' : 'N/A';
+  cell.className = 'ycmescbox' + (reasons.length ? ' on' : '');
+  cell.title = reasons.length ? reasons.join(' \u00b7 ') : '';
+}
+/* who an escalation goes to depends on the hour: the receiving office is not
+   always open, and the poster says to raise it on the walkie when it is not */
+function ycEscalateOpen(now){
+  var n = now || new Date(), day = n.getDay(), h = n.getHours();
+  var closed = (h >= 0 && h < 5)
+    || (day === 6 && h >= 14) || (day === 0 && h < 5)
+    || (day === 0 && h >= 14) || (day === 1 && h < 5);
+  return !closed;
+}
+/* Where the escalation was raised. The call itself happens on a walkie, outside
+   the app, but which route was used is part of the record and is kept with the
+   row - the paperwork must show it was raised, and to whom. */
+function ycEscalateRoute(now){
+  return ycEscalateOpen(now) ? 'DC' : 'Warehouse supervisor (walkie)';
+}
+function ycEscalateTo(now){
+  return ycEscalateOpen(now)
+    ? 'Escalate to the DC. Record what you did below.'
+    : 'Receiving is closed \u2014 call the warehouse supervisor on the walkie, '
+      + 'then record what you did below.';
+}
+/* leaving the box empty puts the list back, so nobody is stranded in "Other" */
+function ycmOtherOut(){
+  var r = YC.rows[YCM]; if(!r) return;
+  if(!String(r.set||'').trim()){ YCM_OTHER = false; ycModalRender(); }
+}
+function ycmSet(k, v){
+  var r = YC.rows[YCM]; if(!r) return;
+  if(k==='set' && v==='Other\u2026'){ YCM_OTHER = true; r.set=''; ycSaveDraft(); ycModalRender(); return; }
+  if(k==='set' && v && v!=='Other\u2026' && YC_SETPOINTS.indexOf(v)>=0) YCM_OTHER = false;
+  r[k] = v;
+  /* the band follows the set point, and is cleared when the unit is OFF: a
+     stale band would keep judging a trailer against a rule it is no longer in */
+  if(k==='set') r.type = ycAutoType(r);
+  ycSaveDraft();
+  ycModalEsc();
+}
+function ycModalDelete(){
+  var r = YC.rows[YCM]; if(!r) return;
+  var name = String(r.trailer||'').trim();
+  if(name && !confirm('Remove '+name+' from this check?')) return;
+  YC.rows.splice(YCM, 1);
+  ycSaveDraft();
+  ycModalClose();
+}
+function ycModalSave(){
+  var r = YC.rows[YCM];
+  if(r){
+    var t = String(r.temp||'').trim();
+    if(t && t.toUpperCase()!=='DEF' && !ycIsTenth(t)){
+      toast('Temp must be recorded to the tenth, e.g. -10.0');
+      var el=$('ycm_temp'); if(el) el.focus();
+      return;
+    }
+    if(t && t.toUpperCase()==='DEF') r.temp='DEF';
+    ycSaveDraft();
+  }
+  ycModalClose();
+}
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && YCM >= 0) ycModalClose();
+});
+
+/* One button closes the check: it is filed, it is emailed to the receiving
+   office, and the board marks the slot done. Saving and sending as two
+   separate buttons invited half-finished checks, where the office never got
+   the paperwork. */
+function ycSubmit(){
+  var p = (typeof ycProblems === 'function') ? ycProblems() : { block: [], warn: [] };
+  if(p.block && p.block.length){ toast(p.block[0]); return; }
+  var d = ycData();
+  var n = d.rows.length;
+  var escN = d.rows.filter(function(r){ return r.escalate && r.escalate.length; }).length;
+  if(!confirm('Submit this ' + ycSlotLabel(d.time) + ' yard check?\n\n'
+      + n + ' trailer' + (n===1?'':'s')
+      + (escN ? ', ' + escN + ' escalation' + (escN===1?'':'s') : ', no escalations')
+      + '\n\nIt goes on the record and to the receiving office.')) return;
+  if(typeof beep==='function') beep();
+  ycSave();
+  ycSendData(d);
+  try{ var all = ycDrafts(); delete all[d.date+'_'+d.time];
+       sset('gc_ycdrafts', JSON.stringify(all)); }catch(e){}
+  YC = ycBlank(); ycSaveDraft();
+  go('yard');
+}
+
+
+/* ---- the office reads a completed check ---- */
+function blockOpenCheck(slot){ go('block', false, slot); }
+function blockViewClose(){ go('block'); }
+/* the saved check, drawn as the sheet it was filed as */
+function ycCheckHTML(d){
+  var head = '<tr><th>TRAILER#</th><th>PRODUCT</th><th>TEMP SET POINT</th><th>TEMP</th>'
+    + '<th>FUEL</th><th>INTACT<br>(Y or N)</th><th>DOOR #</th>'
+    + '<th style="min-width:230px">*ESCALATE*<br>ACTION (if any was taken)</th></tr>';
+  var body = (d.rows||[]).map(function(r){
+    var bad = r.escalate && r.escalate.length;
+    return '<tr'+(bad?' class="esc"':'')+'>'
+      + '<td class="ycro">'+esc(String(r.trailer||'').toUpperCase())+'</td>'
+      + '<td class="ycro">'+esc(String(r.product||'').toUpperCase())+'</td>'
+      + '<td class="ycro">'+esc(r.set||'')+'</td>'
+      + '<td class="ycro">'+esc(r.temp||'')+'</td>'
+      + '<td class="ycro">'+esc(r.fuel||'')+'</td>'
+      + '<td class="ycro">'+esc(r.intact||'')+'</td>'
+      + '<td class="ycro">'+esc(r.door||'N/A')+'</td>'
+      + '<td class="ycro">'
+      +   (bad
+          ? '<div class="escmsg">\uD83D\uDEA8 *ESCALATE*: '+r.escalate.map(esc).join(' \u00b7 ')+'</div>'
+            + '<div style="padding:2px 0;white-space:normal">'+esc(r.action||'\u2014')+'</div>'
+            + (r.escTo? '<div class="escroute">Raised with '+esc(r.escTo)+'</div>' : '')
+          : '<span style="color:var(--green);font-weight:700">N/A \u00b7 in range \u2713</span>')
+      + '</td></tr>';
+  }).join('');
+  var escN = (d.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
+  return '<div class="bkvmeta"><b>'+esc(ycFmtDate(d.date))+' \u00b7 '+esc(ycSlotLabel(d.time))+'</b>'
+    + '<span>Recorded by '+esc(d.name||'\u2014')
+    + ' \u00b7 '+(d.rows||[]).length+' trailer'+((d.rows||[]).length===1?'':'s')
+    + ' \u00b7 '+(escN? escN+' escalation'+(escN===1?'':'s') : 'no escalations')+'</span></div>'
+    + '<div class="ycwrap"><table class="yct ycsheet">'+head+body+'</table></div>';
+}
+
+
+/* ---- what the bell has to say ----
+   Tapping it opens the message, it does not carry the officer off somewhere.
+   Going to the check is a second, deliberate tap. */
+function ycWaiting(){
+  return ycShiftSlots().filter(function(s){
+    var st = ycSlotStatus(s);
+    return st.cls === 'ready' || st.cls === 'over';
+  }).map(function(s){ return { slot:s, st:ycSlotStatus(s) }; });
+}
+function notifRender(){
+  var p = $('notifpanel'); if(!p) return;
+  var list = ycWaiting();
+  p.innerHTML = '<div class="nphd">Yard checks waiting</div>'
+    + (list.length
+        ? list.map(function(x){
+            return '<button type="button" class="npitem'+(x.st.cls==='over'?' over':'')+'"'
+              + ' onclick="notifGo(\''+x.slot+'\')">'
+              + '<span class="npslot">'+esc(x.slot.slice(0,2))+'</span>'
+              + '<span class="nptxt"><b>'+esc(x.st.top)+'</b>'
+              + '<span>'+esc(x.st.detail)+'</span></span></button>';
+          }).join('')
+        : '<div class="npfoot">Nothing waiting.</div>')
+    + (list.length ? '<div class="npfoot">Tap one to open it.</div>' : '');
+}
+function notifToggle(e){
+  if(e) e.stopPropagation();
+  var p = $('notifpanel'), b = $('notif'); if(!p) return;
+  var open = p.hidden;
+  if(open) notifRender();
+  p.hidden = !open;
+  if(b) b.setAttribute('aria-expanded', String(open));
+}
+function notifClose(){
+  var p = $('notifpanel'), b = $('notif');
+  if(p && !p.hidden){ p.hidden = true; if(b) b.setAttribute('aria-expanded','false'); }
+}
+function notifGo(slot){ notifClose(); go('yard'); if(slot) ycOpenSlot(slot); }
+document.addEventListener('click', function(e){
+  var p = $('notifpanel');
+  if(p && !p.hidden && !p.contains(e.target) && e.target.closest('#notif') === null) notifClose();
+});
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') notifClose(); });

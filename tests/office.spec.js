@@ -47,7 +47,7 @@ test('the office releases a block and the officer is told', async ({ page }) => 
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="block"]');
   await expect(page.locator('#sec-block')).toBeVisible();
-  const slot = await page.evaluate(() => $('bk_slot').value);
+  const slot = await page.evaluate(() => { const s = blockNext(); blockPick(s); return s; });
   await page.fill('#bk_list', 'LR7524 FRIES\nR25106 FRIES\nH50117 CHICKEN');
   await page.click('button:has-text("Release to the yard")');
   await expect(page.locator('#toast')).toContainText('3 trailers');
@@ -55,7 +55,8 @@ test('the office releases a block and the officer is told', async ({ page }) => 
   expect(rec.count).toBe(3);
   expect(rec.trailers[0]).toEqual({ trailer:'LR7524', product:'FRIES' });
   expect(rec.loadedBy).toBe('office@martinbrower.com');
-  await expect(page.locator('#bk_hist')).toContainText('3 trailers');
+  await expect(page.locator('#bkboard .slot').filter({ hasText:'Released' }).first())
+    .toContainText('3 trailers');
 });
 
 test('a released block turns the officer’s card Ready', async ({ page }) => {
@@ -82,13 +83,15 @@ test('the released trailers are already on the officer’s sheet', async ({ page
     renderYardSlots();
   });
   await page.click('#ycslots .slot >> nth=2');
-  const rows = page.locator('#ycrows table tr');
-  await expect(rows.nth(1).locator('input').first()).toHaveValue('LR7524');
-  await expect(rows.nth(2).locator('input').first()).toHaveValue('R25106');
-  await expect(rows.nth(3).locator('input').first()).toHaveValue('H50117');
+  const tiles = page.locator('#ycgridwrap .ycgtile:not(.add)');
+  await expect(tiles).toHaveCount(3);
+  await expect(tiles.nth(0)).toContainText('LR7524');
+  await expect(tiles.nth(1)).toContainText('R25106');
+  await expect(tiles.nth(2)).toContainText('H50117');
   // products came across too, temps are the officer's to fill
-  await expect(rows.nth(1).locator('input').nth(1)).toHaveValue('FRIES');
-  await expect(rows.nth(1).locator('input').nth(3)).toHaveValue('');
+  await expect(tiles.nth(0)).toContainText('FRIES');
+  await tiles.nth(0).click();
+  await expect(page.locator('#ycm_temp')).toHaveValue('');
 });
 
 test('work already typed is never overwritten by a block', async ({ page }) => {
@@ -104,7 +107,8 @@ test('work already typed is never overwritten by a block', async ({ page }) => {
   await page.evaluate(() => { YC.rows[0].temp = '-9.9'; ycSaveDraft(); });
   await page.goBack();
   await page.click('#ycslots .slot >> nth=2');          // same slot again
-  await expect(page.locator('#ycrows table tr').nth(1).locator('input').nth(3)).toHaveValue('-9.9');
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await expect(page.locator('#ycm_temp')).toHaveValue('-9.9');
 });
 
 test('the trailer list parses trailer and product per line', async ({ page }) => {
@@ -146,7 +150,7 @@ test('pasted spreadsheet rows land in an editable grid, not straight into the ya
   await expect(page.locator('#draftcard')).toBeVisible();
   await expect(page.locator('#draftcnt')).toHaveText('(3)');
   const rows = page.locator('#draftgrid table tr');
-  await expect(rows).toHaveCount(5);          // column letters + header + 3 data rows
+  await expect(rows).toHaveCount(6);          // letters + header + 3 data rows + totals
   const first = rows.nth(2);
   await expect(first.locator('input').nth(6)).toHaveValue('8036385');
   await expect(first.locator('input').nth(7)).toHaveValue('MCCAIN CA: CARBERRY');
@@ -222,7 +226,8 @@ test('officers cannot load the schedule at all', async ({ page }) => {
   await page.click('#sec-home .tile[onclick*="sched"]');
   await expect(page.locator('button:has-text("Upload spreadsheet")')).toBeHidden();
   await expect(page.locator('button:has-text("Clear all schedule data")')).toBeHidden();
-  await expect(page.locator('#sched')).toBeVisible();      // but they still read it
+  // they still read it: today's sheet, or a plain word that there is nothing
+  await expect(page.locator('#schednone')).toBeVisible();
 });
 
 /* ---- deep links ---- */
@@ -355,4 +360,222 @@ test('the grid header is a table row, not the app header bar', async ({ page }) 
   });
   expect(Math.abs(m.hx - m.cx), 'header cell is not above its column').toBeLessThan(2);
   expect(Math.abs(m.hw - m.cw), 'header cell width does not match its column').toBeLessThan(2);
+});
+
+/* ---- day bars on Loaded orders ---- */
+async function submitTwoDays(page) {
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  await page.click('button:has-text("Or paste from a spreadsheet")');
+  const two = TSV + '\n2026-08-22\tD\t\tDROP\t900\tN\t8054516\tARMADA WAREHOUSE\tJ&L\t\t2544\t36';
+  await page.fill('#paste', two);
+  await page.click('button:has-text("Load pasted rows")');
+  await page.click('button:has-text("Preview")');
+  const sent = await page.evaluate(() => JSON.parse(JSON.stringify(SCHED_DRAFT)));
+  await page.click('button:has-text("Submit to the yard")');
+  await page.evaluate((rows) => { DB.orders = rows; renderSched(); }, sent);
+}
+
+test('loaded orders show one bar per day, with preview and edit icons', async ({ page }) => {
+  await submitTwoDays(page);
+  const bars = page.locator('#sched .daybar');
+  await expect(bars).toHaveCount(2);
+  await expect(bars.nth(0)).toContainText('MARTIN BROWER, Inc. Confidential');
+  await expect(bars.nth(0)).toContainText('Friday, August 21, 2026');
+  await expect(bars.nth(1)).toContainText('Saturday, August 22, 2026');
+  await expect(bars.nth(0).locator('.dbico')).toHaveCount(2);
+  await expect(bars.nth(0).locator('[aria-label^="Preview"]')).toBeVisible();
+  await expect(bars.nth(0).locator('[aria-label^="Edit"]')).toBeVisible();
+  // no dropdown any more: the list is bars only
+  await expect(page.locator('#sched table.prn')).toHaveCount(0);
+  await expect(page.locator('#dayview')).toBeHidden();
+});
+
+test('each bar summarises its day', async ({ page }) => {
+  await submitTwoDays(page);
+  await expect(page.locator('#sched .daybar').nth(0))
+    .toContainText('3 orders · 3,070 cases · 55 pallets');
+  await expect(page.locator('#sched .daybar').nth(1))
+    .toContainText('1 order · 2,544 cases · 36 pallets');
+});
+
+test('tapping the bar opens that day full screen in preview', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .dbmain').nth(0).click();
+  const dv = page.locator('#dayview');
+  await expect(dv).toBeVisible();
+  await expect(page.locator('#dv_date')).toHaveText('Friday, August 21, 2026');
+  await expect(page.locator('#dv_preview')).toHaveClass(/on/);
+  await expect(page.locator('#dv_edit')).not.toHaveClass(/on/);
+  await expect(dv.locator('table.prn')).toBeVisible();
+  await expect(dv).toContainText('INTERSTATE WAREHOUSING');
+  // only that day
+  await expect(dv).not.toContainText('ARMADA WAREHOUSE');
+});
+
+test('the full screen day covers the whole window, header included', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .dbmain').nth(0).click();
+  const box = await page.locator('#dayview').boundingBox();
+  const vp = page.viewportSize();
+  expect(box.x).toBe(0);
+  expect(box.y).toBe(0);
+  expect(Math.round(box.width)).toBe(vp.width);
+  expect(Math.round(box.height)).toBe(vp.height);
+  // the header is behind it, not on top of it
+  const hz = await page.evaluate(() => {
+    const z = el => parseInt(getComputedStyle(el).zIndex, 10) || 0;
+    return { hdr: z(document.querySelector('header')), dv: z(document.getElementById('dayview')) };
+  });
+  expect(hz.dv).toBeGreaterThan(hz.hdr);
+});
+
+test('the sheet meets all four edges of the screen, in preview and in edit', async ({ page }) => {
+  await submitTwoDays(page);
+  const vp = page.viewportSize();
+  const bar = await page.locator('#dayview .dvbar').boundingBox().catch(() => null);
+
+  for (const [mode, sel] of [['preview','.prnwrap'], ['edit','.dgwrap']]) {
+    // the second day holds a single order, so there is plenty of room to waste
+    await page.locator('#sched .dbmain').nth(1).click();
+    if (mode === 'edit') await page.click('#dv_edit');
+    const box = await page.locator('#dayview ' + sel).boundingBox();
+    expect(Math.round(box.x), mode).toBe(0);
+    expect(Math.round(box.width), mode).toBe(vp.width);
+    expect(Math.round(box.y + box.height), mode).toBe(vp.height);
+    // nothing framing it: no card border, no rounded corners
+    const st = await page.locator('#dayview ' + sel).evaluate(el => {
+      const c = getComputedStyle(el);
+      return { bw: c.borderTopWidth, r: c.borderTopLeftRadius };
+    });
+    expect(st.bw, mode).toBe('0px');
+    expect(st.r, mode).toBe('0px');
+    page.once('dialog', d => d.accept());
+    await page.click('#dv_back');
+  }
+});
+
+test('the eye opens preview and the pencil opens edit', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .daybar').nth(1).locator('[aria-label^="Edit"]').click();
+  await expect(page.locator('#dv_edit')).toHaveClass(/on/);
+  await expect(page.locator('#dayview table.dg')).toBeVisible();
+  await expect(page.locator('#dv_date')).toHaveText('Saturday, August 22, 2026');
+  await page.click('#dv_back');
+  await page.locator('#sched .daybar').nth(1).locator('[aria-label^="Preview"]').click();
+  await expect(page.locator('#dv_preview')).toHaveClass(/on/);
+  await expect(page.locator('#dayview table.prn')).toBeVisible();
+});
+
+test('preview shows the printed sheet with its totals', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .dbmain').nth(0).click();
+  const dv = page.locator('#dayview');
+  for (const h of ['Zones','Detail','Time','In Yard','Order Number','Vendor Name',
+                   'Appointment Carrier','Contact Name','Open Cases','Pallets'])
+    await expect(dv.locator('th', { hasText: h }).first()).toHaveCount(1);
+  await expect(dv).toContainText('3,070');
+  await expect(dv).toContainText('★');
+});
+
+test('the switch moves between preview and edit without leaving the day', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .dbmain').nth(0).click();
+  await page.click('#dv_edit');
+  await expect(page.locator('#dayview table.dg')).toBeVisible();
+  await expect(page.locator('#dayview table.prn')).toHaveCount(0);
+  await page.click('#dv_preview');
+  await expect(page.locator('#dayview table.prn')).toBeVisible();
+  await expect(page.locator('#dayview table.dg')).toHaveCount(0);
+  await expect(page.locator('#dv_date')).toHaveText('Friday, August 21, 2026');
+});
+
+test('edit is a spreadsheet: column letters, row numbers, editable cells', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
+  const g = page.locator('#dayview table.dg');
+  await expect(g.locator('tr.dgcols th').nth(1)).toHaveText('A');
+  await expect(g.locator('tr.dgcols th').nth(2)).toHaveText('B');
+  await expect(g.locator('tr.dghdr th').nth(1)).toHaveText('Date');
+  await expect(g.locator('tr.dghdr .gut').first()).toHaveText('1');
+  await expect(g.locator('tbody tr, tr').filter({ has: page.locator('td input') })).toHaveCount(3);
+  const cell = g.locator('td input').first();
+  await expect(cell).toBeEditable();
+});
+
+test('back and Escape both leave the day', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .dbmain').nth(0).click();
+  await page.click('#dv_back');
+  await expect(page.locator('#dayview')).toBeHidden();
+  await page.locator('#sched .dbmain').nth(0).click();
+  await expect(page.locator('#dayview')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#dayview')).toBeHidden();
+});
+
+test('Save shows the changes as they will print, and only Confirm publishes', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
+  await expect(page.locator('#dv_save')).toBeHidden();      // nothing typed yet
+
+  const vendor = page.locator('#dayview table.dg tr').filter({ has: page.locator('td input') })
+    .first().locator('td input').nth(7);
+  await vendor.fill('CORRECTED VENDOR');
+  await expect(page.locator('#dv_save')).toBeVisible();
+
+  await page.click('#dv_save');
+  await expect(page.locator('#dayview table.prn')).toBeVisible();
+  await expect(page.locator('#dayview .dvnote')).toBeVisible();
+  await expect(page.locator('#dayview')).toContainText('CORRECTED VENDOR');
+  await expect(page.locator('#dv_confirm')).toBeVisible();
+
+  // nothing has reached the schedule yet
+  expect(await page.evaluate(() => DB.orders.some(o => o.vendor === 'CORRECTED VENDOR'))).toBe(false);
+
+  await page.click('#dv_confirm');
+  await expect(page.locator('#dayview')).toBeHidden();
+  expect(await page.evaluate(() => DB.orders.some(o => o.vendor === 'CORRECTED VENDOR'))).toBe(true);
+  await expect(page.locator('#sched .daybar')).toHaveCount(2);
+});
+
+test('a deleted row really leaves the day once confirmed', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
+  await page.locator('#dayview .dgdel').first().click();
+  await page.click('#dv_save');
+  await page.click('#dv_confirm');
+  await expect(page.locator('#sched .daybar').nth(0))
+    .toContainText('2 orders');
+  expect(await page.evaluate(() => DB.orders.filter(o => o.date === '2026-08-21').length)).toBe(2);
+});
+
+test('closing with unsaved edits asks first', async ({ page }) => {
+  await submitTwoDays(page);
+  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
+  const cell = page.locator('#dayview table.dg tr').filter({ has: page.locator('td input') })
+    .first().locator('td input').nth(7);
+  await cell.fill('TYPED BUT NOT SAVED');
+
+  // declining the prompt keeps them on the day
+  page.once('dialog', d => d.dismiss());
+  await page.click('#dv_back');
+  await expect(page.locator('#dayview')).toBeVisible();
+
+  page.once('dialog', d => d.accept());
+  await page.click('#dv_back');
+  await expect(page.locator('#dayview')).toBeHidden();
+  expect(await page.evaluate(() => DB.orders.some(o => o.vendor === 'TYPED BUT NOT SAVED'))).toBe(false);
+});
+
+test('the preview stays fully open, so nothing is published unread', async ({ page }) => {
+  await asOffice(page);
+  await page.click('#sec-office .tile[onclick*="sched"]');
+  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.fill('#paste', TSV);
+  await page.click('button:has-text("Load pasted rows")');
+  await page.click('button:has-text("Preview")');
+  await expect(page.locator('#schedpreview .daybar')).toHaveCount(0);
+  await expect(page.locator('#schedpreview table.prn')).toBeVisible();
+  await expect(page.locator('#schedpreview')).toContainText('INTERSTATE WAREHOUSING');
 });
