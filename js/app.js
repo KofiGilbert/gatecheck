@@ -91,6 +91,15 @@ function routeSub(sec){ var r = curRoute(); return r.sec===sec ? r.sub : ''; }
 function call(fn, a){ var f = window[fn]; if(typeof f === 'function') return f(a); }
 /* Cloud records can land after the route was restored, so give the open screen
    a second chance to show what the address actually asked for. */
+/* ingest.js loads after this file, so a route restored while the page is
+   still parsing cannot attach the loader. routeResync() calls this again once
+   everything is there, which is the same arrangement the yard uses. */
+function dzSync(name){
+  if(typeof dzAttach !== 'function') return;
+  if(name === 'sched')       dzAttach('dzhost_sched', 'schedule');
+  else if(name === 'ycgrid') dzAttach('dzhost_yard', 'yard');
+  else if(typeof dzDetach === 'function') dzDetach();
+}
 function routeResync(){
   var r = curRoute();
   var shown = document.querySelector('section.on');
@@ -110,6 +119,7 @@ function routeResync(){
   if(r.sec==='block') call('blockBadge');
   if(r.sec==='dar'){ call('renderDar'); call('darStartTicking'); }
   if(r.sec==='office') call('officeStat');
+  dzSync(r.sec);
   if(r.sec==='ycgrid'){
     if(r.sub) call('ycRestoreSlot', r.sub);
     call('renderYcGrid');
@@ -187,6 +197,8 @@ function go(name, fromHistory, sub, replace){
     if(sub) call('ycRestoreSlot', sub);
     call('renderYard');
   }
+  /* the one loader goes to whichever screen is asking for a file */
+  dzSync(name);
   if(name==='search'){ var q=$('q'); if(q) setTimeout(function(){ q.focus(); },60); }
   /* the day sheet lives inside the schedule, so it follows the route too */
   if(typeof dayViewSync==='function') dayViewSync(name==='sched' ? sub : '');
@@ -325,11 +337,10 @@ function ingest(text){
   }catch(e){ toast('Could not read file: '+e.message); return; }
   receiveOrders(arr);
 }
-/* The office checks and edits the schedule before anything reaches the yard. */
-function receiveOrders(arr){
-  if(typeof isOffice==='function' && isOffice()) stageOrders(arr);
-  else mergeOrders(arr);
-}
+/* Whoever loads it checks it first. An officer with the printed sheet in
+   their hand can load it rather than wait for the office, and the same grid
+   is what they correct it in. */
+function receiveOrders(arr){ stageOrders(arr); }
 /* every route in - the + menu, a drag, a paste - ends at the same reader */
 $('file').addEventListener('change', function(){
   /* .files is live: clearing .value empties it, so take a copy first */
@@ -340,7 +351,10 @@ $('file').addEventListener('change', function(){
 function importPaste(){
   var t = $('paste').value;
   if(typeof ingPasteClose === 'function') ingPasteClose(); else $('paste').value='';
-  ingest(t);
+  /* the same box loads a schedule or a trailer list, depending on the screen
+     the loader is standing on */
+  if(typeof DZ_MODE !== 'undefined' && DZ_MODE === 'yard') ingYardText(t, 'paste');
+  else ingest(t);
 }
 /* One day at a time. Clearing everything is a different button, and asking
    for the day by name is what stops the wrong one going. */
@@ -465,6 +479,20 @@ function dgTableHTML(rows, setFn, delFn){
     + '<td class="num">'+pallets.toLocaleString()+'</td>'
     + '<td class="gut"></td></tr>';
   return '<div class="dgwrap"><table class="dg">'+letters+head+body+foot+'</table></div>';
+}
+function schedLoadNote(){
+  var t = $('loadttl'), h = $('loadhint');
+  if(!t || !h) return;
+  if(isOffice()){
+    t.textContent = 'Load the schedule';
+    h.innerHTML = 'Upload the <b>.xlsx spreadsheet</b>, or paste the rows straight out of '
+      + 'your spreadsheet. Nothing goes to the yard until you have checked it and pressed Submit.';
+    return;
+  }
+  t.textContent = 'Load it yourself';
+  h.innerHTML = 'If you have the printed sheet, load it here rather than wait for the '
+    + 'receiving office. <b>This copy stays on this device</b> - only the receiving '
+    + 'office can send a schedule to the whole team.';
 }
 function schedRenderDraft(){
   var card=$('draftcard'); if(!card) return;
@@ -779,6 +807,7 @@ function schedHasDay(d){
 }
 function renderSched(){
   if(typeof suggestSync==='function') suggestSync();
+  schedLoadNote();
   var card = $('schedcard'), none = $('schednone');
   if(isOffice()){
     if(card) card.hidden = false;

@@ -143,16 +143,12 @@ test('a file Checkpoint cannot read says so, and says what to send', async ({ pa
   expect(msg).toMatch(/\.docx/);
 });
 
-test('an officer cannot load the schedule by dropping one', async ({ page }) => {
+test('an officer dropping a schedule gets the same draft grid', async ({ page }) => {
   await asOfficer(page);
-  const msg = await page.evaluate(async () => {
-    let said = '';
-    const real = window.toast; window.toast = (m) => { said = m; };
-    await ingestFiles([new File(['x'], 'schedule.xlsx')]);
-    window.toast = real;
-    return said;
-  });
-  expect(msg).toContain('receiving office');
+  await page.evaluate(() => go('sched'));
+  await page.setInputFiles('#file', fixture('schedule.docx'));
+  await expect(page.locator('#draftcard')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#draftgrid input[value="80123456"]')).toHaveCount(1);
 });
 
 test('the reader says which page it is on, then gets out of the way', async ({ page }) => {

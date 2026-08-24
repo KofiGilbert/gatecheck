@@ -411,7 +411,7 @@
   .dbicons{flex:0 0 auto;display:flex;align-items:center;gap:2px;
     padding:0 8px 0 10px;margin-left:4px;
     border-left:1px solid var(--line);align-self:stretch}
-  .dbico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  .dbico{width:44px;height:44px;display:flex;align-items:center;justify-content:center;
     background:none;border:none;border-radius:8px;cursor:pointer;color:var(--mut);
     transition:background 130ms ease-out,color 130ms ease-out}
   .dbico svg{width:19px;height:19px;display:block;fill:none;stroke:currentColor;
@@ -772,7 +772,7 @@
   .ycmhead{position:relative;text-align:center;margin-bottom:20px}
   .ycmhead b{display:block;font-size:27px;font-weight:800;color:var(--ink);
     letter-spacing:-.5px;padding:0 44px}
-  .ycmx{position:absolute;top:-4px;right:-4px;width:38px;height:38px;border:none;
+  .ycmx{position:absolute;top:-6px;right:-6px;width:44px;height:44px;border:none;
     background:#EDE8DE;border-radius:10px;font-size:15px;color:var(--mut);cursor:pointer}
   .ycmx:hover{background:var(--hover)}
   .ycmx:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
@@ -1055,7 +1055,9 @@
   }
   @keyframes darpulse{0%,100%{opacity:1}50%{opacity:.35}}
   .dpinc{font-family:inherit;font-size:13.5px;font-weight:600;color:#111;
-    background:none;border:none;padding:2px 9px;cursor:pointer;border-radius:50%}
+    background:none;border:none;cursor:pointer;border-radius:50%;
+    min-width:44px;min-height:44px;display:inline-flex;
+    align-items:center;justify-content:center;padding:0 6px}
   .dpinc:hover{background:var(--hover)}
   .dpinc.ring{border:1.5px solid #1B3A8A;color:#1B3A8A;font-weight:700}
   .dpinc:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
@@ -1146,18 +1148,23 @@
   .ptext span{display:block;font-size:12px;line-height:1.5;color:var(--mut);margin-top:2px}
   .pseg{display:flex;gap:6px;background:var(--sunk);padding:4px;border-radius:12px}
   .pseg-b{flex:1 1 0;font-family:inherit;font-size:13.5px;font-weight:700;
-    padding:11px 8px;border:none;border-radius:9px;background:none;color:var(--mut);
-    cursor:pointer}
+    min-height:44px;padding:11px 8px;border:none;border-radius:9px;background:none;
+    color:var(--mut);cursor:pointer}
   .pseg-b:hover{color:var(--ink)}
   .pseg-b.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(10,26,25,.16)}
   .pseg-b:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
-  .pswitch{flex:0 0 auto;width:52px;height:31px;border-radius:999px;border:none;
-    background:#CFC8BA;position:relative;cursor:pointer;transition:background 150ms ease-out}
-  .pswitch i{position:absolute;top:3px;left:3px;width:25px;height:25px;border-radius:50%;
-    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform 150ms ease-out}
-  .pswitch.on{background:var(--blue2)}
+  /* The track stays the 52x31 everybody recognises as a switch, but the thing
+     you tap is 44 tall, which is what a fingertip actually needs. */
+  .pswitch{flex:0 0 auto;width:52px;height:44px;border:none;background:none;
+    padding:0;position:relative;cursor:pointer;display:flex;align-items:center}
+  .pswitch::before{content:'';display:block;width:52px;height:31px;border-radius:999px;
+    background:#CFC8BA;transition:background 150ms ease-out}
+  .pswitch i{position:absolute;top:50%;left:3px;width:25px;height:25px;border-radius:50%;
+    margin-top:-12.5px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);
+    transition:transform 150ms ease-out}
+  .pswitch.on::before{background:var(--blue2)}
   .pswitch.on i{transform:translateX(21px)}
-  .pswitch:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  .pswitch:focus-visible{outline:3px solid var(--blue2);outline-offset:2px;border-radius:999px}
   .pinstall{flex:0 0 auto;font-family:inherit;font-size:13.5px;font-weight:700;
     padding:10px 18px;border-radius:10px;border:none;background:var(--blue);color:#fff;
     cursor:pointer}
@@ -1209,8 +1216,8 @@
   .pbhead{display:flex;align-items:center;justify-content:space-between;
     gap:10px;margin:12px 0 6px}
   .pbhead b{font-size:13px;font-weight:700;color:var(--ink)}
-  .pbclose{width:34px;height:34px;border:none;border-radius:8px;background:none;
-    color:var(--mut);font-size:14px;cursor:pointer;font-family:inherit}
+  .pbclose{width:44px;height:44px;border:none;border-radius:10px;background:none;
+    color:var(--mut);font-size:15px;cursor:pointer;font-family:inherit}
   .pbclose:hover{background:var(--hover);color:var(--ink)}
   .pbclose:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
   .dzprog{margin-top:10px;border:1px solid var(--line);border-radius:10px;
@@ -1630,6 +1637,7 @@
   </div>
   <h2 class="ycgh">Trailers</h2>
   <div class="ycgnote" id="ycg_note" hidden></div>
+  <div id="dzhost_yard"></div>
   <div class="ycgrid" id="ycgridwrap"></div>
   <button type="button" class="ycgmore" id="ycg_more" onclick="ycGridMore()" hidden></button>
   <div class="ycgact" id="ycg_actions" hidden>
@@ -1746,45 +1754,18 @@
 
 <!-- ============ SCHEDULE ============ -->
 <section id="sec-sched">
-  <div class="card officeonly">
-    <h2>Load the schedule</h2>
-    <div class="hint" style="margin-bottom:8px">
+  <!-- One loader, moved to whichever screen needs it. An officer with the
+       printed sheet in their hand should not have to wait for the office. -->
+  <div class="card" id="loadcard">
+    <h2 id="loadttl">Load the schedule</h2>
+    <div class="hint" id="loadhint" style="margin-bottom:8px">
       Upload the <b>.xlsx spreadsheet</b>, or paste the rows straight out of your spreadsheet.
       Nothing goes to the yard until you have checked it and pressed Submit.
     </div>
-    <input type="file" id="file" multiple style="display:none"
-      accept=".json,.csv,.tsv,.txt,.xlsx,.xlsm,.pdf,.docx,image/*">
-    <div id="dz" class="dz">
-      <button type="button" class="dzplus" id="dzplus" onclick="ingMenu(event)"
-        aria-label="Add a file" aria-haspopup="menu" aria-expanded="false">+</button>
-      <div class="dztext">
-        <b>Drop a file here, or press +</b>
-        <span>Spreadsheet, PDF, Word or a photo of the printed sheet. You can also
-          copy the rows in Excel and paste them straight onto this page.</span>
-      </div>
-      <div id="dzmenu" class="dzmenu" role="menu" hidden>
-        <button type="button" role="menuitem" onclick="ingPick('sheet')">&#128202; Spreadsheet <i>.xlsx .csv</i></button>
-        <button type="button" role="menuitem" onclick="ingPick('pdf')">&#128196; PDF <i>.pdf</i></button>
-        <button type="button" role="menuitem" onclick="ingPick('doc')">&#128209; Word document <i>.docx</i></button>
-        <button type="button" role="menuitem" onclick="ingPick('photo')">&#128247; Photo <i>Camera or library</i></button>
-        <hr>
-        <button type="button" role="menuitem" onclick="ingPasteBox()">&#9999;&#65039; Paste rows from Excel</button>
-      </div>
-    </div>
-    <div id="dzprog" class="dzprog" hidden></div>
-    <div id="pastebox" style="display:none">
-      <div class="pbhead">
-        <b>Paste rows from Excel</b>
-        <button type="button" class="pbclose" onclick="ingPasteClose()"
-          aria-label="Close the paste box">&#10005;</button>
-      </div>
-      <textarea id="paste" rows="6" placeholder="Select the rows in Excel, copy, and paste them here"></textarea>
-      <button class="btn sec" onclick="importPaste()">Load pasted rows</button>
-    </div>
-    <div id="ocrstatus" style="display:none" class="warn"></div>
+    <div id="dzhost_sched"></div>
   </div>
 
-  <div class="card officeonly" id="draftcard" hidden>
+  <div class="card" id="draftcard" hidden>
     <h2>Check the schedule <span id="draftcnt" style="color:var(--mut);font-weight:600"></span></h2>
     <div class="hint">Correct anything that came across wrong, then preview it exactly as it prints.</div>
     <div id="draftgrid"></div>
@@ -2052,6 +2033,43 @@
   </div>
   <div class="dvbody" id="dv_body"></div>
 </div>
+<!-- THE LOADER. There is one of these in the app and it is moved to whichever
+     screen is asking for a file: the schedule, or a yard check's trailer list.
+     One instance means one set of drag, drop and paste handlers, and one place
+     to fix anything that goes wrong with them. -->
+<div id="dzwrap" hidden>
+  <input type="file" id="file" multiple style="display:none"
+    accept=".json,.csv,.tsv,.txt,.xlsx,.xlsm,.pdf,.docx,image/*">
+  <div id="dz" class="dz">
+    <button type="button" class="dzplus" id="dzplus" onclick="ingMenu(event)"
+      aria-label="Add a file" aria-haspopup="menu" aria-expanded="false">+</button>
+    <div class="dztext">
+      <b id="dztitle">Drop a file here, or press +</b>
+      <span id="dzhint">Spreadsheet, PDF, Word or a photo of the printed sheet. You can also
+        copy the rows in Excel and paste them straight onto this page.</span>
+    </div>
+    <div id="dzmenu" class="dzmenu" role="menu" hidden>
+      <button type="button" role="menuitem" onclick="ingPick('sheet')">&#128202; Spreadsheet <i>.xlsx .csv</i></button>
+      <button type="button" role="menuitem" id="dzpdf" onclick="ingPick('pdf')">&#128196; PDF <i>.pdf</i></button>
+      <button type="button" role="menuitem" id="dzdoc" onclick="ingPick('doc')">&#128209; Word document <i>.docx</i></button>
+      <button type="button" role="menuitem" onclick="ingPick('photo')">&#128247; Photo <i>Camera or library</i></button>
+      <hr>
+      <button type="button" role="menuitem" id="dzpaste" onclick="ingPasteBox()">&#9999;&#65039; Paste rows from Excel</button>
+    </div>
+  </div>
+  <div id="dzprog" class="dzprog" hidden></div>
+  <div id="pastebox" style="display:none">
+    <div class="pbhead">
+      <b id="pbttl">Paste rows from Excel</b>
+      <button type="button" class="pbclose" onclick="ingPasteClose()"
+        aria-label="Close the paste box">&#10005;</button>
+    </div>
+    <textarea id="paste" rows="6" placeholder="Select the rows in Excel, copy, and paste them here"></textarea>
+    <button class="btn sec" onclick="importPaste()">Load pasted rows</button>
+  </div>
+  <div id="ocrstatus" style="display:none" class="warn"></div>
+</div>
+
 <!-- the draft, exactly as it will print, over the whole window. It is the
      page after the spreadsheet, not a panel underneath it, because this is
      the last look anybody gets before the yard is working from it. -->

@@ -231,10 +231,13 @@ test('going back to correct something takes Submit away with it', async ({ page 
   await expect(page.locator('#dfv_body')).toContainText('815');
 });
 
-test('officers cannot load the schedule at all', async ({ page }) => {
+test('an officer can load a schedule, but not clear the team’s', async ({ page }) => {
   await asOfficer(page);
   await page.click('#sec-home .tile[onclick*="sched"]');
-  await expect(page.locator('#dz')).toBeHidden();
+  // with the printed sheet in hand they need not wait for the office
+  await expect(page.locator('#dz')).toBeVisible();
+  await expect(page.locator('#loadttl')).toHaveText('Load it yourself');
+  // but the shared schedule is still the office's to wipe
   await expect(page.locator('button:has-text("Clear all schedule data")')).toBeHidden();
   // they still read it: today's sheet, or a plain word that there is nothing
   await expect(page.locator('#schednone')).toBeVisible();

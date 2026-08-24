@@ -342,6 +342,15 @@ function stopSync(){ CLOUD.subs.forEach(function(u){ try{u();}catch(e){} }); CLO
 var _localMergeOrders = mergeOrders;
 mergeOrders = function(arr){
   if(!CLOUD.ready){ _localMergeOrders(arr); return; }
+  /* Only the receiving office may write the team's schedule - that is in the
+     Firestore rules, and it is right: one authority for what the yard works
+     from. An officer's own copy is kept on their device instead of being
+     sent and silently refused. */
+  if(typeof isOffice === 'function' && !isOffice()){
+    _localMergeOrders(arr);
+    toast('Loaded on this device. The receiving office sends it to the team.');
+    return;
+  }
   var list=arr.map(normalizeRow).filter(function(n){ return n.order; });
   if(!list.length){ toast('Nothing to import'); return; }
   var db=CLOUD.db, done=0;

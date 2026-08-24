@@ -20,6 +20,63 @@
    signal can still load a schedule.
 */
 
+/* ---------- where the loader is, and what it is loading ----------
+   One loader, moved to whichever screen is asking for a file. The schedule
+   wants orders; a yard check wants the list of trailers in the block. The
+   readers are the same; only the far end differs. */
+var DZ_MODE = 'schedule';
+var DZ_TEXT = {
+  schedule: {
+    title: 'Drop a file here, or press +',
+    hint:  'Spreadsheet, PDF, Word or a photo of the printed sheet. You can also '
+         + 'copy the rows in Excel and paste them straight onto this page.',
+    touch: 'Spreadsheet, PDF, Word, or photograph the printed sheet with this '
+         + 'device. You can also paste rows copied out of Excel.',
+    paste: 'Paste rows from Excel',
+    ph:    'Select the rows in Excel, copy, and paste them here'
+  },
+  yard: {
+    title: 'Load the trailer list',
+    hint:  'A photo of the block sheet, a spreadsheet, or paste the trailer '
+         + 'numbers straight in. One trailer per line.',
+    touch: 'Photograph the block sheet with this device, load a spreadsheet, '
+         + 'or paste the trailer numbers in. One trailer per line.',
+    paste: 'Paste trailer numbers',
+    ph:    'One trailer per line, for example:\nLR7524 FRIES\nLR7540 BUNS'
+  }
+};
+function dzAttach(hostId, mode){
+  var wrap = document.getElementById('dzwrap');
+  var host = document.getElementById(hostId);
+  if(!wrap || !host) return;
+  DZ_MODE = (mode === 'yard') ? 'yard' : 'schedule';
+  if(wrap.parentNode !== host) host.appendChild(wrap);
+  wrap.hidden = false;
+  ingPasteClose();
+  ingMenuClose();
+  ingQuiet();
+  var t = DZ_TEXT[DZ_MODE];
+  var set = function(id, v){ var e = document.getElementById(id); if(e) e.textContent = v; };
+  set('dztitle', t.title);
+  set('dzhint', ingHasCamera() ? t.touch : t.hint);
+  set('pbttl', t.paste);
+  var pasteBtn = document.getElementById('dzpaste');
+  if(pasteBtn) pasteBtn.innerHTML = '\u270f\ufe0f ' + esc(t.paste);
+  var ta = document.getElementById('paste');
+  if(ta) ta.setAttribute('placeholder', t.ph);
+  /* a trailer list never arrives as a Word file or a PDF */
+  ['dzpdf','dzdoc'].forEach(function(id){
+    var b = document.getElementById(id); if(b) b.hidden = (DZ_MODE === 'yard');
+  });
+}
+function dzDetach(){
+  var wrap = document.getElementById('dzwrap');
+  if(!wrap) return;
+  wrap.hidden = true;
+  ingPasteClose();
+  ingMenuClose();
+}
+
 /* ---------- the + menu ---------- */
 var ING_ACCEPT = {
   sheet: '.xlsx,.xlsm,.csv,.tsv,.txt,.json',
@@ -64,12 +121,6 @@ function ingHasCamera(){
     if('ontouchstart' in window) return true;
     return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   }catch(e){ return false; }
-}
-function ingCameraOffer(){
-  var h = document.getElementById('dzhint');
-  if(h && ingHasCamera())
-    h.textContent = 'Spreadsheet, PDF, Word, or photograph the printed sheet '
-      + 'with this device. You can also paste rows copied out of Excel.';
 }
 function ingPasteClose(){
   var box = document.getElementById('pastebox');
@@ -297,6 +348,61 @@ function ingPdfScan(pg, name, i, n, grid){
     .catch(function(){});
 }
 
+/* ---------- a trailer list, however it arrives ----------
+   The block sheet is a short list: a trailer number and what is in it. The
+   photo reader already knows how to pull that out of a page of text, so the
+   pasted and spreadsheet routes hand it the same thing. */
+function ingYardLand(rows, what){
+  if(!rows || !rows.length){
+    toast('No trailer numbers found in that ' + what + '.');
+    return false;
+  }
+  if(typeof YC === 'undefined' || !YC) ycLoadDraft();
+  if(YC.rows.length && !confirm('Replace the current ' + YC.rows.length
+      + ' trailer(s) with the ' + rows.length + ' in that ' + what + '?')) return false;
+  YC.rows = rows;
+  ycSaveDraft();
+  if(typeof renderYcGrid === 'function') renderYcGrid();
+  if(typeof renderYard === 'function') renderYard();
+  toast('Loaded ' + rows.length + ' trailers. Check the list, then work through them.');
+  return true;
+}
+function ingYardText(text, what){
+  return ingYardLand(ycParseTrailers(String(text || '')), what || 'file');
+}
+function ingYardXlsx(buf){
+  var files = fflate.unzipSync(new Uint8Array(buf));
+  var dec = new TextDecoder();
+  var shared = [], ss = files['xl/sharedStrings.xml'];
+  if(ss){
+    var doc = new DOMParser().parseFromString(dec.decode(ss), 'application/xml');
+    var sis = doc.getElementsByTagName('si');
+    for(var i=0;i<sis.length;i++) shared.push(sis[i].textContent);
+  }
+  var lines = [];
+  Object.keys(files).filter(function(k){ return /^xl\/worksheets\/sheet\d+\.xml$/.test(k); })
+    .sort().forEach(function(sn){
+      var d2 = new DOMParser().parseFromString(dec.decode(files[sn]), 'application/xml');
+      var rEls = d2.getElementsByTagName('row');
+      for(var r=0;r<rEls.length;r++){
+        var cells = [], cEls = rEls[r].getElementsByTagName('c');
+        for(var c=0;c<cEls.length;c++){
+          var el = cEls[c], t = el.getAttribute('t');
+          var v = el.getElementsByTagName('v')[0];
+          var txt = v ? v.textContent : '';
+          if(t === 's') txt = shared[+txt] || '';
+          else if(t === 'inlineStr'){
+            var is = el.getElementsByTagName('is')[0];
+            txt = is ? is.textContent : '';
+          }
+          if(String(txt).trim()) cells.push(String(txt).trim());
+        }
+        if(cells.length) lines.push(cells.join(' '));
+      }
+    });
+  return ingYardText(lines.join('\n'), 'spreadsheet');
+}
+
 /* ---------- the one door ---------- */
 function ingestFile(file){
   var name = String(file && file.name || 'file');
@@ -315,10 +421,22 @@ function ingestFile(file){
   ingSay(name, ingSize(file), null);
 
   if(kind === 'xlsx')
-    return ingBuffer(file).then(function(b){ importXlsx(b); });
+    return ingBuffer(file).then(function(b){
+      if(DZ_MODE === 'yard') return ingYardXlsx(b);
+      importXlsx(b);
+    });
 
   if(kind === 'text')
-    return ingText(file).then(function(t){ ingest(t); });
+    return ingText(file).then(function(t){
+      if(DZ_MODE === 'yard') return ingYardText(t, file.name);
+      ingest(t);
+    });
+
+  if(DZ_MODE === 'yard' && (kind === 'docx' || kind === 'pdf')){
+    ingQuiet();
+    toast('A trailer list comes as a photo, a spreadsheet, or pasted text.');
+    return Promise.resolve();
+  }
 
   if(kind === 'docx')
     return ingBuffer(file).then(function(b){ ingLand(ingDocxGrid(b), 'Word document'); });
@@ -330,15 +448,13 @@ function ingestFile(file){
     });
 
   /* a photograph: the reader that was already here, now reachable */
+  if(DZ_MODE === 'yard' && typeof ycImportPhoto === 'function')
+    return Promise.resolve(ycImportPhoto(file));
   return Promise.resolve(importPhoto(file));
 }
 function ingestFiles(list){
   var files = Array.prototype.slice.call(list || []);
   if(!files.length) return Promise.resolve();
-  if(typeof isOffice === 'function' && !isOffice()){
-    toast('Only the receiving office loads the schedule');
-    return Promise.resolve();
-  }
   /* one at a time: the progress line has to mean something, and two photo
      reads at once fight over the one OCR engine */
   return files.reduce(function(chain, f){
@@ -351,9 +467,12 @@ function ingestFiles(list){
 }
 
 /* ---------- dropping and pasting ---------- */
+/* the loader is on screen, so a drop belongs to it */
 function ingOnSched(){
-  var s = document.getElementById('sec-sched');
-  return !!s && s.classList.contains('on') && (typeof isOffice !== 'function' || isOffice());
+  var wrap = document.getElementById('dzwrap');
+  if(!wrap || wrap.hidden) return false;
+  var sec = wrap.closest('section');
+  return !!sec && sec.classList.contains('on');
 }
 /* A file dropped anywhere else in the window would otherwise replace the app
    with the file itself, which looks exactly like a crash. */
@@ -379,8 +498,6 @@ function ingOnSched(){
     if(f && f.length) ingestFiles(f);
   });
 })();
-ingCameraOffer();
-
 document.addEventListener('paste', function(e){
   if(!ingOnSched() || !e.clipboardData) return;
   var t = e.target, tag = t && t.tagName;
@@ -391,5 +508,5 @@ document.addEventListener('paste', function(e){
   var text = e.clipboardData.getData('text/plain') || '';
   if(text.indexOf('\t') < 0 && text.split(/\r?\n/).length < 3) return;
   e.preventDefault();
-  ingest(text);
+  if(DZ_MODE === 'yard') ingYardText(text, 'paste'); else ingest(text);
 });
