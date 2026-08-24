@@ -289,10 +289,10 @@
     color:var(--mut)}
   .legend .lg i{width:13px;height:13px;border-radius:4px;flex:0 0 auto;
     box-shadow:inset 0 0 0 1px rgba(0,14,25,.12)}
-  .legend .done i{background:#4C8A1E} .legend .esc i{background:#D9822B}
-  .legend .ready i{background:#1F6FB2} .legend .over i{background:#C2185B}
-  .legend .due i{background:#7E57C2}  .legend .next i{background:#5C6BC0}
-  .legend .wait i{background:#8D9AA8} .legend .past i{background:#A6A093}
+  /* One source for every state colour, read by the tile and by the key that
+     explains it. Two copies is how the office's key came to be all grey: the
+     tiles carried --c, the key looked for it and found nothing. */
+  .legend .lg i{background:var(--c,var(--bd))}
 
   @media (hover:hover){
     .slot:hover{transform:translateY(-5px);
@@ -303,14 +303,14 @@
   .slot:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
 
   /* the colour code */
-  .slot.done{--c:#4C8A1E; --cd:#3A6B15}      /* completed, all clear   */
-  .slot.esc {--c:#D9822B; --cd:#B0661C}      /* completed, escalations */
-  .slot.ready{--c:#1F6FB2; --cd:#17568B}  /* ready to start         */
-  .slot.over{--c:#C2185B; --cd:#9A1148}      /* overdue                */
-  .slot.due {--c:#7E57C2; --cd:#63449B}      /* due this hour          */
-  .slot.next{--c:#5C6BC0; --cd:#47549B}      /* up next                */
-  .slot.wait{--c:#5F6B78; --cd:#4B5661}      /* awaiting the list      */
-  .slot.past{--c:#6B6559; --cd:#565046}      /* window closed, nothing */
+  .slot.done,.lg.done{--c:#4C8A1E; --cd:#3A6B15}      /* completed, all clear   */
+  .slot.esc,.lg.esc {--c:#D9822B; --cd:#B0661C}      /* completed, escalations */
+  .slot.ready,.lg.ready{--c:#1F6FB2; --cd:#17568B}  /* ready to start         */
+  .slot.over,.lg.over{--c:#C2185B; --cd:#9A1148}      /* overdue                */
+  .slot.due,.lg.due {--c:#7E57C2; --cd:#63449B}      /* due this hour          */
+  .slot.next,.lg.next{--c:#5C6BC0; --cd:#47549B}      /* up next                */
+  .slot.wait,.lg.wait{--c:#5F6B78; --cd:#4B5661}      /* awaiting the list      */
+  .slot.past,.lg.past{--c:#6B6559; --cd:#565046}      /* window closed, nothing */
 
   /* ready breathes: halo only, ~0.45Hz, far below the flash threshold */
   @keyframes ycBreathe{
@@ -471,7 +471,7 @@
   .dvbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
     padding:0;overflow:hidden;background:#fff}
   .dvbody > *{width:100%;max-width:none;margin:0}
-  .dayview .prnwrap,.dayview .dgwrap{flex:1 1 auto;min-height:0;margin:0;
+  .dayview .prnwrap,.dayview .dgwrap,.dayview .ycpaper{flex:1 1 auto;min-height:0;margin:0;
     border:0;border-radius:0;max-height:none;overflow:auto;
     -webkit-overflow-scrolling:touch}
   .dayview table.prn,.dayview table.dg{width:100%}
@@ -849,12 +849,14 @@
   .hstate.wait{color:var(--mut)}
   .bkvmeta{padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
   .bkvmeta b{display:block;font-size:14px;color:var(--ink)}
-  /* the filed check, as the sheet it was filed as */
-  .ycpaper{padding:0 0 16px}
-  .ycpaper img{display:block;width:100%;height:auto;border:1px solid var(--line);
-    border-radius:8px;background:#fff}
+  /* The filed check, as the sheet it was filed as. It is taller than any
+     screen, so the box it sits in scrolls: without that you see the top of
+     the form and nothing else, and every check looks like every other one. */
+  .ycpaper{padding:14px;overflow:auto;-webkit-overflow-scrolling:touch}
+  .ycpaper img{display:block;width:100%;max-width:900px;margin:0 auto;height:auto;
+    border:1px solid var(--line);border-radius:8px;background:#fff}
   .bkvmeta span{display:block;font-size:11.5px;color:var(--mut);margin-top:2px}
-  #bkview .dvbody{background:#fff}
+  #bkview .dvbody{background:var(--bg)}
   .schednone{display:flex;align-items:center;justify-content:center;text-align:center;
     min-height:52dvh;padding:24px;font-size:15px;font-weight:600;color:var(--mut)}
   .schednone[hidden]{display:none}
@@ -954,7 +956,8 @@
   .bkkey{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px}
   .bkkey .lg{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
     color:var(--mut)}
-  .bkkey .lg i{width:11px;height:11px;border-radius:3px;display:block;background:var(--c,#B4ADA1)}
+  .bkkey .lg i{width:11px;height:11px;border-radius:3px;display:block;
+    background:var(--c,var(--bd))}
   .bkprint{margin-left:auto;font-family:inherit;font-size:12.5px;font-weight:700;
     padding:9px 18px;border-radius:9px;border:none;background:var(--lime);color:var(--blue);
     cursor:pointer}
@@ -1102,7 +1105,7 @@
      that gets sent: white. A WORKING sheet is typed into for hours on a night
      shift, and what gets emailed is drawn separately onto a canvas, so the
      screen copy is free to follow the theme. */
-  .darpaper,.prnwrap,#bkview .dvbody{color-scheme:light}
+  .darpaper,.prnwrap{color-scheme:light}
   /* worked on, not sent: the gate log and the yard check sheet */
   table.ycsheet,table.logt{background:var(--card)}
   table.ycsheet th,table.logt th{background:var(--card);color:var(--ink);
