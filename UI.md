@@ -98,3 +98,24 @@ add `.thing[hidden]{display:none}`.
 - A chart states its numbers in its `aria-label`; colour is never the only
   carrier of meaning. Two swatches in one key must never share a colour.
 - `prefers-reduced-motion` turns off every animation that moves or pulses.
+
+## Dark mode: no light literals
+
+`#fff`, `#EDF0F4`, `#FFFDF0` and the rest are **only** allowed inside something
+that is pretending to be paper: `table.prn`, `.prnwrap`, `.darpaper`,
+`table.ycsheet`, `#bkview .dvbody`. Those are previews of a thing that gets
+emailed and printed, and paper is not dark.
+
+Everywhere else, a colour comes from a token, so dark mode needs no override
+at all. Adding `:root[data-theme="dark"] .thing{...}` to undo a literal is the
+wrong fix: it leaves the literal in place for the next state nobody thought of.
+That is exactly how a focused cell in the staging grid stayed `#FFFDF0` long
+after the grid around it went dark.
+
+The state colours are fills. As **text** on a dark card they fail: use
+`--redink`, `--greenink`, `--amberink`, which are the brand hex in light and
+lifted in dark.
+
+Two audits enforce this, and they cover focus states, not just the resting
+page: `every officer screen is readable in the dark` and `every receiving
+office screen is readable in the dark` in `tests/prefs.spec.js`.

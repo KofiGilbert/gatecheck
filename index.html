@@ -28,6 +28,7 @@
   --hover:#F3EFE6;
   --redink:#C0392B; --greenink:#4C6C1A; --amberink:#8A6D1F;
   --caution:#FFF6E5; --cautionbd:#F5D488; --cautionink:#7A5A00;
+  --focusbg:#FFFDF0;
   --redsoft:#FBE9E7;
   --gold:#FFF2CC; --green:#4C6C1A; --red:#C0392B;
   }
@@ -354,33 +355,33 @@
   /* display:block above would otherwise beat the hidden attribute */
   body.role-office .officeonly[hidden]{display:none}
   /* the staging grid, shaped like the spreadsheet it came from */
-  .dgwrap{overflow:auto;max-height:70vh;border:1px solid #B7BFC9;border-radius:8px;background:#fff}
-  table.dg{border-collapse:separate;border-spacing:0;width:100%;min-width:1180px;background:#fff}
-  table.dg th,table.dg td{border-right:1px solid #D4D9E0;border-bottom:1px solid #D4D9E0}
+  .dgwrap{overflow:auto;max-height:70vh;border:1px solid var(--bd);border-radius:8px;background:var(--card)}
+  table.dg{border-collapse:separate;border-spacing:0;width:100%;min-width:1180px;background:var(--card)}
+  table.dg th,table.dg td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
   /* column letters, then the real header: both stay put while the rows scroll */
-  table.dg tr.dgcols th{position:sticky;top:0;z-index:3;background:#EDF0F4;color:#5A6472;
+  table.dg tr.dgcols th{position:sticky;top:0;z-index:3;background:var(--sunk);color:var(--mut);
     font-size:10.5px;font-weight:600;text-align:center;padding:3px 4px;height:20px;
     text-transform:none;letter-spacing:0}
   table.dg tr.dghdr th{position:sticky;top:20px;z-index:3;background:#1F3A5F;color:#fff;
     font-size:10.5px;font-weight:700;padding:7px 6px;white-space:nowrap;
     text-transform:none;letter-spacing:0;text-align:left}
   /* the row-number gutter down the left */
-  table.dg .gut{position:sticky;left:0;z-index:2;background:#EDF0F4;color:#5A6472;
+  table.dg .gut{position:sticky;left:0;z-index:2;background:var(--sunk);color:var(--mut);
     width:42px;min-width:42px;text-align:center;font-size:10.5px;font-weight:600;padding:0}
   table.dg tr.dgcols .gut,table.dg tr.dghdr .gut{z-index:4}
   table.dg td{padding:0;height:28px}
   table.dg td input{border:none;background:transparent;width:100%;padding:5px 6px;
-    font-size:12.5px;border-radius:0;color:#111}
-  table.dg td input:focus{outline:2px solid #1F6FB2;outline-offset:-2px;background:#FFFDF0}
+    font-size:12.5px;border-radius:0;color:var(--ink)}
+  table.dg td input:focus{outline:2px solid var(--blue2);outline-offset:-2px;background:var(--focusbg)}
   /* one tint per day, the way the sheet itself is banded */
-  table.dg tr.d0 td{background:#FFFBEC}
-  table.dg tr.d1 td{background:#EEF7EC}
-  table.dg tr.d0 .gut,table.dg tr.d1 .gut{background:#EDF0F4}
-  table.dg .dgdel{background:none;border:none;color:#C0392B;font-size:14px;padding:4px}
+  table.dg tr.d0 td{background:var(--card)}
+  table.dg tr.d1 td{background:var(--sunk)}
+  table.dg tr.d0 .gut,table.dg tr.d1 .gut{background:var(--sunk)}
+  table.dg .dgdel{background:none;border:none;color:var(--redink);font-size:14px;padding:4px}
   /* the sheet totals its own columns, as the printed one does, and stays in
      view while a long day is scrolled */
-  table.dg tr.dgtot td{position:sticky;bottom:0;z-index:2;background:#EDF0F4;
-    border-top:1px solid #8C97A6;font-size:11.5px;font-weight:700;color:#1F3A5F;
+  table.dg tr.dgtot td{position:sticky;bottom:0;z-index:2;background:var(--sunk);
+    border-top:1px solid var(--bd);font-size:11.5px;font-weight:700;color:var(--ink);
     padding:6px 7px;white-space:nowrap}
   table.dg tr.dgtot td.num{text-align:right;font-variant-numeric:tabular-nums}
   /* one bar per day. The bar itself opens Preview, the safe read-only view;
@@ -402,6 +403,7 @@
   .dbico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
     background:none;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1}
   .dbico:hover{background:var(--hover)}
+  .dbdel:hover{background:var(--redsoft)}
   .dbico:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
   @media (max-width:640px){
     .dbmain{flex-wrap:wrap;gap:4px 12px}
@@ -1062,12 +1064,6 @@
   table.logt tr.hand td{background:var(--hover)}
   table.logt tr.carried td{background:var(--gold)}
   table.ycsheet td.bad{background:var(--warn)}
-  .dgwrap{background:var(--card);border-color:var(--bd)}
-  table.dg{background:var(--card)}
-  table.dg tr.dgcols th,table.dg .gut{background:var(--sunk);color:var(--mut)}
-  table.dg td input{background:transparent;color:var(--ink)}
-  table.dg tr.d0 td,table.dg tr.d1 td{background:var(--card)}
-  :root[data-theme="dark"] table.dg tr.d1 td{background:#18222C}
   table.antab{background:var(--card)}
   table.antab th{background:var(--sunk);color:var(--mut);border-color:var(--line)}
   table.antab td{color:var(--ink)}
@@ -1215,6 +1211,7 @@
     --field:#1B2530; --press:#233040; --warn:#2A1A19; --hover:#212C38;
     --redink:#FF8A7A; --greenink:#A8DB4F; --amberink:#E8C260;
     --caution:#2E2513; --cautionbd:#5C4A1E; --cautionink:#F0D48A;
+    --focusbg:#243447;
     --redsoft:#3A1F1C;
   }
   @media (prefers-color-scheme: dark){
@@ -1224,6 +1221,7 @@
       --field:#1B2530; --press:#233040; --warn:#2A1A19; --hover:#212C38;
       --redink:#FF8A7A; --greenink:#A8DB4F; --amberink:#E8C260;
       --caution:#2E2513; --cautionbd:#5C4A1E; --cautionink:#F0D48A;
+      --focusbg:#243447;
       --redsoft:#3A1F1C;
     }
   }
@@ -1417,6 +1415,13 @@
     font-family:inherit;font-size:15px;line-height:20px;font-weight:700;
     text-decoration:underline;text-underline-offset:3px;
   }
+  /* only shown when the box came back already filled in */
+  #login .gc-notyou{display:inline-block;width:auto;margin:6px 0 0 -10px;
+    padding:12px 10px;min-height:44px;border:none;border-radius:6px;
+    background:transparent;color:var(--mb-muted);font-family:inherit;
+    font-size:13.5px;line-height:20px;font-weight:600;
+    text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  #login .gc-notyou[hidden]{display:none}
   #login .gc-note{margin:6px 0 0;font-size:14px;line-height:21px;color:var(--mb-muted)}
   #login .gc-foot{
     position:absolute;bottom:22px;right:28px;z-index:3;
@@ -1492,6 +1497,8 @@
             autocomplete="username" inputmode="email" enterkeyhint="next"
             autocapitalize="none" autocorrect="off" spellcheck="false"
             aria-describedby="loginerr" placeholder="name@example.com">
+          <button type="button" class="gc-notyou" id="lg_notyou" hidden
+            onclick="loginForget()">Not you? Use a different email</button>
         </div>
         <div class="gc-row">
           <label class="gc-label" for="lg_pass">Password</label>

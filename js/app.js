@@ -338,6 +338,25 @@ $('file').addEventListener('change', function(){
   if(typeof ingestFiles === 'function') ingestFiles(files);
 });
 function importPaste(){ ingest($('paste').value); $('paste').value=''; }
+/* One day at a time. Clearing everything is a different button, and asking
+   for the day by name is what stops the wrong one going. */
+function schedDeleteDay(date){
+  var rows = DB.orders.filter(function(o){ return o.date === date; });
+  if(!rows.length){ toast('Nothing loaded for that day'); return; }
+  var when = (typeof fmtLongDate === 'function' && fmtLongDate(date)) || date;
+  if(!confirm('Delete the schedule for ' + when + '?\n\n'
+      + rows.length + (rows.length === 1 ? ' order' : ' orders')
+      + ' will be removed, and the yard will no longer see them. '
+      + 'Load the day again to replace it.')) return;
+  schedDropDay(date, when);
+}
+/* separate, because signed in it has to leave the team's copy too, and
+   cloud.js wraps this the same way it wraps every other write */
+function schedDropDay(date, when, note){
+  DB.orders = DB.orders.filter(function(o){ return o.date !== date; });
+  persist(); stat(); renderSched();
+  toast(note || ('Deleted ' + (when || date) + '. Load it again when you have a good copy.'));
+}
 function clearAll(){
   if(!confirm('Delete ALL loaded schedule data? Saved forms are kept.')) return;
   DB.orders=[]; persist(); stat(); renderSched(); toast('Schedule cleared');
@@ -490,6 +509,11 @@ function schedPrintHTML(rows, collapsible){
       +     (isOffice()
               ? '<button type="button" class="dbico" title="Edit" aria-label="Edit '+esc(fmtLongDate(d))+'"'
                 + ' onclick="dayViewOpen(\''+esc(d)+'\',\'edit\')">\u270f\ufe0f</button>'
+                /* a day that came in wrong is thrown away and sent again,
+                   which is faster than correcting forty rows by hand */
+                + '<button type="button" class="dbico dbdel" title="Delete this day"'
+                + ' aria-label="Delete '+esc(fmtLongDate(d))+'"'
+                + ' onclick="schedDeleteDay(\''+esc(d)+'\')">\ud83d\uddd1\ufe0f</button>'
               : '')
       +   '</span>'
       + '</div></div>';

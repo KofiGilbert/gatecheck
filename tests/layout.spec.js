@@ -79,14 +79,19 @@ test.describe('layout, keyboard and regressions', () => {
 
   test('every control is programmatically focusable and in DOM order', async ({ page }) => {
     await H.gotoApp(page);
-    const ids = ['lg_email','lg_pass','lg_reveal','lg_btn'];
-    for (const id of ids) {
+    // lg_notyou sits with the email it clears, and only shows when there is one
+    const ids = ['lg_email','lg_notyou','lg_pass','lg_reveal','lg_btn'];
+    for (const id of ids.filter(i => i !== 'lg_notyou')) {
       await page.locator('#' + id).focus();
       expect(await page.evaluate(() => document.activeElement.id), id).toBe(id);
     }
     const domOrder = await page.evaluate(() =>
       [...document.querySelectorAll('#login input, #login button')].map(e => e.id || e.className));
-    expect(domOrder.slice(0,4)).toEqual(ids);
+    expect(domOrder.slice(0, ids.length)).toEqual(ids);
+    // it takes focus as soon as there is an address for it to clear
+    await page.evaluate(() => { sset('gc_lastemail','a@b.com'); loginRecall(); });
+    await page.locator('#lg_notyou').focus();
+    expect(await page.evaluate(() => document.activeElement.id)).toBe('lg_notyou');
     const negative = await page.evaluate(() =>
       [...document.querySelectorAll('#login input, #login button')].filter(e => e.tabIndex < 0).length);
     expect(negative, 'nothing may be removed from the focus order').toBe(0);
@@ -99,9 +104,13 @@ test.describe('layout, keyboard and regressions', () => {
     await page.fill('#lg_pass', 'good');
     await page.click('#lg_btn');
     await expect(page.locator('#login')).toBeHidden();
+    // the back arrow is hidden on home, where there is nothing to go back to
+    await expect(page.locator('#menubtn')).toBeHidden();
+    await page.evaluate(() => go('search'));
     await expect(page.locator('#menubtn')).toBeVisible();
-    // sign out moved into the slide-in menu
-    await page.click('#menubtn');
+    await page.evaluate(() => go('home'));
+    // sign out lives in the account dropdown under the profile, on the right
+    await page.click('#profbtn');
     await expect(page.locator('.ditem:has-text("Sign out")')).toBeVisible();
     await page.keyboard.press('Escape');
     // a .btn elsewhere in the app keeps its own styling

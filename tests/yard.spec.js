@@ -10,6 +10,14 @@ async function onYard(page) {
 
 async function onSheet(page) {
   await onYard(page);
+  /* A slot with no check opens the trailer grid, which is the point of the
+     grid. The sheet is what a slot that HAS been checked opens, so say so
+     rather than depending on the hour the suite happens to run at. */
+  await page.evaluate(() => {
+    const slot = ycShiftSlots()[0];
+    DB.yardchecks = [{ date: ycSlotDate(slot), time: slot, officer: 'Kobe', trailers: [] }];
+    ycPersistAll();
+  });
   await page.click('#ycslots .slot >> nth=0');       // open a slot's sheet
   await expect(page.locator('#sec-yardsheet')).toBeVisible();
 }

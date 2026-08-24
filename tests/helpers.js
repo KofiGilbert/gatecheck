@@ -25,7 +25,8 @@ const FB_STUB = (opts) => {
         return ()=>{};
       },
       orderBy(){ return chain; }, limit(){ return chain; },
-      doc(){ return {
+      doc(id){ return {
+        id: id,
         onSnapshot(cb){
           const isOfficers = name === 'officers';
           setTimeout(()=>cb({
@@ -50,7 +51,8 @@ const FB_STUB = (opts) => {
         /* record what the app publishes so tests can assert on it */
         return {
           set(ref, data){ (window.__fb.written = window.__fb.written || []).push(data); },
-          delete(){}, commit(){ return Promise.resolve(); },
+          delete(ref){ (window.__fb.deleted = window.__fb.deleted || []).push(ref && ref.id); },
+          commit(){ return Promise.resolve(); },
         };
       },
     }; },

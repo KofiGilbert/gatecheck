@@ -375,16 +375,17 @@ async function submitTwoDays(page) {
   await page.evaluate((rows) => { DB.orders = rows; renderSched(); }, sent);
 }
 
-test('loaded orders show one bar per day, with preview and edit icons', async ({ page }) => {
+test('loaded orders show one bar per day, with preview, edit and delete', async ({ page }) => {
   await submitTwoDays(page);
   const bars = page.locator('#sched .daybar');
   await expect(bars).toHaveCount(2);
   await expect(bars.nth(0)).toContainText('MARTIN BROWER, Inc. Confidential');
   await expect(bars.nth(0)).toContainText('Friday, August 21, 2026');
   await expect(bars.nth(1)).toContainText('Saturday, August 22, 2026');
-  await expect(bars.nth(0).locator('.dbico')).toHaveCount(2);
+  await expect(bars.nth(0).locator('.dbico')).toHaveCount(3);
   await expect(bars.nth(0).locator('[aria-label^="Preview"]')).toBeVisible();
   await expect(bars.nth(0).locator('[aria-label^="Edit"]')).toBeVisible();
+  await expect(bars.nth(0).locator('[aria-label^="Delete"]')).toBeVisible();
   // no dropdown any more: the list is bars only
   await expect(page.locator('#sched table.prn')).toHaveCount(0);
   await expect(page.locator('#dayview')).toBeHidden();

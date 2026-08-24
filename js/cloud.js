@@ -28,7 +28,14 @@ function showLogin(){
      "was hidden" means hidden OR still checking */
   var wasHidden = o.style.display==='none' || o.classList.contains('gc-checking');
   o.style.display='flex'; o.classList.remove('gc-checking'); loginInert(true);
-  if(wasHidden){ var e=$('lg_email'); if(e && !e.value) setTimeout(function(){ e.focus(); },60); }
+  loginRecall();
+  /* an address already in the box means the only thing left to type is the
+     password, so that is where the cursor goes */
+  if(wasHidden){
+    var e=$('lg_email'), pw=$('lg_pass');
+    var target = (e && !e.value) ? e : pw;
+    if(target) setTimeout(function(){ target.focus(); },60);
+  }
 }
 function hideLogin(){
   var o=$('login'); o.style.display='none'; o.classList.remove('gc-checking'); loginInert(false);
@@ -93,6 +100,10 @@ function cloudInit(){
         CLOUD.ready = true;
         /* so the next refresh does not flash the login screen at them */
         sset('gc_wasin', '1');
+        /* and so signing in again is a password, not a whole address typed
+           on a tablet keyboard. iCloud Keychain may or may not have offered
+           to save it; this does not depend on whether it did. */
+        if(u.email) sset('gc_lastemail', u.email);
         /* apply the role we saw last time so there is no flash, then let the
            account document confirm or correct it */
         setRole(sget('gc_role_'+u.email) || 'officer');
@@ -114,6 +125,22 @@ function cloudInit(){
   }catch(e){
     toast('Cloud setup problem: '+e.message+'. Running in single-device mode.');
   }
+}
+/* The email box comes back filled in with whoever used this device last, and
+   the cursor starts on the password. Signing out is not the same as saying
+   "forget me": the office iPad is used by the office. */
+function loginRecall(){
+  var box = $('lg_email'), why = $('lg_notyou');
+  if(!box) return;
+  var last = sget('gc_lastemail') || '';
+  if(last && !box.value.trim()) box.value = last;
+  if(why) why.hidden = !box.value.trim();
+}
+function loginForget(){
+  sset('gc_lastemail', '');
+  var box = $('lg_email'); if(box){ box.value = ''; box.focus(); }
+  var pw = $('lg_pass'); if(pw) pw.value = '';
+  var why = $('lg_notyou'); if(why) why.hidden = true;
 }
 function doLogin(){
   var em=$('lg_email').value.trim(), pw=$('lg_pass').value;
@@ -286,6 +313,24 @@ function logCloudDel(id){
   CLOUD.db.collection('logs').doc(id).delete()
     .catch(function(e){ toast('Row not removed: '+e.message); });
 }
+/* One day removed for everyone. The snapshot brings the shortened schedule
+   back, so nothing is deleted locally that did not leave the server. */
+var _localDropDay = schedDropDay;
+schedDropDay = function(date, when){
+  if(!CLOUD.ready){ _localDropDay(date, when); return; }
+  var db = CLOUD.db;
+  var ids = DB.orders.filter(function(o){ return o.date === date; })
+                     .map(function(o){ return o.date+'_'+o.order; });
+  /* go from this screen straight away; if the write is refused, the snapshot
+     puts the day back rather than leaving the office looking at a lie */
+  _localDropDay(date, when,
+    'Deleted ' + (when || date) + ' for the team. Load it again when you have a good copy.');
+  for(var i=0;i<ids.length;i+=400){
+    var b = db.batch();
+    ids.slice(i,i+400).forEach(function(id){ b.delete(db.collection('orders').doc(id)); });
+    b.commit().catch(function(e){ toast('Day not removed: '+e.message); });
+  }
+};
 var _localClearAll = clearAll;
 clearAll = function(){
   if(!CLOUD.ready){ _localClearAll(); return; }

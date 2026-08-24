@@ -309,6 +309,37 @@ const unreadable = (page) => page.evaluate(() => {
   return out;
 });
 
+/* Boxes people type into. The sweep above only sees text nodes, so an input
+   has no text to find and a focused input has none either - which is how a
+   focused cell in the staging grid stayed cream-on-white in dark mode. */
+const unreadableFields = (page) => page.evaluate(() => {
+  const lum = (c) => { const n = (c.match(/\d+/g)||[0,0,0]).map(Number);
+    const f = v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
+    return 0.2126*f(n[0]) + 0.7152*f(n[1]) + 0.0722*f(n[2]); };
+  const behind = (el) => {
+    for (let p = el; p; p = p.parentElement) {
+      const bg = getComputedStyle(p).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return bg;
+    }
+    return 'rgb(255, 255, 255)';
+  };
+  const out = [], seen = new Set();
+  const fields = [...document.querySelectorAll('section.on input, section.on textarea, section.on select')]
+    .filter(el => el.type !== 'hidden' && el.type !== 'file' && el.offsetParent !== null);
+  const check = (el, when) => {
+    const s = getComputedStyle(el);
+    const a = lum(s.color), b = lum(behind(el));
+    const ratio = (Math.max(a,b)+0.05) / (Math.min(a,b)+0.05);
+    const key = (el.className || el.tagName) + '|' + when + '|' + s.color + '|' + behind(el);
+    if (seen.has(key) || ratio >= 4.5) return;
+    seen.add(key);
+    out.push((el.className || el.tagName) + ' ' + when + ' ' + ratio.toFixed(1) + ':1');
+  };
+  fields.forEach(el => check(el, 'at rest'));
+  fields.forEach(el => { try { el.focus(); } catch (e) {} check(el, 'focused'); el.blur(); });
+  return out;
+});
+
 test('every officer screen is readable in the dark', async ({ page }) => {
   await onSettings(page);
   await page.click('.pseg-b:has-text("Dark")');
@@ -324,6 +355,7 @@ test('every officer screen is readable in the dark', async ({ page }) => {
   for (const sec of ['home','search','form','yard','log','dar','hist','settings']) {
     await page.evaluate((s) => go(s), sec);
     expect(await unreadable(page), 'on ' + sec).toEqual([]);
+    expect(await unreadableFields(page), 'a box being typed into, on ' + sec).toEqual([]);
   }
 });
 
@@ -342,6 +374,7 @@ test('every receiving office screen is readable in the dark', async ({ page }) =
   for (const sec of ['office','sched','block','stats','settings']) {
     await page.evaluate((s) => go(s), sec);
     expect(await unreadable(page), 'on ' + sec).toEqual([]);
+    expect(await unreadableFields(page), 'a box being typed into, on ' + sec).toEqual([]);
   }
 });
 
@@ -382,4 +415,27 @@ test('the gate log is a working sheet, so it follows the theme', async ({ page }
   const n = c.match(/\d+/g).map(Number);
   // typed into for hours on a night shift; what gets emailed is drawn separately
   expect(Math.max(...n.slice(0,3)), 'the gate log is still a white sheet').toBeLessThan(120);
+});
+
+test('a cell being typed into in the staging grid is readable in the dark', async ({ page }) => {
+  await H.gotoApp(page, { user:{ email:'office@martinbrower.com' }, role:'office', orders: [] });
+  await page.evaluate(() => {
+    PREFS.theme = 'dark'; prefsSave();
+    go('sched');
+    stageOrders([{ date:'2026-09-01', zone:'D', order:'8047868', vendor:'THE COCA-COLA COMPANY',
+                   carrier:'CH ROBINSON', cases:900, pallets:14, detail:'LIVE', time:'0800' }]);
+  });
+  await expect(page.locator('#draftgrid')).toBeVisible();
+  const cell = page.locator('#draftgrid input[value="THE COCA-COLA COMPANY"]');
+  await cell.click();
+  const ratio = await cell.evaluate((el) => {
+    const lum = (c) => { const n = (c.match(/\d+/g)||[0,0,0]).map(Number);
+      const f = v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
+      return 0.2126*f(n[0]) + 0.7152*f(n[1]) + 0.0722*f(n[2]); };
+    let bg = 'rgba(0, 0, 0, 0)';
+    for (let p = el; p && bg === 'rgba(0, 0, 0, 0)'; p = p.parentElement) bg = getComputedStyle(p).backgroundColor;
+    const a = lum(getComputedStyle(el).color), b = lum(bg);
+    return (Math.max(a,b)+0.05) / (Math.min(a,b)+0.05);
+  });
+  expect(ratio, 'the focused cell must not go cream under light type').toBeGreaterThan(4.5);
 });
