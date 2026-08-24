@@ -98,6 +98,27 @@ function wakeApply(){
 }
 document.addEventListener('visibilitychange', wakeApply);
 
+/* ---- how tall the header actually is ----
+   Three screens size themselves to "the window, less the header", and every
+   one of them had 62px written into it. The header is 66px since the account
+   menu moved into it, so each of those screens overflowed the window by 4px
+   and the page scrolled when it should not have. Measure it instead. */
+function hdrMeasure(){
+  var h = document.querySelector('header');
+  if(!h) return;
+  var px = Math.round(h.getBoundingClientRect().height);
+  if(px > 0) document.documentElement.style.setProperty('--hdr-h', px + 'px');
+}
+window.addEventListener('resize', hdrMeasure);
+window.addEventListener('orientationchange', hdrMeasure);
+if(window.ResizeObserver){
+  try{
+    var _hdr = document.querySelector('header');
+    if(_hdr) new ResizeObserver(hdrMeasure).observe(_hdr);
+  }catch(e){}
+}
+hdrMeasure();
+
 /* ---- installing it as an app ---- */
 var _install = null;
 window.addEventListener('beforeinstallprompt', function(e){

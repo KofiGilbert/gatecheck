@@ -8,17 +8,30 @@ async function onYard(page) {
   await expect(page.locator('#sec-yard')).toBeVisible();
 }
 
-async function onSheet(page) {
+/* Clicking a slot opens the trailer GRID, which is the point of the grid: an
+   officer checks trailer by trailer. The sheet is what the grid hands them at
+   the end, so these tests take the same jump ycGridReview() takes, with the
+   trailers the office released already on the slot. */
+const SHEET_TRAILERS = [
+  { trailer:'LR7524', product:'FRIES' },
+  { trailer:'LR7540', product:'BUNS'  },
+  { trailer:'LR7601', product:'BEEF'  },
+];
+/* the sheet for a given slot, the same jump the grid's Review makes */
+async function openSheet(page, index) {
+  await page.evaluate((i) => go('yardsheet', false, ycShiftSlots()[i]), index);
+  await expect(page.locator('#sec-yardsheet')).toBeVisible();
+}
+async function onSheet(page, trailers) {
   await onYard(page);
-  /* A slot with no check opens the trailer grid, which is the point of the
-     grid. The sheet is what a slot that HAS been checked opens, so say so
-     rather than depending on the hour the suite happens to run at. */
-  await page.evaluate(() => {
-    const slot = ycShiftSlots()[0];
-    DB.yardchecks = [{ date: ycSlotDate(slot), time: slot, officer: 'Kobe', trailers: [] }];
-    ycPersistAll();
-  });
-  await page.click('#ycslots .slot >> nth=0');       // open a slot's sheet
+  await page.evaluate((t) => {
+    const slot = ycShiftSlots()[1];
+    DB.yardslots = [{ id: ycSlotDate(slot)+'_'+slot, date: ycSlotDate(slot), slot,
+      loadedAt: new Date().toISOString(), count: t.length, trailers: t }];
+    ycSlotsPersist();
+    YC = null; YC_VIEW = null;
+    go('yardsheet', false, slot);
+  }, trailers || SHEET_TRAILERS);
   await expect(page.locator('#sec-yardsheet')).toBeVisible();
 }
 
@@ -44,7 +57,9 @@ test('an empty sheet still shows the ruled grid', async ({ page }) => {
   await onSheet(page);
   await page.evaluate(() => { YC.rows = []; renderYard(); });
   await expect(page.locator('#ycrows table')).toBeVisible();
-  await expect(page.locator('#ycrows table tr')).toHaveCount(19);   // header + 18
+  // one row per trailer, so an empty sheet is its headings and nothing else.
+  // The ruled headings still stand, which is what makes it read as the form.
+  await expect(page.locator('#ycrows table tr')).toHaveCount(1);
   const heads = page.locator('#ycrows table th');
   await expect(heads.nth(0)).toHaveText('TRAILER#');
   await expect(heads.nth(2)).toHaveText('TEMP SET POINT');
@@ -59,18 +74,21 @@ test('the grid is plain ruled, not a coloured header bar', async ({ page }) => {
     color: getComputedStyle(el).color,
     border: getComputedStyle(el).borderTopWidth,
   }));
-  // white cell, dark text, a visible rule: a facsimile of the printed sheet
-  expect(th.bg).toMatch(/rgb\(255, 255, 255\)/);
-  expect(th.color).not.toMatch(/rgb\(255, 255, 255\)/);
+  // a plain cell the same colour as the sheet, dark text, a visible rule.
+  // It follows the theme, because this is the sheet an officer types into for
+  // an hour, not the copy that gets emailed - that one is drawn on a canvas.
+  const sheetBg = await page.locator('#ycrows table')
+    .evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(th.bg, 'the header must not be a coloured bar').toBe(sheetBg);
+  expect(th.color).not.toBe(th.bg);
   expect(parseFloat(th.border)).toBeGreaterThan(0);
 });
 
 test('the sheet keeps only what it needs', async ({ page }) => {
   await onSheet(page);
   const sheet = page.locator('#sec-yardsheet');
-  await expect(sheet).toContainText('Import trailer list from photo');
-  await expect(sheet).toContainText('Preview & check log');
   await expect(sheet).toContainText('Add trailer');
+  await expect(sheet).toContainText('Submit to receiving office');
   // removed
   await expect(sheet).not.toContainText('Same trailers as last check');
   await expect(sheet).not.toContainText('Start a new blank yard check');
@@ -78,13 +96,11 @@ test('the sheet keeps only what it needs', async ({ page }) => {
   await expect(page.locator('#ychist')).toHaveCount(0);
 });
 
-test('import sits above the form', async ({ page }) => {
+test('the printed heading comes before the rows', async ({ page }) => {
   await onSheet(page);
-  const imp = await page.locator('button:has-text("Import trailer list from photo")').boundingBox();
   const doc = await page.locator('#sec-yardsheet .ycdoc').boundingBox();
   const grid = await page.locator('#ycrows').boundingBox();
-  expect(imp.y, 'import should come before the form').toBeLessThan(doc.y);
-  expect(doc.y).toBeLessThan(grid.y);
+  expect(doc.y, 'the form heading reads first, as it does on paper').toBeLessThan(grid.y);
 });
 
 test('date, time and officer are fixed by the slot, not editable', async ({ page }) => {
@@ -92,6 +108,9 @@ test('date, time and officer are fixed by the slot, not editable', async ({ page
   const shift = await page.evaluate(() => ycShiftSlots());
   await page.evaluate(() => sset('gc_offname_kofi@martinbrower.com','Musiliu Ibrahim'));
   await page.click('#ycslots .slot >> nth=2');
+  await expect(page.locator('#sec-ycgrid'), 'a slot with no check opens the grid').toBeVisible();
+  await expect(page.locator('#ycg_slot')).toContainText(shift[2].slice(0, 2));
+  await openSheet(page, 2);
   await expect(page.locator('#yc_time')).toHaveText(shift[2]);
   await expect(page.locator('#yc_name')).toHaveText('Musiliu Ibrahim');
   await expect(page.locator('#yc_date')).not.toBeEmpty();
@@ -107,33 +126,37 @@ test('date, time and officer are fixed by the slot, not editable', async ({ page
   expect(r.date).toBe(await page.evaluate((s) => ycSlotDate(s), shift[2]));
 });
 
-test('opening a slot sets the sheet to that slot', async ({ page }) => {
+test('opening a slot sets the check to that slot', async ({ page }) => {
   await onYard(page);
   const shift = await page.evaluate(() => ycShiftSlots());
   await page.click('#ycslots .slot >> nth=1');
+  await expect(page.locator('#ycg_slot')).toContainText(shift[1].slice(0, 2));
+  await openSheet(page, 1);
   await expect(page.locator('#yc_time')).toHaveText(shift[1]);
-  await page.goBack();
+  await page.evaluate(() => go('yard'));
   await page.click('#ycslots .slot >> nth=4');
+  await expect(page.locator('#ycg_slot')).toContainText(shift[4].slice(0, 2));
+  await openSheet(page, 4);
   await expect(page.locator('#yc_time')).toHaveText(shift[4]);
 });
 
 test('the officer name follows whoever is signed in', async ({ page }) => {
   await onYard(page);
   await page.evaluate(() => sset('gc_offname_kofi@martinbrower.com','Vincent Adjei'));
-  await page.click('#ycslots .slot >> nth=0');
+  await openSheet(page, 0);
   await expect(page.locator('#yc_name')).toHaveText('Vincent Adjei');
   await page.reload();
   await page.waitForFunction(() => typeof window.renderYard === 'function');
-  await page.evaluate(() => go('yard'));           // reload deep-links to the sheet
-  await page.click('#ycslots .slot >> nth=0');
+  await page.evaluate(() => go('yard'));
+  await openSheet(page, 0);
   await expect(page.locator('#yc_name')).toHaveText('Vincent Adjei');
 });
 
 test('adding a trailer fills the first row and keeps the sheet full', async ({ page }) => {
   await onSheet(page);
   await page.evaluate(() => { YC.rows = []; renderYard(); });
-  await page.click('button:has-text("Add trailer")');
-  await expect(page.locator('#ycrows table tr')).toHaveCount(19);
+  await page.click('#sec-yardsheet button:has-text("Add trailer")');
+  await expect(page.locator('#ycrows table tr')).toHaveCount(2);   // headings + the new row
   const first = page.locator('#ycrows table tr').nth(1);
   await expect(first.locator('input').first()).toBeVisible();
 });
@@ -303,7 +326,7 @@ test('past the hour it is Overdue, and still actionable', async ({ page }) => {
   expect(st.arrow).toBe('\u2197');
   expect(st.kpi).toMatch(/^\d+%$/);
   await page.click('#ycslots .slot >> nth=3');
-  await expect(page.locator('#sec-yardsheet')).toBeVisible();
+  await expect(page.locator('#sec-ycgrid'), 'overdue must still open').toBeVisible();
 });
 
 test('a completed check shows when and who', async ({ page }) => {
@@ -390,8 +413,8 @@ test('with nothing waiting there is no bell at all', async ({ page }) => {
 test('an officer is never blocked from starting a check', async ({ page }) => {
   await onYard(page);
   await page.click('#ycslots .slot >> nth=0');
-  await expect(page.locator('#sec-yardsheet')).toBeVisible();
-  await expect(page.locator('#ycrows table')).toBeVisible();
+  await expect(page.locator('#sec-ycgrid')).toBeVisible();
+  await expect(page.locator('#ycgridwrap')).toBeVisible();
 });
 
 test('a loaded slot shows how many trailers are in the block', async ({ page }) => {
@@ -720,7 +743,7 @@ test('a saved check cannot be edited', async ({ page }) => {
 test('viewing a saved check leaves the unfinished draft alone', async ({ page }) => {
   const slot = await withSavedCheck(page);
   // start a real check on a slot that has none
-  await page.click('#ycslots .slot >> nth=3');
+  await openSheet(page, 3);
   await page.evaluate(() => {
     YC.rows = [{trailer:'MYWORK', product:'', set:'', temp:'', type:'',
                 fuel:'', intact:'', door:'', action:''}];
@@ -730,9 +753,9 @@ test('viewing a saved check leaves the unfinished draft alone', async ({ page })
   // look at the saved one
   await page.click('#ycslots .slot >> nth=0');
   await expect(page.locator('#ycrows table tr').nth(1)).toContainText('57729');
-  await page.goBack();
+  await page.evaluate(() => go('yard'));
   // the draft is exactly as it was
-  await page.click('#ycslots .slot >> nth=3');
+  await openSheet(page, 3);
   await expect(page.locator('#ycrows input').first()).toHaveValue('MYWORK');
   await expect(page.locator('#ycrows')).not.toContainText('57729');
 });

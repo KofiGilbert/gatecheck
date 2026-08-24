@@ -356,6 +356,26 @@ test('clicking a ready check on the board opens the tabs, not the sheet', async 
   await expect(page.locator('#ycm_title')).toContainText('57775');
 });
 
+/* One line on a wide card; on a narrower one the boxes wrap by design, and
+   what matters then is that every box is still a real touch target and the
+   card does not scroll sideways. */
+async function expectCardRows(page) {
+  const m = await page.evaluate(() => {
+    const boxes = [...document.querySelectorAll('#ycm_body .ycmbox')];
+    const card = document.querySelector('.ycmcard');
+    return {
+      lines: new Set(boxes.map(e => Math.round(e.getBoundingClientRect().top))).size,
+      narrowest: Math.min(...boxes.map(e => e.getBoundingClientRect().width)),
+      cardWidth: Math.round(card.getBoundingClientRect().width),
+      sideways: card.scrollWidth > card.clientWidth + 1,
+    };
+  });
+  if (m.cardWidth > 820) expect(m.lines, 'a wide card is one row, as drawn').toBe(1);
+  else expect(m.lines, 'a narrow card wraps, it does not shrink away').toBeGreaterThan(1);
+  expect(m.narrowest, 'no box may shrink below a thumb').toBeGreaterThan(110);
+  expect(m.sideways, 'the card must never scroll sideways').toBe(false);
+}
+
 test('the card is one row of boxes and a Save, nothing more', async ({ page }) => {
   await asOfficer(page);
   await openGrid(page);
@@ -364,10 +384,9 @@ test('the card is one row of boxes and a Save, nothing more', async ({ page }) =
   const labels = await page.locator('#ycm_body .ycmbox > span').allInnerTexts();
   expect(labels).toEqual(['TEMP SET POINT','TEMP','FUEL','INTACT (Y/N)','DOOR #','ESCALATE']);
 
-  // all six sit on the same line, as drawn
-  const tops = await page.locator('#ycm_body .ycmbox').evaluateAll(
-    els => els.map(e => Math.round(e.getBoundingClientRect().top)));
-  expect(new Set(tops).size).toBe(1);
+  // All six sit on one line where the card has the room, which is how it was
+  // drawn. Below 820px they wrap on purpose rather than shrink to nothing.
+  await expectCardRows(page);
 
   // and nothing hangs below the row but the button
   await expect(page.locator('#ycmodal .ycmfoot button')).toHaveCount(1);
@@ -382,10 +401,7 @@ test('an escalation stays inside its own box', async ({ page }) => {
   await expect(page.locator('#ycm_escbox')).toHaveText('Escalate');
   // the box keeps the shape of every other box on the card
   expect(await page.locator('#ycm_escbox input').count()).toBe(0);
-  // still one row
-  const tops = await page.locator('#ycm_body .ycmbox').evaluateAll(
-    els => els.map(e => Math.round(e.getBoundingClientRect().top)));
-  expect(new Set(tops).size).toBe(1);
+  await expectCardRows(page);
 });
 
 test('a unit that is switched off is an escalation on its own', async ({ page }) => {

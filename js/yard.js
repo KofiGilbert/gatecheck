@@ -1050,6 +1050,22 @@ function ycGridAdd(){
 }
 function ycGridReview(){ go('yardsheet', false, YC.time); }
 
+/* The same thing from the sheet. A truck the office never listed still turns
+   up in the yard, so the officer must be able to write one in from either
+   screen. This button called a function that did not exist. */
+function ycAdd(){
+  if(!YC) ycLoadDraft();
+  var r = ycRowBlank();
+  r.added = true;
+  YC.rows.push(r);
+  ycSaveDraft();
+  renderYard();
+  /* the cursor lands in the new row's trailer number, ready to type */
+  var rows = document.querySelectorAll('#ycrows table tr');
+  var box = rows.length && rows[rows.length - 1].querySelector('input');
+  if(box) box.focus();
+}
+
 /* ---- one trailer, on a card in the middle of the screen ---- */
 var YCM = -1, YCM_OTHER = false;
 function ycModalOpen(i){
