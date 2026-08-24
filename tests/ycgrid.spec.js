@@ -155,9 +155,17 @@ test('the temperature rules on the poster are the ones enforced', async ({ page 
   expect(await check('34', '40.0')).toBe('N/A');
   expect(await check('34', '40.1')).toBe('Escalate');
   expect(await check('DEF', '-9.0')).toBe('Escalate');   // defrost showing
-  // a unit that is off escalates in its own right, and is not also judged
-  // against a band it is not in
-  expect(await check('OFF', '55.0')).toBe('Escalate');
+});
+
+test('a unit that is off is judged on being off, and on nothing else', async ({ page }) => {
+  await asOfficer(page);
+  await openGrid(page);
+  await page.locator('#ycgridwrap .ycgtile').nth(0).click();
+  await page.selectOption('#ycm_set', 'OFF');
+  // there is nothing else to fill in: the boxes below say so
+  await expect(page.locator('#ycm_escbox')).toHaveText('Escalate');
+  expect(await page.evaluate(() => ycEval(YC.rows[0])),
+    'not also measured against a band it is not in').toEqual(['UNIT OFF']);
 });
 
 test('a temperature must be to the tenth before the card will close', async ({ page }) => {
@@ -276,17 +284,22 @@ test('a completed check opens for the office, on the slot they loaded', async ({
     ycSlotsPersist(); ycPersistAll(); go('block');
     return slot;
   });
-  const tile = page.locator('#bkboard .slot').filter({ hasText: 'Completed' }).first();
+  // this fixture has an escalation on it, so the tile says so rather than
+  // reading Completed in the escalation colour
+  const tile = page.locator('#bkboard .slot').filter({ hasText: 'Escalations' }).first();
   await expect(tile).toBeVisible();
   await tile.click();
   const view = page.locator('#bkview');
   await expect(view).toBeVisible();
   await expect(page.locator('#bkview_title')).toContainText('yard check');
+  // the office reads the sheet that was filed, drawn as it was emailed
+  await expect(view.locator('.ycpaper img')).toBeVisible();
   await expect(view).toContainText('Kobe Mensah');
-  await expect(view).toContainText('57775');
-  await expect(view).toContainText('LOW FUEL');
-  await expect(view).toContainText('Reported to DC');
-  await expect(view).toContainText('in range');       // the one that was fine
+  await expect(view).toContainText('1 escalation');
+  // and what was on it is still on the record behind it
+  expect(await page.evaluate(() => DB.yardchecks[0].rows[0].escalate[0]))
+    .toContain('LOW FUEL');
+  expect(await page.evaluate(() => DB.yardchecks[0].rows[0].action)).toBe('Reported to DC');
   expect(await page.evaluate(() => location.hash)).toBe('#block/' + slot);
 
   await page.keyboard.press('Escape');
@@ -409,10 +422,7 @@ test('a unit that is switched off is an escalation on its own', async ({ page })
   await openGrid(page);
   await page.locator('#ycgridwrap .ycgtile').nth(0).click();
   await page.selectOption('#ycm_set', 'OFF');
-  await page.fill('#ycm_temp', '12.0');
-  await page.selectOption('#ycm_fuel', 'FULL');
-  await page.selectOption('#ycm_intact', 'Y');
-  await page.selectOption('#ycm_door', '20');
+  // the rest of the row is dashes; there is nothing left to fill in
   await expect(page.locator('#ycm_escbox')).toHaveText('Escalate');
   await page.click('#ycm_save');
   await expect(page.locator('#ycgridwrap .ycgtile').nth(0)).toHaveClass(/esc/);

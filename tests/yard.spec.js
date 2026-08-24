@@ -490,8 +490,13 @@ test('the current and next slots are called out even before the list arrives', a
   const r = await page.evaluate(() => {
     DB.yardchecks = []; DB.yardslots = [];
     const cur = ycCurrentSlotIndex();
+    /* "Up next" is the next check on THIS officer's shift. On the last slot of
+       a shift the one after it belongs to the other shift, and is awaiting its
+       list rather than up next - which is right, and is not a next slot. */
+    const mine = ycShiftSlots();
+    const after = YC_SLOTS[cur + 1];
     return { cur: ycSlotStatus(YC_SLOTS[cur]),
-             next: cur + 1 < 12 ? ycSlotStatus(YC_SLOTS[cur + 1]) : null };
+             next: (after && mine.indexOf(after) >= 0) ? ycSlotStatus(after) : null };
   });
   expect(r.cur.cls).toBe('due');
   expect(r.cur.top).toBe('Due this hour');

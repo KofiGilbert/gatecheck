@@ -145,7 +145,9 @@ test('tapping it opens that check, with a Print button', async ({ page }) => {
   await page.locator('#notifpanel .npitem', { hasText: 'Yard check completed' }).click();
   await expect(page.locator('#bkview')).toBeVisible();
   await expect(page.locator('#bkview_title')).toContainText('10');
-  await expect(page.locator('#bkview_body')).toContainText('LR7524');
+  // the sheet as it was filed, drawn, not rebuilt as a table
+  await expect(page.locator('#bkview_body .ycpaper img')).toBeVisible();
+  await expect(page.locator('#bkview_body .bkvmeta')).toContainText('Kobe');
   await expect(page.locator('#bkview .bkprint')).toBeVisible();
   await expect(page.locator('#bkview .bkprint')).toHaveText('Print');
 });

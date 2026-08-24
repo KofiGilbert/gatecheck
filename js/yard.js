@@ -1,3 +1,4 @@
+
 /* Checkpoint · https://gatecheck-martinbrower.netlify.app */
 
 /* =================== YARD CHECK (F-US399-QS-36 Trailer Inspection Log) =================== */
@@ -59,10 +60,25 @@ function ycAutoType(row){
   if(ycIsNumLoose(row.set)){ return parseFloat(row.set) <= 0 ? 'FROZEN' : 'COOLER'; }
   return row.type||'';
 }
+/* ---------- a unit that is switched off ----------
+   There is no temperature to read, no band to judge it against, and nothing
+   its fuel gauge or its door number can tell anybody that matters. The sheet
+   records a dash in each, which is what the paper one gets written on it, and
+   the row is an escalation on the strength of the unit being off at all. */
+var YC_DASH = '\u2014';
+var YC_OFF_FIELDS = ['temp','fuel','intact','door'];
+function ycIsOff(row){ return String(row && row.set || '').trim().toUpperCase() === 'OFF'; }
+function ycOffFill(row){
+  if(!row) return false;
+  var before = YC_OFF_FIELDS.map(function(k){ return row[k]; }).join('\u0000');
+  if(ycIsOff(row)) YC_OFF_FIELDS.forEach(function(k){ row[k] = YC_DASH; });
+  else YC_OFF_FIELDS.forEach(function(k){ if(row[k] === YC_DASH) row[k] = ''; });
+  return before !== YC_OFF_FIELDS.map(function(k){ return row[k]; }).join('\u0000');
+}
 function ycBadFields(row){
   var out={}, f=String(row.fuel||'').toUpperCase(), v=String(row.set||'').trim().toUpperCase();
   if(v==='DEF') out.set=1;
-  if(v==='OFF') out.set=1;
+  if(v==='OFF'){ out.set=1; return out; }   /* the dashes are not readings */
   if(String(row.temp||'').trim().toUpperCase()==='DEF') out.temp=1;
   if(f==='1/4'||f==='E'||f==='EMPTY') out.fuel=1;
   if(!out.temp && ycIsTenth(row.temp)){
@@ -438,17 +454,49 @@ function ycRowHTML(r,i){
       + ycCell(r.intact) + ycCell(r.door)
       + '<td id="ycb'+i+'"></td></tr>';
   }
-  return '<tr id="ycr'+i+'">'
+  var off = ycIsOff(r);
+  return '<tr id="ycr'+i+'"'+(off?' class="ycoff"':'')+'>'
     +'<td><input style="font-weight:800;text-transform:uppercase" placeholder="LR7524" value="'+esc(r.trailer)+'" oninput="ycSet('+i+',\'trailer\',this.value,true)"></td>'
     +'<td><input style="text-transform:uppercase" placeholder="FRIES" value="'+esc(r.product)+'" oninput="ycSet('+i+',\'product\',this.value,true)"></td>'
     +'<td'+m('set')+'><input value="'+esc(r.set)+'" oninput="ycSet('+i+',\'set\',this.value,true)" onblur="ycBlurSet('+i+',this)"></td>'
-    +'<td'+m('temp')+'><input value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)"></td>'
-    +'<td'+m('fuel')+'>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
-    +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
-    +'<td><input placeholder="N/A" value="'+esc(r.door)+'" oninput="ycSet('+i+',\'door\',this.value,true)"></td>'
+    + (off
+        ? ycCell(YC_DASH) + ycCell(YC_DASH) + ycCell(YC_DASH) + ycCell(YC_DASH)
+        : '<td'+m('temp')+'><input inputmode="decimal" autocomplete="off" value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)"></td>'
+          +'<td'+m('fuel')+'>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
+          +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
+          +'<td><input placeholder="N/A" value="'+esc(r.door)+'" oninput="ycSet('+i+',\'door\',this.value,true)"></td>')
     +'<td id="ycb'+i+'"></td>'
     +'</tr>';
 }
+/* Every input on the sheet calls this, and it did not exist: typing into the
+   review sheet threw on each keystroke and changed nothing. */
+function ycSet(i, k, v, save){
+  var r = YC.rows[i]; if(!r) return;
+  r[k] = v;
+  var reshape = false;
+  if(k === 'set'){ r.type = ycAutoType(r); reshape = ycOffFill(r); }
+  if(save) ycSaveDraft();
+  /* redrawing the whole sheet on a keystroke would take the cursor with it,
+     so only the escalate cell moves - unless the row changed shape */
+  if(reshape){ renderYard(); return; }
+  ycBanner(i);
+  ycSummary();
+}
+/* tidy up on the way out of a box, never while somebody is still typing in it */
+function ycBlurSet(i, el){
+  var r = YC.rows[i]; if(!r || !el) return;
+  var v = String(el.value || '').trim().toUpperCase();
+  if(v !== String(r.set || '')){ ycSet(i, 'set', v, true); el.value = v; }
+  if(ycIsOff(r)) renderYard();
+}
+function ycBlurTemp(i, el){
+  var r = YC.rows[i]; if(!r || !el) return;
+  var v = String(el.value || '').trim();
+  if(/^-?\d+(\.\d+)?$/.test(v)) v = parseFloat(v).toFixed(1);   /* the sheet reads to a tenth */
+  else v = v.toUpperCase();
+  if(v !== String(r.temp || '')){ ycSet(i, 'temp', v, true); el.value = v; }
+}
+
 /* One word. The reason is shown by the box that caused it, not spelled out. */
 function ycBanner(i){
   var r = YC.rows[i], el = $('ycb'+i), tr = $('ycr'+i); if(!el) return;
@@ -804,9 +852,15 @@ function blockTile(slot){
   var st;
   if(chk){
     var escN = (chk.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
-    st = { cls: escN? 'esc':'done', top:'Completed', arrow: escN? '\u26a0':'\u2713',
-           kpi: escN ? escN+' esc' : (chk.rows||[]).length+' checked',
-           detail: 'The officer has filed this check' };
+    /* Amber is the escalation colour, so a tile that says Completed in amber
+       is telling two different stories. The word follows the colour. */
+    st = escN
+      ? { cls:'esc', top:'Escalations', arrow:'\u26a0',
+          kpi: escN+' of '+(chk.rows||[]).length,
+          detail:'Filed, with '+escN+' escalation'+(escN===1?'':'s') }
+      : { cls:'done', top:'Completed', arrow:'\u2713',
+          kpi:(chk.rows||[]).length+' checked',
+          detail:'The officer has filed this check' };
   } else if(rec){
     st = { cls:'ready', top:'Released', arrow:'\u2192', kpi:n+' trailer'+(n===1?'':'s'),
            detail:'Released at '+ycHHMM(rec.loadedAt)+', waiting on the officer' };
@@ -873,7 +927,7 @@ function blockViewSync(sub){
     document.body.classList.toggle('dayview-open', !!chk);
     if(chk){
       $('bkview_title').textContent = ycSlotLabel(chk.time) + ' yard check';
-      $('bkview_body').innerHTML = ycCheckHTML(chk);
+      ycCheckRender(chk, $('bkview_body'));
       var b=$('bkview_back'); if(b) b.focus();
     }
   }
@@ -1165,11 +1219,20 @@ function ycModalRender(){
               + ' oninput="ycmSet(\'set\',this.value)"'
               + ' onblur="ycmOtherOut()">'
             : ycmSel('set', YC_SETPOINTS.concat(['Other\u2026']), r.set))
-    +   box('Temp', '<input id="ycm_temp" value="'+esc(r.temp||'')+'" placeholder="-9.1"'
-          + ' oninput="ycmSet(\'temp\',this.value)">')
-    +   box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
-    +   box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
-    +   box('Door #', ycmSel('door', YC_DOORS, r.door))
+    +   (ycIsOff(r)
+          /* nothing below the set point means anything once the unit is off,
+             so the boxes say so rather than sitting there asking to be filled */
+          ? box('Temp', '<div class="ycmdash">'+YC_DASH+'</div>')
+            + box('Fuel', '<div class="ycmdash">'+YC_DASH+'</div>')
+            + box('Intact (Y/N)', '<div class="ycmdash">'+YC_DASH+'</div>')
+            + box('Door #', '<div class="ycmdash">'+YC_DASH+'</div>')
+          : box('Temp', '<input id="ycm_temp" value="'+esc(r.temp||'')+'" placeholder="-9.1"'
+              /* a temperature is always figures, so the figures come up first */
+              + ' inputmode="decimal" autocomplete="off"'
+              + ' oninput="ycmSet(\'temp\',this.value)">')
+            + box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
+            + box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
+            + box('Door #', ycmSel('door', YC_DOORS, r.door)))
     +   box('Escalate', '<div class="ycmescbox" id="ycm_escbox">N/A</div>', 'esc')
     + '</div>';
   ycModalEsc();
@@ -1221,7 +1284,10 @@ function ycmSet(k, v){
   r[k] = v;
   /* the band follows the set point, and is cleared when the unit is OFF: a
      stale band would keep judging a trailer against a rule it is no longer in */
-  if(k==='set') r.type = ycAutoType(r);
+  if(k==='set'){
+    r.type = ycAutoType(r);
+    if(ycOffFill(r)){ ycSaveDraft(); ycModalRender(); return; }
+  }
   ycSaveDraft();
   ycModalEsc();
 }
@@ -1235,7 +1301,7 @@ function ycModalDelete(){
 }
 function ycModalSave(){
   var r = YC.rows[YCM];
-  if(r){
+  if(r && !ycIsOff(r)){
     var t = String(r.temp||'').trim();
     if(t && t.toUpperCase()!=='DEF' && !ycIsTenth(t)){
       toast('Temp must be recorded to the tenth, e.g. -10.0');
@@ -1243,8 +1309,8 @@ function ycModalSave(){
       return;
     }
     if(t && t.toUpperCase()==='DEF') r.temp='DEF';
-    ycSaveDraft();
   }
+  if(r) ycSaveDraft();
   ycModalClose();
 }
 document.addEventListener('keydown', function(e){
@@ -1278,36 +1344,29 @@ function ycSubmit(){
 /* ---- the office reads a completed check ---- */
 function blockOpenCheck(slot){ go('block', false, slot); }
 function blockViewClose(){ go('block'); }
-/* the saved check, drawn as the sheet it was filed as */
-function ycCheckHTML(d){
-  var head = '<tr><th>TRAILER#</th><th>PRODUCT</th><th>TEMP SET POINT</th><th>TEMP</th>'
-    + '<th>FUEL</th><th>INTACT<br>(Y or N)</th><th>DOOR #</th>'
-    + '<th style="min-width:230px">*ESCALATE*<br>ACTION (if any was taken)</th></tr>';
-  var body = (d.rows||[]).map(function(r){
-    var bad = r.escalate && r.escalate.length;
-    return '<tr'+(bad?' class="esc"':'')+'>'
-      + '<td class="ycro">'+esc(String(r.trailer||'').toUpperCase())+'</td>'
-      + '<td class="ycro">'+esc(String(r.product||'').toUpperCase())+'</td>'
-      + '<td class="ycro">'+esc(r.set||'')+'</td>'
-      + '<td class="ycro">'+esc(r.temp||'')+'</td>'
-      + '<td class="ycro">'+esc(r.fuel||'')+'</td>'
-      + '<td class="ycro">'+esc(r.intact||'')+'</td>'
-      + '<td class="ycro">'+esc(r.door||'N/A')+'</td>'
-      + '<td class="ycro">'
-      +   (bad
-          ? '<div class="escmsg">\uD83D\uDEA8 *ESCALATE*: '+r.escalate.map(esc).join(' \u00b7 ')+'</div>'
-            + '<div style="padding:2px 0;white-space:normal">'+esc(r.action||'\u2014')+'</div>'
-            + (r.escTo? '<div class="escroute">Raised with '+esc(r.escTo)+'</div>' : '')
-          : '<span style="color:var(--green);font-weight:700">N/A \u00b7 in range \u2713</span>')
-      + '</td></tr>';
-  }).join('');
+/* The check the office reads is the sheet that was filed: the same paper the
+   officer previewed and the same image that was emailed. Rebuilding it as an
+   HTML table gave them a third version of one document, and it read like a
+   spreadsheet rather than the form. Escalated rows are red on it, because
+   drawYardPaper draws them that way. */
+function ycCheckMeta(d){
   var escN = (d.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
   return '<div class="bkvmeta"><b>'+esc(ycFmtDate(d.date))+' \u00b7 '+esc(ycSlotLabel(d.time))+'</b>'
     + '<span>Recorded by '+esc(d.name||'\u2014')
     + ' \u00b7 '+(d.rows||[]).length+' trailer'+((d.rows||[]).length===1?'':'s')
-    + ' \u00b7 '+(escN? escN+' escalation'+(escN===1?'':'s') : 'no escalations')+'</span></div>'
-    + '<div class="ycwrap"><table class="yct ycsheet">'+head+body+'</table></div>';
+    + ' \u00b7 '+(escN? escN+' escalation'+(escN===1?'':'s') : 'no escalations')+'</span></div>';
 }
+function ycCheckRender(d, host){
+  if(!host) return;
+  host.innerHTML = ycCheckMeta(d) + '<div class="ycpaper" id="ycpaperwrap"></div>';
+  if(typeof drawYardPaper !== 'function') return;
+  drawYardPaper(d, function(cv){
+    var w = host.querySelector('#ycpaperwrap');
+    if(w) w.innerHTML = '<img alt="The yard check as it was filed" src="'
+      + cv.toDataURL('image/png') + '">';
+  });
+}
+
 
 
 /* ---- what the bell has to say ----

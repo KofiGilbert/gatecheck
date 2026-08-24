@@ -190,17 +190,18 @@ test('the yard board is three and three, not six thin strips', async ({ page }) 
   }
 });
 
-test('the office board follows the same shape', async ({ page }) => {
+test('the office board keeps its own shape: all twelve, six across', async ({ page }) => {
   await asOffice(page);
-  for (const s of SHAPES.filter(x => x.w >= 640)) {
-    await page.setViewportSize({ width: s.w, height: s.h });
-    await page.evaluate(() => { go('block'); blockRender(); });
-    const perRow = await page.evaluate(() => {
-      const t = [...document.querySelectorAll('#bk_am .slot')];
-      return t.length / new Set(t.map(x => Math.round(x.getBoundingClientRect().top))).size;
-    });
-    expect(perRow, s.name).toBe(3);
-  }
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.evaluate(() => { go('block'); blockRender(); });
+  const m = await page.evaluate(() => {
+    const t = [...document.querySelectorAll('#bk_am .slot')];
+    return { perRow: t.length / new Set(t.map(x => Math.round(x.getBoundingClientRect().top))).size,
+             shifts: document.querySelectorAll('.bkslots').length };
+  });
+  // the office is answering "how does the day look", not "what is my next check"
+  expect(m.perRow, 'six across, as it always was').toBe(6);
+  expect(m.shifts, 'both shifts on screen').toBe(2);
 });
 
 test('a genuinely wide desktop still gets the single row', async ({ page }) => {
