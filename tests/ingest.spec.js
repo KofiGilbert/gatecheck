@@ -20,7 +20,7 @@ test('the office is told what it can send, before it sends it', async ({ page })
   await page.locator('#dzplus').click();
   const menu = page.locator('#dzmenu');
   await expect(menu).toBeVisible();
-  for (const label of ['Spreadsheet', 'PDF', 'Word document', 'Photo of the sheet', 'Paste rows'])
+  for (const label of ['Spreadsheet', 'PDF', 'Word document', 'Photo already taken', 'Paste rows'])
     await expect(menu).toContainText(label);
 });
 
@@ -200,4 +200,32 @@ test('the drop zone is readable in the dark', async ({ page }) => {
     return out;
   });
   expect(bad).toEqual([]);
+});
+
+test('a phone or iPad is offered its camera; a desk PC is not', async ({ page }, info) => {
+  await onSchedule(page);
+  await page.locator('#dzplus').click();
+  const touch = await page.evaluate(() => (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window);
+  const cam = page.locator('#dzcam');
+  if (touch) {
+    await expect(cam, info.project.name + ' has touch, so it has a camera').toBeVisible();
+    await expect(cam).toContainText('Take a photo');
+    // capture= is what opens the camera rather than the photo library
+    await expect(page.locator('#filecam')).toHaveAttribute('capture', 'environment');
+  } else {
+    await expect(cam, 'no camera worth pointing at paper on a desk PC').toBeHidden();
+  }
+});
+
+test('a photograph taken with the camera goes to the photo reader', async ({ page }) => {
+  await onSchedule(page);
+  const went = await page.evaluate(async () => {
+    let got = null;
+    const real = window.importPhoto;
+    window.importPhoto = (f) => { got = f.name; };
+    await ingestFile(new File([new Uint8Array([1, 2, 3])], 'image.jpg', { type: 'image/jpeg' }));
+    window.importPhoto = real;
+    return got;
+  });
+  expect(went).toBe('image.jpg');
 });

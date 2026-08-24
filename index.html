@@ -1181,6 +1181,7 @@
     background:none;border:none;border-radius:8px;padding:10px 11px;
     font-family:inherit;font-size:13.5px;font-weight:600;color:var(--ink);
     cursor:pointer;text-align:left}
+  .dzmenu button[hidden]{display:none}
   .dzmenu button:hover{background:var(--hover)}
   .dzmenu button:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
   .dzmenu button i{margin-left:auto;font-style:normal;font-size:11.5px;
@@ -1701,6 +1702,9 @@
     </div>
     <input type="file" id="file" multiple style="display:none"
       accept=".json,.csv,.tsv,.txt,.xlsx,.xlsm,.pdf,.docx,image/*">
+    <!-- capture= opens the camera itself rather than the photo library, which is
+         what somebody standing at the printer with an iPad actually wants -->
+    <input type="file" id="filecam" accept="image/*" capture="environment" style="display:none">
     <div id="dz" class="dz">
       <button type="button" class="dzplus" id="dzplus" onclick="ingMenu(event)"
         aria-label="Add a file" aria-haspopup="menu" aria-expanded="false">+</button>
@@ -1713,7 +1717,8 @@
         <button type="button" role="menuitem" onclick="ingPick('sheet')">&#128202; Spreadsheet <i>.xlsx .csv</i></button>
         <button type="button" role="menuitem" onclick="ingPick('pdf')">&#128196; PDF <i>.pdf</i></button>
         <button type="button" role="menuitem" onclick="ingPick('doc')">&#128209; Word document <i>.docx</i></button>
-        <button type="button" role="menuitem" onclick="ingPick('photo')">&#128247; Photo of the sheet <i>.jpg .png</i></button>
+        <button type="button" role="menuitem" id="dzcam" hidden onclick="ingCamera()">&#128248; Take a photo <i>Camera</i></button>
+        <button type="button" role="menuitem" onclick="ingPick('photo')">&#128247; Photo already taken <i>.jpg .png</i></button>
         <hr>
         <button type="button" role="menuitem" onclick="ingPasteBox()">&#9999;&#65039; Paste rows from Excel</button>
       </div>
