@@ -389,25 +389,41 @@
   .dayacc{border:1px solid var(--line);border-radius:10px;background:var(--card);
     margin-bottom:10px;overflow:hidden}
   .daybar{display:flex;align-items:stretch;background:var(--card)}
-  .dbmain{display:flex;align-items:center;gap:14px;flex:1 1 auto;min-width:0;
-    background:none;border:none;padding:12px 4px 12px 14px;cursor:pointer;
+  .dbmain{display:flex;align-items:center;gap:18px;flex:1 1 auto;min-width:0;
+    background:none;border:none;padding:12px 6px 12px 16px;cursor:pointer;
     font-family:inherit;text-align:left}
   .dbmain:hover{background:var(--hover)}
   .dbmain:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
   .dbtext{flex:1 1 auto;min-width:0}
   .dbconf{display:block;font-size:9.5px;letter-spacing:.4px;color:var(--mut)}
   .dbdate{display:block;font-size:15px;font-weight:700;color:var(--ink);margin-top:2px}
-  .dbsum{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--mut);
-    white-space:nowrap;font-variant-numeric:tabular-nums}
-  .dbicons{flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 8px 0 4px}
+  /* Three figures, each in its own column with its name under it, so the
+     numbers line up down the whole list instead of running together as one
+     sentence. Right aligned and tabular, the way a ledger is read. */
+  .dbsum{flex:0 0 auto;display:flex;align-items:flex-end;gap:22px}
+  .dbstat{display:flex;flex-direction:column;align-items:flex-end;line-height:1.15}
+  .dbstat b{font-size:15px;font-weight:700;color:var(--ink);
+    font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+  .dbstat span{font-size:10px;font-weight:600;letter-spacing:.3px;
+    text-transform:uppercase;color:var(--mut);margin-top:2px}
+  .dbstat.n1{min-width:58px} .dbstat.n2{min-width:74px} .dbstat.n3{min-width:60px}
+  /* the actions are not part of the reading, so a rule separates them */
+  .dbicons{flex:0 0 auto;display:flex;align-items:center;gap:2px;
+    padding:0 8px 0 10px;margin-left:4px;
+    border-left:1px solid var(--line);align-self:stretch}
   .dbico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
-    background:none;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1}
-  .dbico:hover{background:var(--hover)}
-  .dbdel:hover{background:var(--redsoft)}
+    background:none;border:none;border-radius:8px;cursor:pointer;color:var(--mut);
+    transition:background 130ms ease-out,color 130ms ease-out}
+  .dbico svg{width:19px;height:19px;display:block;fill:none;stroke:currentColor;
+    stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .dbico:hover{background:var(--hover);color:var(--ink)}
+  .dbdel:hover{background:var(--redsoft);color:var(--redink)}
   .dbico:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
-  @media (max-width:640px){
-    .dbmain{flex-wrap:wrap;gap:4px 12px}
-    .dbsum{flex:1 1 100%;order:3}
+  @media (max-width:760px){
+    .dbmain{flex-wrap:wrap;gap:6px 14px}
+    .dbsum{flex:1 1 100%;order:3;gap:18px;justify-content:flex-start}
+    .dbstat{align-items:flex-start}
+    .dbstat.n1,.dbstat.n2,.dbstat.n3{min-width:0}
   }
   /* a day opened over the whole window */
   body.dayview-open{overflow:hidden}
@@ -506,7 +522,7 @@
   .btile.hero .th b{color:#fff} .btile.hero .th span{color:var(--lime)}
   .btile.hero .tf{color:#AEBAC6;text-align:center;width:100%}
   .btile.hero .tf b{color:var(--lime)}
-  .btile.alert{border-color:#E3B6AF;background:#FFF7F5}
+  .btile.alert{border-color:var(--cautionbd);background:var(--warn)}
 
   .donut{width:150px;height:150px;margin:2px auto 4px;color:#fff;display:block}
   .donut circle{transition:stroke-dasharray 420ms ease-out}
@@ -562,7 +578,10 @@
   .f-good{background:var(--green)} .f-bad{background:var(--red)}
 
   /* gate load */
-  .gate{display:flex;align-items:flex-end;gap:5px;height:132px;
+  /* A tile in a bento grid is as tall as its tallest neighbour. A chart with
+     a fixed height leaves the rest of the tile empty, which reads as a
+     mistake, so the bars take the room the tile actually has. */
+  .gate{display:flex;align-items:flex-end;gap:5px;flex:1 1 auto;min-height:132px;
     border-bottom:1px solid var(--line);padding-bottom:2px}
   .gcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;
     justify-content:flex-end;height:100%;gap:4px}
@@ -573,8 +592,8 @@
   .gcol em{font-size:9.5px;font-style:normal;color:var(--mut);font-weight:600}
 
   /* seven-day trend */
-  .trendwrap{display:flex;flex-direction:column}
-  .trend{width:100%;height:128px;display:block}
+  .trendwrap{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+  .trend{width:100%;flex:1 1 auto;min-height:128px;display:block}
   .tarea{fill:#C9A227;fill-opacity:.16}
   /* the chart is stretched to the tile, so stroke width is kept steady by hand */
   .trend path{vector-effect:non-scaling-stroke}
@@ -1185,6 +1204,15 @@
   .dzmenu hr{border:none;border-top:1px solid var(--line);margin:5px 8px}
   /* what the reader is doing, in words, because a PDF of 40 orders is not
      instant and a blank screen reads as a broken app */
+  /* opened by mistake is the common case, so it says what it is and how to
+     put it away */
+  .pbhead{display:flex;align-items:center;justify-content:space-between;
+    gap:10px;margin:12px 0 6px}
+  .pbhead b{font-size:13px;font-weight:700;color:var(--ink)}
+  .pbclose{width:34px;height:34px;border:none;border-radius:8px;background:none;
+    color:var(--mut);font-size:14px;cursor:pointer;font-family:inherit}
+  .pbclose:hover{background:var(--hover);color:var(--ink)}
+  .pbclose:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
   .dzprog{margin-top:10px;border:1px solid var(--line);border-radius:10px;
     background:var(--card);padding:11px 12px}
   .dzprog[hidden]{display:none}
@@ -1745,6 +1773,11 @@
     </div>
     <div id="dzprog" class="dzprog" hidden></div>
     <div id="pastebox" style="display:none">
+      <div class="pbhead">
+        <b>Paste rows from Excel</b>
+        <button type="button" class="pbclose" onclick="ingPasteClose()"
+          aria-label="Close the paste box">&#10005;</button>
+      </div>
       <textarea id="paste" rows="6" placeholder="Select the rows in Excel, copy, and paste them here"></textarea>
       <button class="btn sec" onclick="importPaste()">Load pasted rows</button>
     </div>

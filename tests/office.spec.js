@@ -405,10 +405,12 @@ test('loaded orders show one bar per day, with preview, edit and delete', async 
 
 test('each bar summarises its day', async ({ page }) => {
   await submitTwoDays(page);
-  await expect(page.locator('#sched .daybar').nth(0))
-    .toContainText('1 order · 2,544 cases · 36 pallets');
-  await expect(page.locator('#sched .daybar').nth(1))
-    .toContainText('3 orders · 3,070 cases · 55 pallets');
+  const figures = (row) => page.locator('#sched .daybar').nth(row)
+    .locator('.dbstat b').allInnerTexts();
+  expect(await figures(0)).toEqual(['1', '2,544', '36']);
+  expect(await figures(1)).toEqual(['3', '3,070', '55']);
+  await expect(page.locator('#sched .daybar').nth(0)).toContainText('order');
+  await expect(page.locator('#sched .daybar').nth(1)).toContainText('pallets');
 });
 
 test('tapping the bar opens that day full screen in preview', async ({ page }) => {
@@ -557,8 +559,8 @@ test('a deleted row really leaves the day once confirmed', async ({ page }) => {
   await page.locator('#dayview .dgdel').first().click();
   await page.click('#dv_save');
   await page.click('#dv_confirm');
-  await expect(page.locator('#sched .daybar').nth(1))
-    .toContainText('2 orders');
+  expect(await page.locator('#sched .daybar').nth(1).locator('.dbstat b').first().innerText())
+    .toBe('2');
   expect(await page.evaluate(() => DB.orders.filter(o => o.date === '2026-08-21').length)).toBe(2);
 });
 

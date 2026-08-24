@@ -363,8 +363,14 @@ test('every receiving office screen is readable in the dark', async ({ page }) =
   await H.gotoApp(page, { user:{ email:'office@martinbrower.com' }, role:'office', orders: [] });
   await page.evaluate(() => {
     PREFS.theme = 'dark'; prefsSave();
+    /* 00:30 with nobody on site is a no-show at any hour of the day, so the
+       alert tile is always on screen for the sweep to look at. It was not,
+       and a white tile sat in the dark dashboard for a week. */
     DB.orders = [{ date:isoToday(), order:'8036365', zone:'F', detail:'DROP', time:'700',
-      vendor:'MCCAIN CA: CARBERRY', carrier:'DAY&ROSS', cases:1134, pallets:21 }];
+      vendor:'MCCAIN CA: CARBERRY', carrier:'DAY&ROSS', cases:1134, pallets:21 },
+      { date:isoToday(), order:'8036366', zone:'D', detail:'LIVE', time:'0030',
+        in_yard:'N', vendor:'THE COCA-COLA COMPANY', carrier:'CH ROBINSON',
+        cases:890, pallets:16 }];
     DB.logs = [{ date:isoToday(), po:'8036365', timein:'0700', timeout:'0900' }];
     const slot = ycShiftSlots().filter(s => ycSlotDate(s) === ycTodayISO())[0];
     DB.yardslots = [{ id:ycTodayISO()+'_'+slot, date:ycTodayISO(), slot,

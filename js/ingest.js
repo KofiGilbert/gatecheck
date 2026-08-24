@@ -71,6 +71,12 @@ function ingCameraOffer(){
     h.textContent = 'Spreadsheet, PDF, Word, or photograph the printed sheet '
       + 'with this device. You can also paste rows copied out of Excel.';
 }
+function ingPasteClose(){
+  var box = document.getElementById('pastebox');
+  if(box) box.style.display = 'none';
+  var ta = document.getElementById('paste');
+  if(ta) ta.value = '';
+}
 function ingPasteBox(){
   ingMenuClose();
   var box = document.getElementById('pastebox');

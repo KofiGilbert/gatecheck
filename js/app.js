@@ -337,7 +337,11 @@ $('file').addEventListener('change', function(){
   this.value = '';
   if(typeof ingestFiles === 'function') ingestFiles(files);
 });
-function importPaste(){ ingest($('paste').value); $('paste').value=''; }
+function importPaste(){
+  var t = $('paste').value;
+  if(typeof ingPasteClose === 'function') ingPasteClose(); else $('paste').value='';
+  ingest(t);
+}
 /* One day at a time. Clearing everything is a different button, and asking
    for the day by name is what stops the wrong one going. */
 function schedDeleteDay(date){
@@ -506,6 +510,30 @@ function schedDaySummary(day){
   return day.length+' order'+(day.length===1?'':'s')
     + ' \u00b7 '+cases.toLocaleString()+' cases \u00b7 '+pallets.toLocaleString()+' pallets';
 }
+/* The same three figures, but as three columns rather than one sentence, so
+   they line up down the list and can be compared at a glance. */
+function schedDayStats(day){
+  var cases=0, pallets=0;
+  day.forEach(function(r){ cases+=(+r.cases||0); pallets+=(+r.pallets||0); });
+  return '<span class="dbsum">'
+    + '<span class="dbstat n1"><b>'+day.length+'</b><span>'
+    +   (day.length===1?'order':'orders')+'</span></span>'
+    + '<span class="dbstat n2"><b>'+cases.toLocaleString()+'</b><span>cases</span></span>'
+    + '<span class="dbstat n3"><b>'+pallets.toLocaleString()+'</b><span>pallets</span></span>'
+    + '</span>';
+}
+/* Line icons rather than emoji: emoji are a different weight and colour on
+   every device, and three of them side by side never sit straight. */
+var DB_ICONS = {
+  preview: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z"/>'
+         + '<circle cx="12" cy="12" r="2.6"/></svg>',
+  edit:    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/>'
+         + '<path d="M14.5 6.5 17.5 9.5"/></svg>',
+  del:     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/>'
+         + '<path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"/>'
+         + '<path d="M6.5 7l.8 12a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9L17.5 7"/>'
+         + '<path d="M10 11v6M14 11v6"/></svg>'
+};
 function schedByDate(rows){
   var bydate = {};
   rows.forEach(function(r){ (bydate[r.date] = bydate[r.date] || []).push(r); });
@@ -538,19 +566,19 @@ function schedPrintHTML(rows, collapsible){
       +       '<span class="dbconf">MARTIN BROWER, Inc. Confidential</span>'
       +       '<span class="dbdate">'+esc(fmtLongDate(d))+'</span>'
       +     '</span>'
-      +     '<span class="dbsum">'+esc(schedDaySummary(day))+'</span>'
+      +     schedDayStats(day)
       +   '</button>'
       +   '<span class="dbicons">'
       +     '<button type="button" class="dbico" title="Preview" aria-label="Preview '+esc(fmtLongDate(d))+'"'
-      +       ' onclick="dayViewOpen(\''+esc(d)+'\',\'preview\')">\ud83d\udc41\ufe0f</button>'
+      +       ' onclick="dayViewOpen(\''+esc(d)+'\',\'preview\')">'+DB_ICONS.preview+'</button>'
       +     (isOffice()
               ? '<button type="button" class="dbico" title="Edit" aria-label="Edit '+esc(fmtLongDate(d))+'"'
-                + ' onclick="dayViewOpen(\''+esc(d)+'\',\'edit\')">\u270f\ufe0f</button>'
+                + ' onclick="dayViewOpen(\''+esc(d)+'\',\'edit\')">'+DB_ICONS.edit+'</button>'
                 /* a day that came in wrong is thrown away and sent again,
                    which is faster than correcting forty rows by hand */
                 + '<button type="button" class="dbico dbdel" title="Delete this day"'
                 + ' aria-label="Delete '+esc(fmtLongDate(d))+'"'
-                + ' onclick="schedDeleteDay(\''+esc(d)+'\')">\ud83d\uddd1\ufe0f</button>'
+                + ' onclick="schedDeleteDay(\''+esc(d)+'\')">'+DB_ICONS.del+'</button>'
               : '')
       +   '</span>'
       + '</div></div>';

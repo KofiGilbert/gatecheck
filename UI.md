@@ -119,3 +119,23 @@ lifted in dark.
 Two audits enforce this, and they cover focus states, not just the resting
 page: `every officer screen is readable in the dark` and `every receiving
 office screen is readable in the dark` in `tests/prefs.spec.js`.
+
+## Rows of data with actions on them
+
+The loaded-orders list is the pattern to copy. Three rules, all of them from
+how a ledger is read rather than from how a sentence is written:
+
+- **Figures get columns, not commas.** "25 orders · 23,539 cases · 305 pallets"
+  is one sentence that lines up with nothing. Three right-aligned cells, each
+  with its name under it and `font-variant-numeric:tabular-nums`, line up down
+  the whole list so two days can be compared without reading either.
+- **Actions are separated from the reading** by a rule, at the trailing edge,
+  three at most. They are always visible: this is used on an iPad, and a
+  hover-to-reveal row is a row with no actions at all on a touch screen.
+- **Line icons, never emoji.** Emoji are a different weight, colour and
+  baseline on every device, and three side by side never sit straight. One
+  `<svg>` per action, `stroke:currentColor`, so hover and dark mode carry it.
+
+A tile in a bento grid is as tall as its tallest neighbour, so anything inside
+it with a fixed height leaves the rest empty. Give charts `flex:1 1 auto` and a
+`min-height`, not a `height`.
