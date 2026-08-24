@@ -7,7 +7,7 @@ const asOffice = (page) => H.gotoApp(page, { user:{email:'office@martinbrower.co
 test('the email box comes back filled in with whoever used this device last', async ({ page }) => {
   await H.gotoApp(page);                            // signed out, nothing remembered
   await expect(page.locator('#lg_email')).toHaveValue('');
-  await page.evaluate(() => sset('gc_lastemail', 'mbmccookreceiving@martin-brower.com'));
+  await page.evaluate(() => sset('gc_emails', JSON.stringify(['mbmccookreceiving@martin-brower.com'])));
   await page.reload();
   await expect(page.locator('#login')).toBeVisible();
   await expect(page.locator('#lg_email')).toHaveValue('mbmccookreceiving@martin-brower.com');
@@ -15,31 +15,88 @@ test('the email box comes back filled in with whoever used this device last', as
 
 test('the cursor starts on the password, not the address already typed', async ({ page }) => {
   await H.gotoApp(page);
-  await page.evaluate(() => sset('gc_lastemail', 'mbmccookreceiving@martin-brower.com'));
+  await page.evaluate(() => sset('gc_emails', JSON.stringify(['mbmccookreceiving@martin-brower.com'])));
   await page.reload();
   await expect(page.locator('#lg_pass')).toBeFocused();
 });
 
-test('a different officer can clear the remembered address', async ({ page }) => {
+/* ---- the box offers who has signed in here before ---- */
+const KNOWN = ['mbmccookreceiving@martin-brower.com', 'kofi@martinbrower.com', 'will@npgsecurity.com'];
+async function withKnown(page, list) {
   await H.gotoApp(page);
-  await page.evaluate(() => sset('gc_lastemail', 'mbmccookreceiving@martin-brower.com'));
+  await page.evaluate((l) => sset('gc_emails', JSON.stringify(l)), list || KNOWN);
   await page.reload();
-  await expect(page.locator('#lg_notyou')).toBeVisible();
-  await page.click('#lg_notyou');
-  await expect(page.locator('#lg_email')).toHaveValue('');
-  await expect(page.locator('#lg_email')).toBeFocused();
-  expect(await page.evaluate(() => sget('gc_lastemail'))).toBe('');
+  await expect(page.locator('#login')).toBeVisible();
+}
+
+test('tapping the email box offers every account used on this device', async ({ page }) => {
+  await withKnown(page);
+  await page.locator('#lg_email').fill('');
+  await page.locator('#lg_email').click();
+  const sugg = page.locator('#lg_sugg');
+  await expect(sugg).toBeVisible();
+  await expect(sugg.locator('.gc-sugg-pick')).toHaveCount(3);
+  for (const e of KNOWN) await expect(sugg).toContainText(e);
 });
 
-test('nothing is offered when no one has signed in on this device', async ({ page }) => {
-  await H.gotoApp(page);
-  await expect(page.locator('#lg_notyou')).toBeHidden();
+test('picking one fills it in and moves to the password', async ({ page }) => {
+  await withKnown(page);
+  await page.locator('#lg_email').fill('');
+  await page.locator('#lg_email').click();
+  await page.locator('#lg_sugg .gc-sugg-pick', { hasText: 'will@npgsecurity.com' }).click();
+  await expect(page.locator('#lg_email')).toHaveValue('will@npgsecurity.com');
+  await expect(page.locator('#lg_sugg')).toBeHidden();
+  await expect(page.locator('#lg_pass')).toBeFocused();
+});
+
+test('typing narrows the list rather than making you finish the address', async ({ page }) => {
+  await withKnown(page);
+  await page.locator('#lg_email').fill('');
+  await page.locator('#lg_email').pressSequentially('mb');
+  const sugg = page.locator('#lg_sugg');
+  await expect(sugg.locator('.gc-sugg-pick')).toHaveCount(1);
+  await expect(sugg).toContainText('mbmccookreceiving@martin-brower.com');
+});
+
+test('an address nobody here uses offers nothing', async ({ page }) => {
+  await withKnown(page);
+  await page.locator('#lg_email').fill('');
+  await page.locator('#lg_email').pressSequentially('zzz');
+  await expect(page.locator('#lg_sugg')).toBeHidden();
+});
+
+test('an account can be forgotten from the list itself', async ({ page }) => {
+  await withKnown(page);
+  await page.locator('#lg_email').fill('');
+  await page.locator('#lg_email').click();
+  const sugg = page.locator('#lg_sugg');
+  await expect(sugg.locator('.gc-sugg-pick')).toHaveCount(3);   // drawn before we aim at it
+  await sugg.locator('.gc-sugg-row', { hasText: 'kofi@martinbrower.com' })
+    .locator('.gc-sugg-x').click();
+  await expect(sugg.locator('.gc-sugg-pick')).toHaveCount(2);
+  await expect(sugg).not.toContainText('kofi@martinbrower.com');
+  expect(await page.evaluate(() => JSON.parse(sget('gc_emails'))))
+    .toEqual(['mbmccookreceiving@martin-brower.com', 'will@npgsecurity.com']);
+});
+
+test('the old Not you link is gone, the list replaced it', async ({ page }) => {
+  await withKnown(page);
+  await expect(page.locator('#lg_notyou')).toHaveCount(0);
+  await expect(page.locator('#login')).not.toContainText('Not you?');
+});
+
+test('signing in adds that account to the list, newest first', async ({ page }) => {
+  await withKnown(page, ['kofi@martinbrower.com']);
+  await page.fill('#lg_email', 'will@npgsecurity.com');
+  await page.fill('#lg_pass', 'good');
+  await page.click('#lg_btn');
+  await expect(page.locator('#login')).toBeHidden();
+  expect(await page.evaluate(() => JSON.parse(sget('gc_emails'))))
+    .toEqual(['will@npgsecurity.com', 'kofi@martinbrower.com']);
 });
 
 test('the password is never remembered', async ({ page }) => {
-  await H.gotoApp(page);
-  await page.evaluate(() => sset('gc_lastemail', 'mbmccookreceiving@martin-brower.com'));
-  await page.reload();
+  await withKnown(page);
   await expect(page.locator('#lg_pass')).toHaveValue('');
   const stored = await page.evaluate(() => JSON.stringify(Object.entries(localStorage)));
   expect(stored.toLowerCase()).not.toContain('password');

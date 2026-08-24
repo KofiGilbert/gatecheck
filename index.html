@@ -1294,6 +1294,10 @@
   #sec-form input.miss{border-color:var(--red);background:var(--warn)}
   .warn{background:var(--caution);border:1px solid var(--cautionbd);border-radius:9px;
     padding:10px;font-size:13px;color:var(--cautionink);margin-top:8px;line-height:1.4}
+  .warn[hidden]{display:none}
+  /* the same notice when the numbers do add up: reassurance, not a warning */
+  .warn.ok{background:var(--sunk);border-color:var(--line);color:var(--mut)}
+  .warn.ok b{color:var(--ink)}
 
   /* ===================== SIGN-IN SCREEN (Martin Brower) ===================== */
   #login{
@@ -1415,13 +1419,26 @@
     font-family:inherit;font-size:15px;line-height:20px;font-weight:700;
     text-decoration:underline;text-underline-offset:3px;
   }
-  /* only shown when the box came back already filled in */
-  #login .gc-notyou{display:inline-block;width:auto;margin:6px 0 0 -10px;
-    padding:12px 10px;min-height:44px;border:none;border-radius:6px;
-    background:transparent;color:var(--mb-muted);font-family:inherit;
-    font-size:13.5px;line-height:20px;font-weight:600;
-    text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-  #login .gc-notyou[hidden]{display:none}
+  /* Who has signed in on this device. A shared office iPad should not make
+     anybody type the whole address; picking their own is one tap. */
+  #login .gc-row{position:relative}
+  #login .gc-sugg{position:absolute;left:0;right:0;top:100%;z-index:5;margin-top:6px;
+    background:var(--mb-panel);border:1px solid #C9D0D8;border-radius:12px;
+    box-shadow:0 14px 34px rgba(0,20,40,.18);overflow:hidden;
+    max-height:min(46vh,320px);overflow-y:auto}
+  #login .gc-sugg[hidden]{display:none}
+  #login .gc-sugg-row{display:flex;align-items:center;width:100%;gap:10px;
+    background:none;border:none;border-bottom:1px solid #EDF0F3;padding:0}
+  #login .gc-sugg-row:last-child{border-bottom:none}
+  #login .gc-sugg-pick{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:11px;
+    background:none;border:none;font-family:inherit;font-size:15.5px;font-weight:600;
+    color:var(--mb-ink);text-align:left;padding:14px 4px 14px 16px;cursor:pointer;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #login .gc-sugg-pick:hover,#login .gc-sugg-pick:focus-visible{background:#F1F4F7;outline:none}
+  #login .gc-sugg-pick i{flex:0 0 auto;font-style:normal;font-size:15px;opacity:.6}
+  #login .gc-sugg-x{flex:0 0 auto;width:44px;height:44px;margin-right:6px;border:none;
+    background:none;color:var(--mb-muted);font-size:15px;border-radius:8px;cursor:pointer}
+  #login .gc-sugg-x:hover{background:#F1F4F7;color:var(--mb-ink)}
   #login .gc-note{margin:6px 0 0;font-size:14px;line-height:21px;color:var(--mb-muted)}
   #login .gc-foot{
     position:absolute;bottom:22px;right:28px;z-index:3;
@@ -1497,8 +1514,8 @@
             autocomplete="username" inputmode="email" enterkeyhint="next"
             autocapitalize="none" autocorrect="off" spellcheck="false"
             aria-describedby="loginerr" placeholder="name@example.com">
-          <button type="button" class="gc-notyou" id="lg_notyou" hidden
-            onclick="loginForget()">Not you? Use a different email</button>
+          <div id="lg_sugg" class="gc-sugg" role="listbox"
+            aria-label="Accounts used on this device" hidden></div>
         </div>
         <div class="gc-row">
           <label class="gc-label" for="lg_pass">Password</label>
@@ -1725,7 +1742,7 @@
         <button type="button" role="menuitem" onclick="ingPick('pdf')">&#128196; PDF <i>.pdf</i></button>
         <button type="button" role="menuitem" onclick="ingPick('doc')">&#128209; Word document <i>.docx</i></button>
         <button type="button" role="menuitem" id="dzcam" hidden onclick="ingCamera()">&#128248; Take a photo <i>Camera</i></button>
-        <button type="button" role="menuitem" onclick="ingPick('photo')">&#128247; Photo already taken <i>.jpg .png</i></button>
+        <button type="button" role="menuitem" onclick="ingPick('photo')">&#128247; Choose Photo <i>.jpg .png</i></button>
         <hr>
         <button type="button" role="menuitem" onclick="ingPasteBox()">&#9999;&#65039; Paste rows from Excel</button>
       </div>
@@ -1742,12 +1759,9 @@
     <h2>Check the schedule <span id="draftcnt" style="color:var(--mut);font-weight:600"></span></h2>
     <div class="hint">Correct anything that came across wrong, then preview it exactly as it prints.</div>
     <div id="draftgrid"></div>
+    <div id="drafttally" class="warn" hidden></div>
     <button class="btn" onclick="schedPreview()">&#128065; Preview</button>
-    <div id="schedpreview"></div>
-    <div id="schedactions" hidden>
-      <button class="btn" onclick="schedSubmit()">&#9989; Submit to the yard</button>
-      <button class="btn red" onclick="schedDiscard()">Discard</button>
-    </div>
+    <button class="btn red" onclick="schedDiscard()">Discard</button>
   </div>
 
   <div class="card" id="schedcard">
@@ -2008,6 +2022,20 @@
     </span>
   </div>
   <div class="dvbody" id="dv_body"></div>
+</div>
+<!-- the draft, exactly as it will print, over the whole window. It is the
+     page after the spreadsheet, not a panel underneath it, because this is
+     the last look anybody gets before the yard is working from it. -->
+<div id="draftview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="dfv_date" hidden>
+  <div class="dvbar">
+    <button type="button" class="dvback" aria-label="Back to the spreadsheet"
+      onclick="schedPreviewClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="dfv_date">Preview</b></span>
+    <span class="dvright">
+      <button type="button" class="dvact" onclick="schedSubmit()">Submit to the yard</button>
+    </span>
+  </div>
+  <div class="dvbody" id="dfv_body"></div>
 </div>
 <!-- a long analytics list, on its own screen -->
 <div id="anlist" class="dayview" role="dialog" aria-modal="true" aria-labelledby="anlist_title" hidden>

@@ -20,7 +20,7 @@ test('the office is told what it can send, before it sends it', async ({ page })
   await page.locator('#dzplus').click();
   const menu = page.locator('#dzmenu');
   await expect(menu).toBeVisible();
-  for (const label of ['Spreadsheet', 'PDF', 'Word document', 'Photo already taken', 'Paste rows'])
+  for (const label of ['Spreadsheet', 'PDF', 'Word document', 'Choose Photo', 'Paste rows'])
     await expect(menu).toContainText(label);
 });
 

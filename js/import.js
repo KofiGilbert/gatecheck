@@ -113,9 +113,28 @@ function drawToCanvas(im, maxSide, rotDeg){
   return cv;
 }
 /* grayscale -> flatten illumination -> adaptive threshold (integral images) */
+/* Somebody has been over the printed sheet with a pen, and the reader cannot
+   tell a biro stroke from a printed digit once the page is black and white.
+   Coloured ink can be told apart while the photo is still in colour: a blue
+   or red stroke is saturated, print is not. Those pixels are lifted out
+   before anything else looks at the page.
+
+   Black biro is the same colour as print and cannot be separated this way.
+   That is what the totals check downstream is for. */
+function penStrip(d, n){
+  for(var i=0,p=0;i<n;i++,p+=4){
+    var r=d[p], g2=d[p+1], b=d[p+2];
+    var mx=Math.max(r,g2,b), mn=Math.min(r,g2,b);
+    if(mx < 30) continue;                       /* near black: print, or deep shadow */
+    var sat=(mx-mn)/mx;
+    /* coloured and dark enough to be ink rather than paper tone */
+    if(sat > 0.34 && mx < 215) d[p]=d[p+1]=d[p+2]=255;
+  }
+}
 function preprocess(cv){
   var w=cv.width,h=cv.height,g=cv.getContext('2d');
   var img=g.getImageData(0,0,w,h),d=img.data,n=w*h;
+  penStrip(d, n);
   var gray=new Float32Array(n);
   for(var i=0,p=0;i<n;i++,p+=4) gray[i]=0.299*d[p]+0.587*d[p+1]+0.114*d[p+2];
   var W=w+1;
@@ -166,7 +185,11 @@ async function getWorker(){
     logger:function(m){ if(m.status==='recognizing text')
       ocrStatus('🔎 Reading photo… '+Math.round(m.progress*100)+'%'); }
   });
-  await _tessWorker.setParameters({tessedit_pageseg_mode:'6'});
+  await _tessWorker.setParameters({
+    tessedit_pageseg_mode:'6',
+    /* a schedule is a table: the gaps between columns are the columns */
+    preserve_interword_spaces:'1'
+  });
   return _tessWorker;
 }
 async function importPhoto(file){
@@ -207,7 +230,7 @@ async function importPhoto(file){
     if(!parsed.rows.length){
       toast('No order rows recognized. Try a sharper photo or the .xlsx/.json file.'); return;
     }
-    openReview(parsed);
+    ocrStage(parsed);
   }catch(e){
     ocrStatus(null);
     toast('Photo reading failed: '+(e.message||e)+'. Use the .xlsx or .json file instead.');
@@ -289,7 +312,51 @@ function parseOcr(text){
   // de-dup same order keeping first
   var seen={}, out=[];
   rows.forEach(function(r){ if(!seen[r.order]){ seen[r.order]=1; out.push(r); } });
-  return {date:date, rows:out};
+  return {date:date, rows:out, totals:ocrTotals(lines, out)};
+}
+/* The printed sheet totals its own Open Cases and Pallets at the foot. Read
+   that line and the app can say "this does not add up" instead of leaving the
+   office to notice, which is the only reliable guard against a photograph
+   that was read badly. */
+function ocrTotals(lines, rows){
+  if(!rows || !rows.length) return null;
+  var last = -1;
+  for(var i=lines.length-1;i>=0;i--){ if(/\b80\d{5}\b/.test(lines[i])){ last=i; break; } }
+  if(last < 0) return null;
+  var sumC=0, sumP=0;
+  rows.forEach(function(r){ sumC += (+r.cases||0); sumP += (+r.pallets||0); });
+  if(!sumC) return null;
+  for(var j=last+1;j<lines.length;j++){
+    var nums=(lines[j].match(/\d[\d,]*/g)||[])
+      .map(function(t){ return +t.replace(/,/g,''); })
+      .filter(function(v){ return v > 0; });
+    if(nums.length < 2) continue;
+    var pallets=nums[nums.length-1], cases=nums[nums.length-2];
+    /* a totals line is far bigger than any one row, and pallets never exceed
+       cases on this sheet - that is enough to tell it from a stray number */
+    if(cases > sumC*0.4 && cases < sumC*4 && pallets > 0 && pallets < cases)
+      return {cases:cases, pallets:pallets};
+  }
+  return null;
+}
+
+/* A photograph goes into the same spreadsheet a .xlsx goes into. There is no
+   separate "check what the photo says" screen, because the checking happens
+   in the grid either way, and one screen is easier to trust than two. The
+   rows keep the order they appear on the paper so the office can read down
+   both at once. */
+function ocrStage(parsed){
+  var date = parsed.date || isoToday();
+  var rows = parsed.rows.map(function(r){
+    return { date:date, zone:r.zone, priority:r.priority, detail:r.detail, time:r.time,
+             in_yard:'N', order:r.order, vendor:r.vendor, carrier:r.carrier,
+             contact:r.contact, cases:r.cases, pallets:r.pallets };
+  });
+  SCHED_CLAIM = parsed.totals || null;
+  if(typeof isOffice === 'function' && isOffice()) stageOrders(rows, true);
+  else receiveOrders(rows);
+  if(typeof go === 'function') go('sched');
+  if(typeof schedTally === 'function') schedTally();
 }
 
 /* =================== v2: review UI =================== */

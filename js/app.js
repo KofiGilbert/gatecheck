@@ -378,13 +378,48 @@ var DG_COLS = [
   {k:'cases',    t:'Open Cases', w:88},
   {k:'pallets',  t:'Pallets',   w:70}
 ];
-function stageOrders(arr){
+function stageOrders(arr, keepOrder){
   var rows = (arr||[]).map(normalizeRow).filter(function(n){ return n.order; });
   if(!rows.length){ toast('Nothing to load'); return; }
-  rows.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.order<b.order?-1:1); });
+  /* A photograph is checked against the paper it was taken from, line by
+     line, so the rows stay in the order they appear on that paper. Anything
+     else makes the office scan the page twice. */
+  if(!keepOrder)
+    rows.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.order<b.order?-1:1); });
   SCHED_DRAFT = rows;
   schedRenderDraft();
   toast('Loaded '+rows.length+' rows. Check them, then preview.');
+}
+/* What the photograph said the totals were, so the office is told when the
+   reader has plainly got it wrong rather than being left to notice. */
+var SCHED_CLAIM = null;
+function schedTally(){
+  var el = $('drafttally'); if(!el) return;
+  if(!SCHED_DRAFT || !SCHED_DRAFT.length || !SCHED_CLAIM){ el.hidden = true; return; }
+  var cases = 0, pallets = 0;
+  SCHED_DRAFT.forEach(function(r){ cases += (+r.cases||0); pallets += (+r.pallets||0); });
+  var okCases   = !SCHED_CLAIM.cases   || cases   === SCHED_CLAIM.cases;
+  var okPallets = !SCHED_CLAIM.pallets || pallets === SCHED_CLAIM.pallets;
+  var okRows    = !SCHED_CLAIM.rows    || SCHED_DRAFT.length === SCHED_CLAIM.rows;
+  if(okCases && okPallets && okRows){
+    el.className = 'warn ok';
+    el.innerHTML = '\u2714 The totals match the sheet: <b>' + SCHED_DRAFT.length
+      + '</b> orders, <b>' + cases.toLocaleString() + '</b> cases, <b>'
+      + pallets.toLocaleString() + '</b> pallets.';
+    el.hidden = false;
+    return;
+  }
+  el.className = 'warn';
+  var says = [];
+  if(!okRows)    says.push('<b>' + SCHED_DRAFT.length + '</b> orders, not ' + SCHED_CLAIM.rows);
+  if(!okCases)   says.push('<b>' + cases.toLocaleString() + '</b> cases, not '
+                           + SCHED_CLAIM.cases.toLocaleString());
+  if(!okPallets) says.push('<b>' + pallets.toLocaleString() + '</b> pallets, not '
+                           + SCHED_CLAIM.pallets.toLocaleString());
+  el.innerHTML = '\u26a0 <b>This does not add up to the sheet.</b> The reader got '
+    + says.join(', ') + '. Pen marks and creases throw it off. Correct the rows below, '
+    + 'or load the .xlsx instead.';
+  el.hidden = false;
 }
 function schedSet(i,k,v){
   if(!SCHED_DRAFT || !SCHED_DRAFT[i]) return;
@@ -396,10 +431,7 @@ function schedDel(i){
   SCHED_DRAFT.splice(i,1);
   schedRenderDraft();
 }
-function schedInvalidate(){
-  var a=$('schedactions'); if(a) a.hidden = true;
-  var p=$('schedpreview'); if(p) p.innerHTML='';
-}
+function schedInvalidate(){ schedTally(); }
 function colLetter(i){
   var s=''; i++;
   while(i>0){ var m=(i-1)%26; s=String.fromCharCode(65+m)+s; i=Math.floor((i-1)/26); }
@@ -440,7 +472,8 @@ function schedRenderDraft(){
 }
 function schedDiscard(){
   if(!confirm('Discard this schedule without submitting it?')) return;
-  SCHED_DRAFT = null; schedRenderDraft();
+  schedPreviewClose();
+  SCHED_DRAFT = null; SCHED_CLAIM = null; schedRenderDraft();
   var c=$('draftcard'); if(c) c.hidden = true;
   toast('Discarded');
 }
@@ -486,7 +519,11 @@ function schedByDate(rows){
 function schedPrintHTML(rows, collapsible){
   if(!rows || !rows.length) return '<div class="empty">Nothing loaded.</div>';
   var bydate = schedByDate(rows);
-  return Object.keys(bydate).sort().map(function(d){
+  /* The list of loaded days reads newest first: today is what the office is
+     working on, and yesterday is history. A printed copy still runs forward. */
+  var days = Object.keys(bydate).sort();
+  if(collapsible) days.reverse();
+  return days.map(function(d){
     var day = bydate[d];
     if(!collapsible){
       return '<div class="prnhead">'
@@ -634,11 +671,24 @@ document.addEventListener('keydown', function(e){
   if(bv && !bv.hidden && typeof blockViewClose==='function') blockViewClose();
 });
 
+var DRAFTVIEW_OPEN = false;
 function schedPreview(){
   if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to preview'); return; }
-  $('schedpreview').innerHTML = schedPrintHTML(SCHED_DRAFT, false);
-  $('schedactions').hidden = false;
-  toast('This is how it prints. Submit when it looks right.');
+  var v = $('draftview'); if(!v) return;
+  $('dfv_body').innerHTML = schedPrintHTML(SCHED_DRAFT, false);
+  var d = $('dfv_date');
+  var days = {}; SCHED_DRAFT.forEach(function(r){ if(r.date) days[r.date] = 1; });
+  var only = Object.keys(days);
+  if(d) d.textContent = only.length === 1 ? (fmtLongDate(only[0]) || 'Preview') : 'Preview';
+  v.hidden = false;
+  document.body.classList.add('dayview-open');
+  DRAFTVIEW_OPEN = true;
+  $('dfv_body').scrollTop = 0;
+}
+function schedPreviewClose(){
+  var v = $('draftview'); if(v) v.hidden = true;
+  document.body.classList.remove('dayview-open');
+  DRAFTVIEW_OPEN = false;
 }
 function fmtLongDate(iso){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')) return iso||'';
@@ -651,8 +701,9 @@ function fmtLongDate(iso){
 function schedSubmit(){
   if(!SCHED_DRAFT || !SCHED_DRAFT.length){ toast('Nothing to submit'); return; }
   var n = SCHED_DRAFT.length;
+  schedPreviewClose();
   mergeOrders(SCHED_DRAFT);
-  SCHED_DRAFT = null;
+  SCHED_DRAFT = null; SCHED_CLAIM = null;
   renderSched();
   var c=$('draftcard'); if(c) c.hidden = true;
   schedInvalidate();

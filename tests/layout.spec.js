@@ -79,19 +79,19 @@ test.describe('layout, keyboard and regressions', () => {
 
   test('every control is programmatically focusable and in DOM order', async ({ page }) => {
     await H.gotoApp(page);
-    // lg_notyou sits with the email it clears, and only shows when there is one
-    const ids = ['lg_email','lg_notyou','lg_pass','lg_reveal','lg_btn'];
-    for (const id of ids.filter(i => i !== 'lg_notyou')) {
+    const ids = ['lg_email','lg_pass','lg_reveal','lg_btn'];
+    for (const id of ids) {
       await page.locator('#' + id).focus();
       expect(await page.evaluate(() => document.activeElement.id), id).toBe(id);
     }
     const domOrder = await page.evaluate(() =>
       [...document.querySelectorAll('#login input, #login button')].map(e => e.id || e.className));
     expect(domOrder.slice(0, ids.length)).toEqual(ids);
-    // it takes focus as soon as there is an address for it to clear
-    await page.evaluate(() => { sset('gc_lastemail','a@b.com'); loginRecall(); });
-    await page.locator('#lg_notyou').focus();
-    expect(await page.evaluate(() => document.activeElement.id)).toBe('lg_notyou');
+    // the account list is reachable from the box it belongs to
+    await page.evaluate(() => { sset('gc_emails', JSON.stringify(['a@b.com'])); });
+    await page.locator('#lg_email').fill('');
+    await page.locator('#lg_email').click();
+    await expect(page.locator('#lg_sugg .gc-sugg-pick').first()).toBeVisible();
     const negative = await page.evaluate(() =>
       [...document.querySelectorAll('#login input, #login button')].filter(e => e.tabIndex < 0).length);
     expect(negative, 'nothing may be removed from the focus order').toBe(0);

@@ -103,7 +103,7 @@ function cloudInit(){
         /* and so signing in again is a password, not a whole address typed
            on a tablet keyboard. iCloud Keychain may or may not have offered
            to save it; this does not depend on whether it did. */
-        if(u.email) sset('gc_lastemail', u.email);
+        if(u.email) loginRemember(u.email);
         /* apply the role we saw last time so there is no flash, then let the
            account document confirm or correct it */
         setRole(sget('gc_role_'+u.email) || 'officer');
@@ -129,19 +129,85 @@ function cloudInit(){
 /* The email box comes back filled in with whoever used this device last, and
    the cursor starts on the password. Signing out is not the same as saying
    "forget me": the office iPad is used by the office. */
+function loginKnown(){
+  try{
+    var raw = sget('gc_emails');
+    var list = raw ? JSON.parse(raw) : [];
+    if(Array.isArray(list)) return list.filter(function(e){ return typeof e === 'string' && e; });
+  }catch(e){}
+  /* whatever the older single-address version left behind */
+  var one = sget('gc_lastemail');
+  return one ? [one] : [];
+}
+function loginRemember(email){
+  email = String(email || '').trim();
+  if(!email) return;
+  var list = loginKnown().filter(function(e){ return e.toLowerCase() !== email.toLowerCase(); });
+  list.unshift(email);
+  try{ sset('gc_emails', JSON.stringify(list.slice(0, 6))); }catch(e){}
+  sset('gc_lastemail', email);
+}
+function loginForgetOne(email, ev){
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  var list = loginKnown().filter(function(e){ return e !== email; });
+  try{ sset('gc_emails', JSON.stringify(list)); }catch(e){}
+  if(sget('gc_lastemail') === email) sset('gc_lastemail', list[0] || '');
+  var box = $('lg_email');
+  if(box && box.value === email) box.value = '';
+  loginSuggest(true);
+  if(box) box.focus();
+}
+function loginPick(email){
+  var box = $('lg_email'); if(box) box.value = email;
+  loginSuggestHide();
+  var pw = $('lg_pass'); if(pw){ pw.value = ''; try{ pw.focus(); }catch(e){} }
+}
+function loginSuggestHide(){
+  var el = $('lg_sugg'); if(el){ el.hidden = true; el.innerHTML = ''; }
+}
+/* Typing narrows the list. Nobody should have to spell out an address they
+   have already signed in with on this iPad. */
+function loginSuggest(open){
+  var el = $('lg_sugg'), box = $('lg_email');
+  if(!el || !box) return;
+  var typed = String(box.value || '').trim().toLowerCase();
+  var list = loginKnown().filter(function(e){
+    return !typed || e.toLowerCase().indexOf(typed) >= 0;
+  });
+  if(!list.length){ loginSuggestHide(); return; }
+  /* nothing left to offer once the address is fully typed */
+  if(list.length === 1 && list[0].toLowerCase() === typed){ loginSuggestHide(); return; }
+  el.innerHTML = list.map(function(e){
+    var q = String(e).replace(/'/g, "\\'");
+    return '<div class="gc-sugg-row" role="option" aria-selected="false">'
+      + '<button type="button" class="gc-sugg-pick" onclick="loginPick(\''+q+'\')">'
+      +   '<i aria-hidden="true">\u2709</i><span>'+esc(e)+'</span></button>'
+      + '<button type="button" class="gc-sugg-x" aria-label="Forget '+esc(e)+'"'
+      +   ' onclick="loginForgetOne(\''+q+'\', event)">\u2715</button>'
+      + '</div>';
+  }).join('');
+  el.hidden = false;
+}
 function loginRecall(){
-  var box = $('lg_email'), why = $('lg_notyou');
+  var box = $('lg_email');
   if(!box) return;
-  var last = sget('gc_lastemail') || '';
+  var last = sget('gc_lastemail') || loginKnown()[0] || '';
   if(last && !box.value.trim()) box.value = last;
-  if(why) why.hidden = !box.value.trim();
 }
-function loginForget(){
-  sset('gc_lastemail', '');
-  var box = $('lg_email'); if(box){ box.value = ''; box.focus(); }
-  var pw = $('lg_pass'); if(pw) pw.value = '';
-  var why = $('lg_notyou'); if(why) why.hidden = true;
-}
+document.addEventListener('click', function(e){
+  var el = $('lg_sugg');
+  if(!el || el.hidden) return;
+  if(el.contains(e.target) || e.target === $('lg_email')) return;
+  loginSuggestHide();
+});
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape') loginSuggestHide();
+});
+(function(){
+  var box = $('lg_email'); if(!box) return;
+  box.addEventListener('focus', function(){ loginSuggest(true); });
+  box.addEventListener('input', function(){ loginSuggest(true); });
+})();
 function doLogin(){
   var em=$('lg_email').value.trim(), pw=$('lg_pass').value;
   if(!em||!pw){ loginErr('Enter your email and password to sign in.'); return; }

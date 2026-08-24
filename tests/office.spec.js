@@ -166,7 +166,8 @@ test('the office can correct a row before submitting', async ({ page }) => {
   const vendor = page.locator('#draftgrid table tr').nth(2).locator('input').nth(7);
   await vendor.fill('MCCAIN CA: CARBERRY (CORRECTED)');
   await page.click('button:has-text("Preview")');
-  await expect(page.locator('#schedpreview')).toContainText('CORRECTED');
+  await expect(page.locator('#draftview')).toBeVisible();
+  await expect(page.locator('#dfv_body')).toContainText('CORRECTED');
 });
 
 test('the preview is the printed sheet, with totals', async ({ page }) => {
@@ -177,7 +178,8 @@ test('the preview is the printed sheet, with totals', async ({ page }) => {
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
 
-  const prn = page.locator('#schedpreview');
+  await expect(page.locator('#draftview'), 'the preview is its own page').toBeVisible();
+  const prn = page.locator('#dfv_body');
   await expect(prn).toContainText('MARTIN BROWER, Inc. Confidential');
   await expect(prn).toContainText('Friday, August 21, 2026');
   for (const h of ['Zones','Detail','Time','In Yard','Order Number','Vendor Name',
@@ -194,12 +196,14 @@ test('submit is only offered after a preview, and publishes what was previewed',
   await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
-  await expect(page.locator('#schedactions')).toBeHidden();
+  // Submit lives on the preview page, so nothing can go unread
+  await expect(page.locator('#draftview')).toBeHidden();
+  await expect(page.locator('button:has-text("Submit to the yard")')).toBeHidden();
 
   await page.click('button:has-text("Preview")');
-  await expect(page.locator('#schedactions')).toBeVisible();
+  await expect(page.locator('#draftview')).toBeVisible();
 
-  await page.click('button:has-text("Submit to the yard")');
+  await page.click('#draftview button:has-text("Submit to the yard")');
   // published to the shared schedule, not just held locally
   const written = await page.evaluate(() => window.__fb.written || []);
   expect(written.length).toBe(3);
@@ -208,16 +212,23 @@ test('submit is only offered after a preview, and publishes what was previewed',
   await expect(page.locator('#draftcard')).toBeHidden();
 });
 
-test('editing after a preview forces another look before submitting', async ({ page }) => {
+test('going back to correct something takes Submit away with it', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
   await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
-  await expect(page.locator('#schedactions')).toBeVisible();
+  await expect(page.locator('#draftview')).toBeVisible();
+
+  await page.click('#draftview .dvback');
+  await expect(page.locator('#draftview')).toBeHidden();
+  await expect(page.locator('button:has-text("Submit to the yard")')).toBeHidden();
+
+  // the correction shows up when the preview is opened again
   await page.locator('#draftgrid table tr').nth(2).locator('input').nth(4).fill('815');
-  await expect(page.locator('#schedactions'), 'a change must invalidate the preview').toBeHidden();
+  await page.click('button:has-text("Preview")');
+  await expect(page.locator('#dfv_body')).toContainText('815');
 });
 
 test('officers cannot load the schedule at all', async ({ page }) => {
@@ -329,7 +340,7 @@ test('after submitting, the office sees the printed sheet, not a list', async ({
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
   const sent = await page.evaluate(() => JSON.parse(JSON.stringify(SCHED_DRAFT)));
-  await page.click('button:has-text("Submit to the yard")');
+  await page.click('#draftview button:has-text("Submit to the yard")');
   // the published rows return through the sync; stand them in so we can render
   await page.evaluate((rows) => { DB.orders = rows; renderSched(); }, sent);
   const sched = page.locator('#sched');
@@ -371,7 +382,7 @@ async function submitTwoDays(page) {
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
   const sent = await page.evaluate(() => JSON.parse(JSON.stringify(SCHED_DRAFT)));
-  await page.click('button:has-text("Submit to the yard")');
+  await page.click('#draftview button:has-text("Submit to the yard")');
   await page.evaluate((rows) => { DB.orders = rows; renderSched(); }, sent);
 }
 
@@ -380,8 +391,9 @@ test('loaded orders show one bar per day, with preview, edit and delete', async 
   const bars = page.locator('#sched .daybar');
   await expect(bars).toHaveCount(2);
   await expect(bars.nth(0)).toContainText('MARTIN BROWER, Inc. Confidential');
-  await expect(bars.nth(0)).toContainText('Friday, August 21, 2026');
-  await expect(bars.nth(1)).toContainText('Saturday, August 22, 2026');
+  // newest first: what the office is working on today, not what it finished with
+  await expect(bars.nth(0)).toContainText('Saturday, August 22, 2026');
+  await expect(bars.nth(1)).toContainText('Friday, August 21, 2026');
   await expect(bars.nth(0).locator('.dbico')).toHaveCount(3);
   await expect(bars.nth(0).locator('[aria-label^="Preview"]')).toBeVisible();
   await expect(bars.nth(0).locator('[aria-label^="Edit"]')).toBeVisible();
@@ -394,14 +406,14 @@ test('loaded orders show one bar per day, with preview, edit and delete', async 
 test('each bar summarises its day', async ({ page }) => {
   await submitTwoDays(page);
   await expect(page.locator('#sched .daybar').nth(0))
-    .toContainText('3 orders · 3,070 cases · 55 pallets');
-  await expect(page.locator('#sched .daybar').nth(1))
     .toContainText('1 order · 2,544 cases · 36 pallets');
+  await expect(page.locator('#sched .daybar').nth(1))
+    .toContainText('3 orders · 3,070 cases · 55 pallets');
 });
 
 test('tapping the bar opens that day full screen in preview', async ({ page }) => {
   await submitTwoDays(page);
-  await page.locator('#sched .dbmain').nth(0).click();
+  await page.locator('#sched .dbmain').nth(1).click();       // the Friday sheet
   const dv = page.locator('#dayview');
   await expect(dv).toBeVisible();
   await expect(page.locator('#dv_date')).toHaveText('Friday, August 21, 2026');
@@ -457,19 +469,19 @@ test('the sheet meets all four edges of the screen, in preview and in edit', asy
 
 test('the eye opens preview and the pencil opens edit', async ({ page }) => {
   await submitTwoDays(page);
-  await page.locator('#sched .daybar').nth(1).locator('[aria-label^="Edit"]').click();
+  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
   await expect(page.locator('#dv_edit')).toHaveClass(/on/);
   await expect(page.locator('#dayview table.dg')).toBeVisible();
   await expect(page.locator('#dv_date')).toHaveText('Saturday, August 22, 2026');
   await page.click('#dv_back');
-  await page.locator('#sched .daybar').nth(1).locator('[aria-label^="Preview"]').click();
+  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Preview"]').click();
   await expect(page.locator('#dv_preview')).toHaveClass(/on/);
   await expect(page.locator('#dayview table.prn')).toBeVisible();
 });
 
 test('preview shows the printed sheet with its totals', async ({ page }) => {
   await submitTwoDays(page);
-  await page.locator('#sched .dbmain').nth(0).click();
+  await page.locator('#sched .dbmain').nth(1).click();       // the Friday sheet
   const dv = page.locator('#dayview');
   for (const h of ['Zones','Detail','Time','In Yard','Order Number','Vendor Name',
                    'Appointment Carrier','Contact Name','Open Cases','Pallets'])
@@ -480,7 +492,7 @@ test('preview shows the printed sheet with its totals', async ({ page }) => {
 
 test('the switch moves between preview and edit without leaving the day', async ({ page }) => {
   await submitTwoDays(page);
-  await page.locator('#sched .dbmain').nth(0).click();
+  await page.locator('#sched .dbmain').nth(1).click();       // the Friday sheet
   await page.click('#dv_edit');
   await expect(page.locator('#dayview table.dg')).toBeVisible();
   await expect(page.locator('#dayview table.prn')).toHaveCount(0);
@@ -492,7 +504,7 @@ test('the switch moves between preview and edit without leaving the day', async 
 
 test('edit is a spreadsheet: column letters, row numbers, editable cells', async ({ page }) => {
   await submitTwoDays(page);
-  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
+  await page.locator('#sched .daybar').nth(1).locator('[aria-label^="Edit"]').click();
   const g = page.locator('#dayview table.dg');
   await expect(g.locator('tr.dgcols th').nth(1)).toHaveText('A');
   await expect(g.locator('tr.dgcols th').nth(2)).toHaveText('B');
@@ -541,11 +553,11 @@ test('Save shows the changes as they will print, and only Confirm publishes', as
 
 test('a deleted row really leaves the day once confirmed', async ({ page }) => {
   await submitTwoDays(page);
-  await page.locator('#sched .daybar').nth(0).locator('[aria-label^="Edit"]').click();
+  await page.locator('#sched .daybar').nth(1).locator('[aria-label^="Edit"]').click();
   await page.locator('#dayview .dgdel').first().click();
   await page.click('#dv_save');
   await page.click('#dv_confirm');
-  await expect(page.locator('#sched .daybar').nth(0))
+  await expect(page.locator('#sched .daybar').nth(1))
     .toContainText('2 orders');
   expect(await page.evaluate(() => DB.orders.filter(o => o.date === '2026-08-21').length)).toBe(2);
 });
@@ -575,7 +587,7 @@ test('the preview stays fully open, so nothing is published unread', async ({ pa
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
-  await expect(page.locator('#schedpreview .daybar')).toHaveCount(0);
-  await expect(page.locator('#schedpreview table.prn')).toBeVisible();
-  await expect(page.locator('#schedpreview')).toContainText('INTERSTATE WAREHOUSING');
+  await expect(page.locator('#dfv_body .daybar')).toHaveCount(0);
+  await expect(page.locator('#dfv_body table.prn')).toBeVisible();
+  await expect(page.locator('#dfv_body')).toContainText('INTERSTATE WAREHOUSING');
 });
