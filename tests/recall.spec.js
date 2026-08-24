@@ -4,19 +4,43 @@ const H = require('./helpers.js');
 
 const asOffice = (page) => H.gotoApp(page, { user:{email:'office@martinbrower.com'}, role:'office' });
 
-test('the email box comes back filled in with whoever used this device last', async ({ page }) => {
-  await H.gotoApp(page);                            // signed out, nothing remembered
-  await expect(page.locator('#lg_email')).toHaveValue('');
-  await page.evaluate(() => sset('gc_emails', JSON.stringify(['mbmccookreceiving@martin-brower.com'])));
-  await page.reload();
-  await expect(page.locator('#login')).toBeVisible();
-  await expect(page.locator('#lg_email')).toHaveValue('mbmccookreceiving@martin-brower.com');
-});
-
-test('the cursor starts on the password, not the address already typed', async ({ page }) => {
+test('the box starts empty so the list behind it is reachable', async ({ page }) => {
   await H.gotoApp(page);
   await page.evaluate(() => sset('gc_emails', JSON.stringify(['mbmccookreceiving@martin-brower.com'])));
   await page.reload();
+  await expect(page.locator('#login')).toBeVisible();
+  await expect(page.locator('#lg_email'), 'filling it in would hide the list').toHaveValue('');
+});
+
+test('one saved account still opens a list when the box is tapped', async ({ page }) => {
+  await H.gotoApp(page);
+  await page.evaluate(() => sset('gc_emails', JSON.stringify(['mbmccookreceiving@martin-brower.com'])));
+  await page.reload();
+  await page.locator('#lg_email').click();
+  await expect(page.locator('#lg_sugg .gc-sugg-pick')).toHaveCount(1);
+  await expect(page.locator('#lg_sugg')).toContainText('mbmccookreceiving@martin-brower.com');
+});
+
+test('tapping again after picking still shows every account', async ({ page }) => {
+  await H.gotoApp(page);
+  await page.evaluate(() => sset('gc_emails', JSON.stringify(
+    ['mbmccookreceiving@martin-brower.com', 'kofi@martinbrower.com'])));
+  await page.reload();
+  await page.locator('#lg_email').click();
+  await page.locator('#lg_sugg .gc-sugg-pick', { hasText: 'kofi@' }).click();
+  await expect(page.locator('#lg_email')).toHaveValue('kofi@martinbrower.com');
+  // the address in the box must not hide the other one behind it
+  await page.locator('#lg_email').click();
+  await expect(page.locator('#lg_sugg .gc-sugg-pick')).toHaveCount(2);
+});
+
+test('the password is asked for every time, whoever is picked', async ({ page }) => {
+  await H.gotoApp(page);
+  await page.evaluate(() => sset('gc_emails', JSON.stringify(['kofi@martinbrower.com'])));
+  await page.reload();
+  await page.locator('#lg_email').click();
+  await page.locator('#lg_sugg .gc-sugg-pick').first().click();
+  await expect(page.locator('#lg_pass')).toHaveValue('');
   await expect(page.locator('#lg_pass')).toBeFocused();
 });
 

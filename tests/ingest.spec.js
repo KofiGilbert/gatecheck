@@ -20,7 +20,7 @@ test('the office is told what it can send, before it sends it', async ({ page })
   await page.locator('#dzplus').click();
   const menu = page.locator('#dzmenu');
   await expect(menu).toBeVisible();
-  for (const label of ['Spreadsheet', 'PDF', 'Word document', 'Choose Photo', 'Paste rows'])
+  for (const label of ['Spreadsheet', 'PDF', 'Word document', 'Photo', 'Paste rows'])
     await expect(menu).toContainText(label);
 });
 
@@ -202,19 +202,23 @@ test('the drop zone is readable in the dark', async ({ page }) => {
   expect(bad).toEqual([]);
 });
 
-test('a phone or iPad is offered its camera; a desk PC is not', async ({ page }, info) => {
+test('one photo entry, because the phone already offers the camera inside it', async ({ page }) => {
   await onSchedule(page);
   await page.locator('#dzplus').click();
-  const touch = await page.evaluate(() => (navigator.maxTouchPoints || 0) > 0 || 'ontouchstart' in window);
-  const cam = page.locator('#dzcam');
-  if (touch) {
-    await expect(cam, info.project.name + ' has touch, so it has a camera').toBeVisible();
-    await expect(cam).toContainText('Take a photo');
-    // capture= is what opens the camera rather than the photo library
-    await expect(page.locator('#filecam')).toHaveAttribute('capture', 'environment');
-  } else {
-    await expect(cam, 'no camera worth pointing at paper on a desk PC').toBeHidden();
-  }
+  const menu = page.locator('#dzmenu');
+  await expect(menu.locator('button', { hasText: 'Photo' })).toHaveCount(1);
+  await expect(menu).toContainText('Camera or library');
+  // the old second entry, and the input that forced the camera, are both gone
+  await expect(page.locator('#dzcam')).toHaveCount(0);
+  await expect(page.locator('#filecam')).toHaveCount(0);
+  await expect(menu).not.toContainText('Take a photo');
+});
+
+test('the photo entry accepts anything the camera or the library gives it', async ({ page }) => {
+  await onSchedule(page);
+  await page.locator('#dzplus').click();
+  await page.locator('#dzmenu button', { hasText: 'Photo' }).click();
+  await expect(page.locator('#file')).toHaveAttribute('accept', 'image/*');
 });
 
 test('a photograph taken with the camera goes to the photo reader', async ({ page }) => {

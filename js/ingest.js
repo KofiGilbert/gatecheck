@@ -54,10 +54,10 @@ function ingPick(kind){
   f.setAttribute('accept', ING_ACCEPT[kind] || ING_ACCEPT.any);
   f.click();
 }
-/* On a phone or an iPad the quickest route is no file at all: hold the sheet
-   flat, photograph it, done. capture="environment" opens the back camera
-   straight away instead of the photo library. A desk PC has no camera worth
-   pointing at paper, so the option is not offered there. */
+/* There is no separate camera entry. On a phone or an iPad, tapping a photo
+   input opens the operating system's own sheet, and Take Photo is already in
+   it beside the library. A second button for the same thing is one more line
+   of menu that does nothing new. */
 function ingHasCamera(){
   try{
     if((navigator.maxTouchPoints || 0) > 0) return true;
@@ -65,14 +65,7 @@ function ingHasCamera(){
     return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   }catch(e){ return false; }
 }
-function ingCamera(){
-  ingMenuClose();
-  var f = document.getElementById('filecam');
-  if(f) f.click();
-}
 function ingCameraOffer(){
-  var b = document.getElementById('dzcam');
-  if(b) b.hidden = !ingHasCamera();
   var h = document.getElementById('dzhint');
   if(h && ingHasCamera())
     h.textContent = 'Spreadsheet, PDF, Word, or photograph the printed sheet '
@@ -380,15 +373,7 @@ function ingOnSched(){
     if(f && f.length) ingestFiles(f);
   });
 })();
-(function(){
-  var cam = document.getElementById('filecam');
-  if(cam) cam.addEventListener('change', function(){
-    var files = Array.prototype.slice.call(this.files || []);
-    this.value = '';
-    ingestFiles(files);
-  });
-  ingCameraOffer();
-})();
+ingCameraOffer();
 
 document.addEventListener('paste', function(e){
   if(!ingOnSched() || !e.clipboardData) return;

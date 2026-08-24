@@ -29,12 +29,12 @@ function showLogin(){
   var wasHidden = o.style.display==='none' || o.classList.contains('gc-checking');
   o.style.display='flex'; o.classList.remove('gc-checking'); loginInert(true);
   loginRecall();
-  /* an address already in the box means the only thing left to type is the
-     password, so that is where the cursor goes */
-  if(wasHidden){
-    var e=$('lg_email'), pw=$('lg_pass');
-    var target = (e && !e.value) ? e : pw;
-    if(target) setTimeout(function(){ target.focus(); },60);
+  /* Nobody has signed in on this device yet, so the cursor starts in the
+     email box. Once there are accounts to pick from, leave the keyboard
+     down: tapping the box is what opens the list. */
+  if(wasHidden && !loginKnown().length){
+    var e=$('lg_email');
+    if(e) setTimeout(function(){ e.focus(); },60);
   }
 }
 function hideLogin(){
@@ -165,18 +165,22 @@ function loginPick(email){
 function loginSuggestHide(){
   var el = $('lg_sugg'); if(el){ el.hidden = true; el.innerHTML = ''; }
 }
-/* Typing narrows the list. Nobody should have to spell out an address they
-   have already signed in with on this iPad. */
-function loginSuggest(open){
+/* Tapping the box shows everyone who has signed in on this device; typing
+   narrows it. A laptop browser does this out of its own form history, and
+   iOS Safari does not, so the app draws it.
+
+   `all` is true when the box was tapped rather than typed into: then the
+   whole list shows even if the box already holds one of the addresses,
+   which is the case that made this look broken on the iPad. */
+function loginSuggest(all){
   var el = $('lg_sugg'), box = $('lg_email');
   if(!el || !box) return;
   var typed = String(box.value || '').trim().toLowerCase();
-  var list = loginKnown().filter(function(e){
-    return !typed || e.toLowerCase().indexOf(typed) >= 0;
+  var known = loginKnown();
+  var list = (all || !typed) ? known : known.filter(function(e){
+    return e.toLowerCase().indexOf(typed) >= 0;
   });
   if(!list.length){ loginSuggestHide(); return; }
-  /* nothing left to offer once the address is fully typed */
-  if(list.length === 1 && list[0].toLowerCase() === typed){ loginSuggestHide(); return; }
   el.innerHTML = list.map(function(e){
     var q = String(e).replace(/'/g, "\\'");
     return '<div class="gc-sugg-row" role="option" aria-selected="false">'
@@ -188,11 +192,13 @@ function loginSuggest(open){
   }).join('');
   el.hidden = false;
 }
+/* The box is left empty on purpose. Filling it in for somebody hides the
+   list of the other accounts behind it, and on a shared office iPad the
+   other accounts are the point. One tap picks; the password is always
+   asked for, and never stored. */
 function loginRecall(){
-  var box = $('lg_email');
-  if(!box) return;
-  var last = sget('gc_lastemail') || loginKnown()[0] || '';
-  if(last && !box.value.trim()) box.value = last;
+  var el = $('lg_sugg');
+  if(el) el.hidden = true;
 }
 document.addEventListener('click', function(e){
   var el = $('lg_sugg');
@@ -206,7 +212,8 @@ document.addEventListener('keydown', function(e){
 (function(){
   var box = $('lg_email'); if(!box) return;
   box.addEventListener('focus', function(){ loginSuggest(true); });
-  box.addEventListener('input', function(){ loginSuggest(true); });
+  box.addEventListener('click', function(){ loginSuggest(true); });
+  box.addEventListener('input', function(){ loginSuggest(false); });
 })();
 function doLogin(){
   var em=$('lg_email').value.trim(), pw=$('lg_pass').value;
