@@ -263,13 +263,15 @@ var _ycBellWas = 0;
 function ycUpdateBadge(){
   var bell=$('notif'); if(!bell) return;
   var n = (typeof isOffice==='function' && isOffice()) ? 0 : ycActionable();
+  /* a schedule the office has replaced counts too: it is the same bell */
+  n += (typeof DB !== 'undefined' && DB.notes) ? DB.notes.length : 0;
   var dot=$('notifn');
   if(dot){ dot.textContent = n ? String(n) : ''; dot.hidden = !n; }
   bell.hidden = !n;
   if(!n) notifClose();
   var p = $('notifpanel'); if(p && !p.hidden) notifRender();
   bell.setAttribute('aria-label',
-    n===1 ? 'One yard check is ready' : n+' yard checks are ready');
+    n===1 ? 'One notification' : n+' notifications');
   /* it only rings when the number goes up: a standing count is not news */
   if(n > _ycBellWas){
     bell.classList.remove('ring');
@@ -1282,10 +1284,24 @@ function ycWaiting(){
     return st.cls === 'ready' || st.cls === 'over';
   }).map(function(s){ return { slot:s, st:ycSlotStatus(s) }; });
 }
+/* The receiving office replacing a day is news, not an interruption: the
+   officer keeps working and reads it when they look at the bell. */
+function notifSched(){
+  return (typeof DB !== 'undefined' && DB.notes) ? DB.notes : [];
+}
 function notifRender(){
   var p = $('notifpanel'); if(!p) return;
-  var list = ycWaiting();
-  p.innerHTML = '<div class="nphd">Yard checks waiting</div>'
+  var list = ycWaiting(), notes = notifSched(), html = '';
+  if(notes.length){
+    html += '<div class="nphd">Schedule</div>'
+      + notes.map(function(n){
+          return '<button type="button" class="npitem" onclick="notifSchedGo(\''+esc(n.date)+'\')">'
+            + '<span class="npslot">'+esc(String(n.date).slice(8,10))+'</span>'
+            + '<span class="nptxt"><b>Schedule updated</b>'
+            + '<span>Receiving office \u00b7 '+esc(schedNoteText(n))+'</span></span></button>';
+        }).join('');
+  }
+  html += '<div class="nphd">Yard checks waiting</div>'
     + (list.length
         ? list.map(function(x){
             return '<button type="button" class="npitem'+(x.st.cls==='over'?' over':'')+'"'
@@ -1294,8 +1310,14 @@ function notifRender(){
               + '<span class="nptxt"><b>'+esc(x.st.top)+'</b>'
               + '<span>'+esc(x.st.detail)+'</span></span></button>';
           }).join('')
-        : '<div class="npfoot">Nothing waiting.</div>')
-    + (list.length ? '<div class="npfoot">Tap one to open it.</div>' : '');
+        : '<div class="npfoot">Nothing waiting.</div>');
+  if(list.length || notes.length) html += '<div class="npfoot">Tap one to open it.</div>';
+  p.innerHTML = html;
+}
+function notifSchedGo(date){
+  notifClose();
+  if(typeof schedNoteRead === 'function') schedNoteRead(date);
+  go('sched');
 }
 function notifToggle(e){
   if(e) e.stopPropagation();

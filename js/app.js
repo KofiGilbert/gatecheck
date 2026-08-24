@@ -92,9 +92,17 @@ function schedReconcile(){
   DB.local = DB.local.filter(function(o){ return !have[o.date]; });
   DB.notes = made.concat(DB.notes).slice(0, 6);
 }
-function schedNoteDismiss(date){
+/* One line, because an officer reading it is standing at a gate. Which day,
+   who sent it, and the one number that tells them whether anything moved. */
+function schedNoteText(n){
+  if(n.theirs !== n.mine) return n.theirs + ' orders, was ' + n.mine;
+  var moved = n.moved.length + n.added.length + n.gone.length;
+  return moved ? moved + ' change' + (moved === 1 ? '' : 's') : 'no changes';
+}
+function schedNoteRead(date){
   DB.notes = DB.notes.filter(function(n){ return n.date !== date; });
-  persist(); renderSched();
+  persist();
+  if(typeof ycUpdateBadge === 'function') ycUpdateBadge();
 }
 
 /* ======================= helpers ======================= */
@@ -895,37 +903,9 @@ function doSearch(){
 function schedHasDay(d){
   return DB.orders.some(function(o){ return o.date === d; });
 }
-/* What the office sent, set against what was loaded here. Shown once, on the
-   schedule, until it is read and dismissed. */
-function schedNotesHTML(){
-  if(!DB.notes || !DB.notes.length) return '';
-  return DB.notes.map(function(n){
-    var bits = [];
-    if(n.theirs !== n.mine)
-      bits.push('<b>'+n.theirs+'</b> order'+(n.theirs===1?'':'s')+', not '+n.mine);
-    if(n.added.length)
-      bits.push('<b>'+n.added.length+'</b> not on your copy ('+esc(n.added.slice(0,4).join(', '))
-        + (n.added.length>4 ? ' and '+(n.added.length-4)+' more' : '')+')');
-    if(n.gone.length)
-      bits.push('<b>'+n.gone.length+'</b> of yours '+(n.gone.length===1?'is':'are')+' not on theirs ('
-        + esc(n.gone.slice(0,4).join(', '))
-        + (n.gone.length>4 ? ' and '+(n.gone.length-4)+' more' : '')+')');
-    if(n.moved.length)
-      bits.push('<b>'+n.moved.length+'</b> with different times or counts');
-    return '<div class="schednote">'
-      + '<button type="button" class="snx" aria-label="Dismiss"'
-      +   ' onclick="schedNoteDismiss(\''+esc(n.date)+'\')">&#10005;</button>'
-      + '<b>The receiving office has sent ' + esc(fmtLongDate(n.date)) + '.</b> '
-      + 'Theirs is the one the yard works from, so it has replaced the copy loaded here.'
-      + (bits.length ? ' It differs: ' + bits.join('; ') + '.'
-                     : ' It matches what was loaded here.')
-      + '</div>';
-  }).join('');
-}
 function renderSched(){
   if(typeof suggestSync==='function') suggestSync();
   schedLoadNote();
-  var nb = $('schednotes'); if(nb) nb.innerHTML = schedNotesHTML();
   var card = $('schedcard'), none = $('schednone');
   if(isOffice()){
     if(card) card.hidden = false;

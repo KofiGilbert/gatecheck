@@ -289,6 +289,8 @@ function startSync(){
     schedReconcile();
     schedRebuild();
     persist(); stat(); renderSched(); doSearch();
+    /* the officer keeps working; the bell tells them when they look at it */
+    if(typeof ycUpdateBadge === 'function') ycUpdateBadge();
     if(typeof routeResync==='function') routeResync();
   }, function(e){ toast('Sync error: '+e.message); }));
   CLOUD.subs.push(db.collection('forms').orderBy('ts','desc').limit(200).onSnapshot(function(snap){

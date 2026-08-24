@@ -1220,16 +1220,6 @@
     color:var(--mut);font-size:15px;cursor:pointer;font-family:inherit}
   .pbclose:hover{background:var(--hover);color:var(--ink)}
   .pbclose:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
-  /* the office's copy has landed and replaced a local one */
-  .schednote{position:relative;background:var(--caution);border:1px solid var(--cautionbd);
-    border-radius:12px;padding:14px 52px 14px 16px;margin-bottom:12px;
-    font-size:13px;line-height:1.55;color:var(--cautionink)}
-  .schednote b{color:var(--ink)}
-  .snx{position:absolute;top:6px;right:6px;width:44px;height:44px;border:none;
-    background:none;color:var(--cautionink);font-size:14px;cursor:pointer;
-    border-radius:10px;font-family:inherit}
-  .snx:hover{background:rgba(0,0,0,.07)}
-  .snx:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
   .dzprog{margin-top:10px;border:1px solid var(--line);border-radius:10px;
     background:var(--card);padding:11px 12px}
   .dzprog[hidden]{display:none}
@@ -1783,8 +1773,6 @@
     <button class="btn" onclick="schedPreview()">&#128065; Preview</button>
     <button class="btn red" onclick="schedDiscard()">Discard</button>
   </div>
-
-  <div id="schednotes"></div>
 
   <div class="card" id="schedcard">
     <h2>Loaded orders <span id="cnt" style="color:var(--mut);font-weight:600"></span></h2>

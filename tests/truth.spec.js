@@ -54,40 +54,45 @@ test('the office’s copy replaces it, and is not merged into it', async ({ page
   expect(m.local, 'the local copy of that day is retired').toBe(0);
 });
 
-test('and it says what differed rather than swapping it in silence', async ({ page }) => {
+test('the notice is one line, in the bell, not a banner in the way', async ({ page }) => {
   await officer(page);
   await loadLocally(page, [row(DAY,'8040001'), row(DAY,'8040002'), row(DAY,'8040003')]);
   await page.evaluate((rows) => {
-    DB.office = rows; schedReconcile(); schedRebuild(); persist(); renderSched();
+    DB.office = rows; schedReconcile(); schedRebuild(); persist(); renderSched(); ycUpdateBadge();
   }, [row(DAY,'8040001'), row(DAY,'8040002'), row(DAY,'8040009'), row(DAY,'8040010')]);
-  const note = page.locator('#schednotes .schednote');
-  await expect(note).toHaveCount(1);
-  await expect(note).toContainText('The receiving office has sent Tuesday, September 1, 2026');
-  await expect(note).toContainText('replaced the copy loaded here');
-  await expect(note, 'four not three').toContainText('4 orders, not 3');
-  await expect(note, 'the two the officer never had').toContainText('8040009');
-  await expect(note, 'the one the officer had that they do not').toContainText('8040003');
+  // nothing lands on the screen the officer is working on
+  await expect(page.locator('#schednotes')).toHaveCount(0);
+  await expect(page.locator('#sec-sched')).not.toContainText('replaced the copy');
+  // it waits in the bell
+  await page.click('#notif');
+  const item = page.locator('#notifpanel .npitem', { hasText: 'Schedule updated' });
+  await expect(item).toHaveCount(1);
+  await expect(item).toContainText('Receiving office');
+  await expect(item).toContainText('4 orders, was 3');
+  const words = (await item.innerText()).replace(/\s+/g, ' ').trim().split(' ').length;
+  expect(words, 'ten words or fewer, per the research').toBeLessThanOrEqual(10);
 });
 
-test('a changed time or count is called out too', async ({ page }) => {
+test('when only times or counts moved, it says how many', async ({ page }) => {
   await officer(page);
   await loadLocally(page, [row(DAY, '8040001', { cases: 900, time: '0830' })]);
   await page.evaluate((rows) => {
-    DB.office = rows; schedReconcile(); schedRebuild(); persist(); renderSched();
+    DB.office = rows; schedReconcile(); schedRebuild(); persist(); ycUpdateBadge();
   }, [row(DAY, '8040001', { cases: 1200, time: '1030' })]);
-  await expect(page.locator('#schednotes .schednote'))
-    .toContainText('1 with different times or counts');
+  await page.click('#notif');
+  await expect(page.locator('#notifpanel .npitem', { hasText: 'Schedule updated' }))
+    .toContainText('1 change');
 });
 
-test('a copy that read correctly says so, and does not alarm anyone', async ({ page }) => {
+test('a copy that read correctly still reports, briefly', async ({ page }) => {
   await officer(page);
   await loadLocally(page, [row(DAY, '8040001'), row(DAY, '8040002')]);
   await page.evaluate((rows) => {
-    DB.office = rows; schedReconcile(); schedRebuild(); persist(); renderSched();
+    DB.office = rows; schedReconcile(); schedRebuild(); persist(); ycUpdateBadge();
   }, [row(DAY, '8040001'), row(DAY, '8040002')]);
-  const note = page.locator('#schednotes .schednote');
-  await expect(note).toContainText('It matches what was loaded here');
-  await expect(note).not.toContainText('not on');
+  await page.click('#notif');
+  await expect(page.locator('#notifpanel .npitem', { hasText: 'Schedule updated' }))
+    .toContainText('no changes');
 });
 
 test('a day the office has not sent is left alone', async ({ page }) => {
@@ -98,22 +103,32 @@ test('a day the office has not sent is left alone', async ({ page }) => {
   }, [row('2026-09-01','8040001')]);
   expect(await page.evaluate(() => DB.local.map(o => o.date))).toEqual(['2026-09-05']);
   expect(await page.evaluate(() => schedDayIsLocal('2026-09-05'))).toBe(true);
-  await expect(page.locator('#schednotes .schednote')).toHaveCount(1);
+  expect(await page.evaluate(() => DB.notes.length)).toBe(1);
 });
 
-test('the notice can be read and put away', async ({ page }) => {
+test('reading it clears it, and it stays cleared', async ({ page }) => {
   await officer(page);
   await loadLocally(page, [row(DAY, '8040001')]);
   await page.evaluate((rows) => {
-    DB.office = rows; schedReconcile(); schedRebuild(); persist(); renderSched();
+    DB.office = rows; schedReconcile(); schedRebuild(); persist(); ycUpdateBadge();
   }, [row(DAY, '8040001'), row(DAY, '8040002')]);
-  await expect(page.locator('#schednotes .schednote')).toHaveCount(1);
-  await page.click('#schednotes .snx');
-  await expect(page.locator('#schednotes .schednote')).toHaveCount(0);
+  await page.click('#notif');
+  await page.locator('#notifpanel .npitem', { hasText: 'Schedule updated' }).click();
+  await expect(page.locator('#sec-sched')).toBeVisible();
   await page.reload();
   await page.waitForFunction(() => typeof window.renderSched === 'function');
-  await page.evaluate(() => go('sched'));
-  await expect(page.locator('#schednotes .schednote'), 'and stays away').toHaveCount(0);
+  expect(await page.evaluate(() => DB.notes.length)).toBe(0);
+});
+
+test('the bell counts it, so nothing has to interrupt the officer', async ({ page }) => {
+  await officer(page);
+  await loadLocally(page, [row(DAY, '8040001')]);
+  await expect(page.locator('#notif')).toBeHidden();
+  await page.evaluate((rows) => {
+    DB.office = rows; schedReconcile(); schedRebuild(); persist(); ycUpdateBadge();
+  }, [row(DAY, '8040001'), row(DAY, '8040002')]);
+  await expect(page.locator('#notif')).toBeVisible();
+  await expect(page.locator('#notifn')).toHaveText('1');
 });
 
 test('a live snapshot never wipes what the officer loaded', async ({ page }) => {
@@ -166,9 +181,9 @@ test('a real snapshot reconciles rather than overwriting', async ({ page }) => {
     DB.orders.filter(o => o.date === d).map(o => o.order).sort(), DAY))
     .toEqual(['8040001', '8040002', '8040009']);
   expect(await page.evaluate(() => DB.local.length), 'that day is retired').toBe(0);
-  const note = page.locator('#schednotes .schednote');
-  await expect(note, 'and the officer is told').toHaveCount(1);
-  await expect(note).toContainText('8040003');
+  await page.click('#notif');
+  await expect(page.locator('#notifpanel .npitem', { hasText: 'Schedule updated' }),
+    'and the officer is told, in the bell').toHaveCount(1);
 });
 
 test('a real snapshot leaves a day the office has not sent', async ({ page }) => {
@@ -177,5 +192,5 @@ test('a real snapshot leaves a day the office has not sent', async ({ page }) =>
   await officeSends(page, [row('2026-09-01','8040001')]);
   expect(await page.evaluate(() => DB.orders.map(o => o.order).sort()))
     .toEqual(['8040001', '8040050']);
-  await expect(page.locator('#schednotes .schednote'), 'nothing to reconcile').toHaveCount(0);
+  expect(await page.evaluate(() => DB.notes.length), 'nothing to reconcile').toBe(0);
 });

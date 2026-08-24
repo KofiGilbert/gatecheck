@@ -367,7 +367,8 @@ test('a waiting yard check is announced in the header, not on the tile', async (
   const bell = page.locator('#notif');
   await expect(bell).toBeVisible();
   await expect(page.locator('#notifn')).toHaveText('2');
-  await expect(bell).toHaveAttribute('aria-label', /2 yard checks are ready/);
+  // the bell now carries schedule news too, so it counts notifications
+  await expect(bell).toHaveAttribute('aria-label', /2 notifications/);
   // the count is off the tile
   await expect(page.locator('#sec-home .tile', { hasText: 'Yard Check' })).not.toContainText('2');
   await expect(page.locator('#yardbadge')).toHaveCount(0);
