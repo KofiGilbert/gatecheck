@@ -130,20 +130,19 @@ const TSV = [
   '2026-08-21\tR\t*\tLIVE\t1030\tN\t8061227\tTAYLOR FARMS TENNESSEE INC\tTAYLOR FARMS\tCFA-ARMADA\t910\t15',
 ].join('\n');
 
-test('the office has no photo import', async ({ page }) => {
+test('the office is offered every shape a schedule turns up in', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await expect(page.locator('#sec-sched')).not.toContainText('photo');
-  await expect(page.locator('button:has-text("Upload spreadsheet")')).toBeVisible();
-  await expect(page.locator('button:has-text("Or paste from a spreadsheet")')).toBeVisible();
+  await expect(page.locator('#dz')).toBeVisible();
   const accept = await page.locator('#file').getAttribute('accept');
-  expect(accept, 'images must not be accepted').not.toContain('image');
+  for (const ext of ['.xlsx', '.pdf', '.docx', 'image/*'])
+    expect(accept, ext + ' must be accepted').toContain(ext);
 });
 
 test('pasted spreadsheet rows land in an editable grid, not straight into the yard', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
 
@@ -161,7 +160,7 @@ test('pasted spreadsheet rows land in an editable grid, not straight into the ya
 test('the office can correct a row before submitting', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   const vendor = page.locator('#draftgrid table tr').nth(2).locator('input').nth(7);
@@ -173,7 +172,7 @@ test('the office can correct a row before submitting', async ({ page }) => {
 test('the preview is the printed sheet, with totals', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
@@ -192,7 +191,7 @@ test('the preview is the printed sheet, with totals', async ({ page }) => {
 test('submit is only offered after a preview, and publishes what was previewed', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await expect(page.locator('#schedactions')).toBeHidden();
@@ -212,7 +211,7 @@ test('submit is only offered after a preview, and publishes what was previewed',
 test('editing after a preview forces another look before submitting', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
@@ -224,7 +223,7 @@ test('editing after a preview forces another look before submitting', async ({ p
 test('officers cannot load the schedule at all', async ({ page }) => {
   await asOfficer(page);
   await page.click('#sec-home .tile[onclick*="sched"]');
-  await expect(page.locator('button:has-text("Upload spreadsheet")')).toBeHidden();
+  await expect(page.locator('#dz')).toBeHidden();
   await expect(page.locator('button:has-text("Clear all schedule data")')).toBeHidden();
   // they still read it: today's sheet, or a plain word that there is nothing
   await expect(page.locator('#schednone')).toBeVisible();
@@ -264,13 +263,13 @@ test('the office deep linked to the schedule stays on the schedule', async ({ pa
   await page.goto('/index.html#sched');
   await page.waitForFunction(() => window.CLOUD && CLOUD.role === 'office');
   await expect(page.locator('#sec-sched')).toBeVisible();
-  await expect(page.locator('button:has-text("Upload spreadsheet")')).toBeVisible();
+  await expect(page.locator('#dz')).toBeVisible();
 });
 
 test('the grid looks like the spreadsheet it came from', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
 
@@ -296,7 +295,7 @@ test('the grid looks like the spreadsheet it came from', async ({ page }) => {
 test('each day is tinted differently, as in the spreadsheet', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV.replace(/2026-08-21\t(R)/, '2026-08-22\t$1'));
   await page.click('button:has-text("Load pasted rows")');
   const tints = await page.evaluate(() =>
@@ -325,7 +324,7 @@ test('the office gets the full window, officers keep the narrow layout', async (
 test('after submitting, the office sees the printed sheet, not a list', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');
@@ -342,7 +341,7 @@ test('after submitting, the office sees the printed sheet, not a list', async ({
 test('the grid header is a table row, not the app header bar', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   // a class collision with the app header once made this row display:grid
@@ -366,7 +365,7 @@ test('the grid header is a table row, not the app header bar', async ({ page }) 
 async function submitTwoDays(page) {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   const two = TSV + '\n2026-08-22\tD\t\tDROP\t900\tN\t8054516\tARMADA WAREHOUSE\tJ&L\t\t2544\t36';
   await page.fill('#paste', two);
   await page.click('button:has-text("Load pasted rows")');
@@ -571,7 +570,7 @@ test('closing with unsaved edits asks first', async ({ page }) => {
 test('the preview stays fully open, so nothing is published unread', async ({ page }) => {
   await asOffice(page);
   await page.click('#sec-office .tile[onclick*="sched"]');
-  await page.click('button:has-text("Or paste from a spreadsheet")');
+  await page.evaluate(() => ingPasteBox());
   await page.fill('#paste', TSV);
   await page.click('button:has-text("Load pasted rows")');
   await page.click('button:has-text("Preview")');

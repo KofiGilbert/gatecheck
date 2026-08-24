@@ -330,19 +330,12 @@ function receiveOrders(arr){
   if(typeof isOffice==='function' && isOffice()) stageOrders(arr);
   else mergeOrders(arr);
 }
+/* every route in - the + menu, a drag, a paste - ends at the same reader */
 $('file').addEventListener('change', function(){
-  var f=this.files[0]; if(!f) return;
-  var name = (f.name||'').toLowerCase();
-  if(/\.(xlsx|xlsm)$/.test(name)){
-    var r1=new FileReader();
-    r1.onload=function(){ try{ importXlsx(r1.result); }catch(e){ toast('Could not read spreadsheet: '+e.message); } };
-    r1.readAsArrayBuffer(f);
-  } else {
-    var r=new FileReader();
-    r.onload=function(){ ingest(String(r.result)); };
-    r.readAsText(f);
-  }
-  this.value='';
+  /* .files is live: clearing .value empties it, so take a copy first */
+  var files = Array.prototype.slice.call(this.files || []);
+  this.value = '';
+  if(typeof ingestFiles === 'function') ingestFiles(files);
 });
 function importPaste(){ ingest($('paste').value); $('paste').value=''; }
 function clearAll(){
