@@ -348,8 +348,20 @@ test('an empty database says the schedule is not loaded, not that today is empty
   async ({ page }) => {
   await asOfficer(page);
   await page.evaluate(() => { DB.orders = []; persist(); go('sched'); });
-  await expect(page.locator('#schednone')).toHaveText('The schedule has not been loaded yet.');
+  // with nothing at all, the load card is the empty state and says so once
+  await expect(page.locator('#loadttl')).toHaveText('No schedule yet');
+  await expect(page.locator('#schednone')).toBeHidden();
   await expect(page.locator('#schedcard')).toBeHidden();
+});
+
+test('a schedule with nothing for today says exactly that', async ({ page }) => {
+  await asOfficer(page);
+  await page.evaluate(() => {
+    DB.office = [{ date:'2020-01-01', order:'8040001', zone:'D', cases:1, pallets:1 }];
+    schedRebuild(); persist(); go('sched');
+  });
+  await expect(page.locator('#schednone')).toHaveText('Nothing scheduled for today.');
+  await expect(page.locator('#loadttl')).toHaveText('Load a schedule');
 });
 
 test('closing today’s sheet takes the officer home, not to a list', async ({ page }) => {

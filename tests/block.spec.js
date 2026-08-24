@@ -38,8 +38,9 @@ test('it offers what a block sheet actually arrives as', async ({ page }) => {
   await expect(page.locator('#dzmenu')).toContainText('Spreadsheet');
   await expect(page.locator('#dzmenu')).toContainText('Photo');
   await expect(page.locator('#dzmenu')).toContainText('Paste trailer numbers');
-  await expect(page.locator('#dzpdf')).toBeHidden();
-  await expect(page.locator('#dzdoc')).toBeHidden();
+  // and everything else a schedule can arrive as, because a block sheet can too
+  await expect(page.locator('#dzpdf')).toBeVisible();
+  await expect(page.locator('#dzdoc')).toBeVisible();
 });
 
 test('pasted rows do exactly what typing in the box did', async ({ page }) => {

@@ -236,11 +236,11 @@ test('an officer can load a schedule, but not clear the team’s', async ({ page
   await page.click('#sec-home .tile[onclick*="sched"]');
   // with the printed sheet in hand they need not wait for the office
   await expect(page.locator('#dz')).toBeVisible();
-  await expect(page.locator('#loadttl')).toHaveText('Load it yourself');
+  await expect(page.locator('#loadttl')).toHaveText('No schedule yet');
   // but the shared schedule is still the office's to wipe
   await expect(page.locator('button:has-text("Clear all schedule data")')).toBeHidden();
-  // they still read it: today's sheet, or a plain word that there is nothing
-  await expect(page.locator('#schednone')).toBeVisible();
+  // they still read it: with nothing loaded at all, the card is the empty state
+  await expect(page.locator('#schednone'), 'not the same sentence twice').toBeHidden();
 });
 
 /* ---- deep links ---- */

@@ -583,19 +583,20 @@ function dgTableHTML(rows, setFn, delFn){
     + '<td class="gut"></td></tr>';
   return '<div class="dgwrap"><table class="dg">'+letters+head+body+foot+'</table></div>';
 }
+/* Short, and different depending on who is reading it. An empty screen says
+   what is missing; a screen with a schedule on it just names the action. */
 function schedLoadNote(){
-  var t = $('loadttl'), h = $('loadhint');
+  var t = $('loadttl'), h = $('loadhint'), sec = $('sec-sched');
   if(!t || !h) return;
+  var empty = !DB.orders.length;
+  if(sec) sec.classList.toggle('emptysched', empty);
   if(isOffice()){
-    t.textContent = 'Load the schedule';
-    h.innerHTML = 'Upload the <b>.xlsx spreadsheet</b>, or paste the rows straight out of '
-      + 'your spreadsheet. Nothing goes to the yard until you have checked it and pressed Submit.';
+    t.textContent = empty ? 'No schedule yet' : 'Load the schedule';
+    h.textContent = 'Checked here before anything reaches the yard.';
     return;
   }
-  t.textContent = 'Load it yourself';
-  h.innerHTML = 'If you have the printed sheet, load it here rather than wait for the '
-    + 'receiving office. <b>This copy stays on this device</b> - only the receiving '
-    + 'office can send a schedule to the whole team.';
+  t.textContent = empty ? 'No schedule yet' : 'Load a schedule';
+  h.textContent = 'Stays on this device until the office sends theirs.';
 }
 function schedRenderDraft(){
   var card=$('draftcard'); if(!card) return;
@@ -928,12 +929,12 @@ function renderSched(){
   $('sched').innerHTML = '';
   if(card) card.hidden = !n;
   if(none){
-    none.hidden = !!n;
-    /* nothing at all is a different problem from nothing today, and the officer
-       can do something about only one of them */
-    none.textContent = DB.orders.length
-      ? 'Nothing scheduled for today.'
-      : 'The schedule has not been loaded yet.';
+    /* Nothing at all is a different problem from nothing today, and the
+       officer can do something about only one of them. With nothing at all
+       the load card is the empty state and says so, so this would only be
+       the same sentence twice. */
+    none.hidden = !!n || !DB.orders.length;
+    none.textContent = 'Nothing scheduled for today.';
   }
 }
 

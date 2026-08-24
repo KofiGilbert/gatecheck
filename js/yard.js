@@ -811,7 +811,7 @@ function blockTile(slot){
     st = { cls:'ready', top:'Released', arrow:'\u2192', kpi:n+' trailer'+(n===1?'':'s'),
            detail:'Released at '+ycHHMM(rec.loadedAt)+', waiting on the officer' };
   } else if(next){
-    st = { cls:'due', top:'Load this one', arrow:'\u2191', kpi:'Add trailers',
+    st = { cls:'due', top:'Load this one', arrow:'\u2191', kpi:'Add list',
            detail:'This is the next check to release' };
   } else {
     st = { cls:'past', top:'Not loaded', arrow:'\u2014', kpi:'\u2014',

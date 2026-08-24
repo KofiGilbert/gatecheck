@@ -73,9 +73,11 @@ function dzAttach(hostId, mode){
   if(pasteBtn) pasteBtn.innerHTML = '\u270f\ufe0f ' + esc(t.paste);
   var ta = document.getElementById('paste');
   if(ta) ta.setAttribute('placeholder', t.ph);
-  /* a trailer list never arrives as a Word file or a PDF */
+  /* Every way in, on every screen. A trailer list turns up as a PDF or a
+     Word file as readily as a schedule does, and deciding otherwise on the
+     office's behalf just sent them away to convert it first. */
   ['dzpdf','dzdoc'].forEach(function(id){
-    var b = document.getElementById(id); if(b) b.hidden = (DZ_MODE !== 'schedule');
+    var b = document.getElementById(id); if(b) b.hidden = false;
   });
 }
 function dzDetach(){
@@ -438,6 +440,13 @@ function ingYardXlsx(buf){
     : ingYardText(lines.join('\n'), 'spreadsheet');
 }
 
+/* rows of cells, landed wherever this loader is standing */
+function ingGridLand(grid, what){
+  if(DZ_MODE === 'schedule') return ingLand(grid, what);
+  var text = (grid || []).map(function(r){ return r.join(' '); }).join('\n');
+  return (DZ_MODE === 'block') ? ingBlockText(text, what) : ingYardText(text, what);
+}
+
 /* ---------- the one door ---------- */
 function ingestFile(file){
   var name = String(file && file.name || 'file');
@@ -467,19 +476,13 @@ function ingestFile(file){
       ingest(t);
     });
 
-  if(DZ_MODE !== 'schedule' && (kind === 'docx' || kind === 'pdf')){
-    ingQuiet();
-    toast('A trailer list comes as a photo, a spreadsheet, or pasted text.');
-    return Promise.resolve();
-  }
-
   if(kind === 'docx')
-    return ingBuffer(file).then(function(b){ ingLand(ingDocxGrid(b), 'Word document'); });
+    return ingBuffer(file).then(function(b){ ingGridLand(ingDocxGrid(b), 'Word document'); });
 
   if(kind === 'pdf')
     return ingBuffer(file).then(function(b){ return ingPdfGrid(b, name); }).then(function(g){
       ingSay(name, 'Sorting the rows', 100);
-      ingLand(g, 'PDF');
+      ingGridLand(g, 'PDF');
     });
 
   /* a photograph: the reader that was already here, now reachable */

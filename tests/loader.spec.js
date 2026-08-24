@@ -20,21 +20,21 @@ test('an officer holding the printed sheet can load it', async ({ page }) => {
   await asOfficer(page);
   await page.evaluate(() => go('sched'));
   await expect(page.locator('#dz')).toBeVisible();
-  await expect(page.locator('#loadttl')).toHaveText('Load it yourself');
+  await expect(page.locator('#loadttl')).toHaveText('No schedule yet');
 });
 
 test('and is told plainly that their copy stays on the device', async ({ page }) => {
   await asOfficer(page);
   await page.evaluate(() => go('sched'));
-  await expect(page.locator('#loadhint')).toContainText('stays on this device');
-  await expect(page.locator('#loadhint')).toContainText('receiving office');
+  await expect(page.locator('#loadhint')).toContainText('Stays on this device');
+  await expect(page.locator('#loadhint')).toContainText('office sends theirs');
 });
 
 test('the office is told the opposite, because its copy is the team’s', async ({ page }) => {
   await asOffice(page);
   await page.evaluate(() => go('sched'));
-  await expect(page.locator('#loadttl')).toHaveText('Load the schedule');
-  await expect(page.locator('#loadhint')).toContainText('Nothing goes to the yard');
+  await expect(page.locator('#loadttl')).toHaveText('No schedule yet');
+  await expect(page.locator('#loadhint')).toContainText('reaches the yard');
 });
 
 test('an officer checks it in the same grid before it counts', async ({ page }) => {
@@ -105,9 +105,9 @@ test('it asks for what a trailer list actually arrives as', async ({ page }) => 
   await expect(menu.locator('button', { hasText: 'Spreadsheet' })).toBeVisible();
   await expect(menu.locator('button', { hasText: 'Photo' })).toBeVisible();
   await expect(menu).toContainText('Paste trailer numbers');
-  // nobody sends a block sheet as a Word file
-  await expect(page.locator('#dzpdf')).toBeHidden();
-  await expect(page.locator('#dzdoc')).toBeHidden();
+  // every way in, on every screen: a trailer list turns up as a PDF too
+  await expect(page.locator('#dzpdf')).toBeVisible();
+  await expect(page.locator('#dzdoc')).toBeVisible();
 });
 
 test('pasted trailer numbers become the check', async ({ page }) => {
@@ -130,14 +130,11 @@ test('replacing a list already started asks first', async ({ page }) => {
   expect(await page.evaluate(() => YC.rows.map(r => r.trailer))).toEqual(['OLD1']);
 });
 
-test('a Word file is refused with a reason, not a silent nothing', async ({ page }) => {
+test('a Word file of trailers is read, not turned away', async ({ page }) => {
   await onGrid(page);
-  const msg = await page.evaluate(async () => {
-    let said = ''; const real = window.toast; window.toast = (m) => { said = m; };
-    await ingestFile(new File(['x'], 'block.docx'));
-    window.toast = real; return said;
-  });
-  expect(msg).toContain('photo, a spreadsheet, or pasted text');
+  await page.evaluate(() => ingGridLand([['LR7524','FRIES'],['R25106','BUNS']], 'Word document'));
+  expect(await page.evaluate(() => YC.rows.map(r => r.trailer)))
+    .toEqual(['LR7524', 'R25106']);
 });
 
 test('leaving the screen takes the loader with it', async ({ page }) => {

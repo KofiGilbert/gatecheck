@@ -239,7 +239,15 @@
     .slotgroup{--availh:calc(100dvh - 240px);max-width:min(100%, calc(((var(--availh) - var(--gap)) / 2) * 5 / 7 * 3 + 2*var(--gap)))}
     .slots{grid-template-columns:repeat(3,1fr)}
   }
-  @media (min-width:1000px) and (min-aspect-ratio:1/1){   /* laptop: all six in a row */
+  /* A phone held sideways has no height to give. Sizing the cards to fit it
+     leaves six postage stamps, so there the cards take their width and the
+     page scrolls, which is what a phone does anyway. */
+  @media (max-height:560px){ .slotgroup{max-width:100%} }
+  /* Six in a row was a laptop rule, and an iPad held sideways is wider than
+     it is tall, so it caught that too: six thin strips of a card. Three and
+     three is the shape of the shift either way up, and the cards can be big.
+     Only a genuinely wide desktop gets the single row. */
+  @media (min-width:1500px) and (min-aspect-ratio:16/10){
     .slotgroup{--availh:calc(100dvh - 215px);max-width:min(100%, calc(var(--availh) * 5 / 7 * 6 + 5*var(--gap)))}
     .slots{grid-template-columns:repeat(6,1fr)}
   }
@@ -265,6 +273,7 @@
     display:flex;align-items:center;justify-content:center;gap:8px}
   .slot .band .arw{font-size:clamp(13px,1.7vmin,17px);line-height:1;color:#fff;font-weight:700}
   .slot .band .kpi{font-size:clamp(13px,1.7vmin,17px);line-height:1;color:#fff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;
     font-weight:600;font-variant-numeric:tabular-nums}
 
   /* key to the colour code */
@@ -841,6 +850,15 @@
   .schednone{display:flex;align-items:center;justify-content:center;text-align:center;
     min-height:52dvh;padding:24px;font-size:15px;font-weight:600;color:var(--mut)}
   .schednone[hidden]{display:none}
+  /* Nothing loaded is an empty state, and an empty state sits in the middle of
+     the space it is empty of - not pinned to the top with the screen blank
+     underneath it. */
+  #sec-sched.on.emptysched{display:flex;flex-direction:column;justify-content:center;
+    min-height:calc(100dvh - var(--hdr-h, 62px))}
+  #sec-sched.on.emptysched #loadcard{max-width:620px;margin-left:auto;margin-right:auto;
+    width:100%}
+  #sec-sched.on.emptysched #loadttl{text-align:center}
+  #sec-sched.on.emptysched #loadhint{text-align:center}
   /* The seal form, one page at a time. It is worked on a phone or an iPad in a
      yard, so the page it is on fills the screen and the two buttons sit under
      the last field, not above the first one. */
@@ -921,7 +939,7 @@
   #sec-block{max-width:1400px;margin:0 auto}
   .bkshift{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
     color:var(--mut);margin:18px 0 10px}
-  .bkslots{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+  .bkslots{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .bkkey{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px}
   .bkkey .lg{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
     color:var(--mut)}
@@ -936,7 +954,10 @@
   @keyframes bkglow{0%,100%{box-shadow:0 0 0 3px var(--lime)}
     50%{box-shadow:0 0 0 3px var(--lime),0 0 20px 3px rgba(190,249,27,.5)}}
   .slot.glow{box-shadow:0 0 0 3px var(--lime)}
-  @media (max-width:900px){ .bkslots{grid-template-columns:repeat(3,1fr)} }
+  /* three and three, the shape of the shift, at every size a tablet has */
+  @media (min-width:1500px) and (min-aspect-ratio:16/10){
+    .bkslots{grid-template-columns:repeat(6,1fr)}
+  }
   @media (max-width:520px){ .bkslots{grid-template-columns:repeat(2,1fr)} }
   /* printing a completed check: the sheet, nothing round it */
   @media print{
@@ -1220,6 +1241,9 @@
     color:var(--mut);font-size:15px;cursor:pointer;font-family:inherit}
   .pbclose:hover{background:var(--hover);color:var(--ink)}
   .pbclose:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
+  /* the loader is its own thing, not the first tile of the grid */
+  .dzyard:not(:empty){display:block;margin:0 0 18px}
+  .dzyard .dz{margin-top:0}
   .dzprog{margin-top:10px;border:1px solid var(--line);border-radius:10px;
     background:var(--card);padding:11px 12px}
   .dzprog[hidden]{display:none}
@@ -1637,7 +1661,7 @@
   </div>
   <h2 class="ycgh">Trailers</h2>
   <div class="ycgnote" id="ycg_note" hidden></div>
-  <div id="dzhost_yard"></div>
+  <div id="dzhost_yard" class="dzyard"></div>
   <div class="ycgrid" id="ycgridwrap"></div>
   <button type="button" class="ycgmore" id="ycg_more" onclick="ycGridMore()" hidden></button>
   <div class="ycgact" id="ycg_actions" hidden>
