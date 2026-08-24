@@ -275,3 +275,111 @@ test('the buttons on a saved form say what they do', async ({ page }) => {
   for (let i = 0; i < 3; i++)
     await expect(btns.nth(i)).toHaveAttribute('aria-label', /8055968/);
 });
+
+/* ---- dark mode, everywhere, both roles ---- */
+
+/* the same sweep the light-mode test uses, run over one screen */
+const unreadable = (page) => page.evaluate(() => {
+  const lum = (c) => { const n = (c.match(/\d+/g)||[0,0,0]).map(Number);
+    const f = v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
+    return 0.2126*f(n[0]) + 0.7152*f(n[1]) + 0.0722*f(n[2]); };
+  const out = [], seen = new Set();
+  document.querySelectorAll('section.on *, .usermenu:not([hidden]) *, .ycmwrap:not([hidden]) *')
+    .forEach(el => {
+      const txt = [...el.childNodes].filter(n => n.nodeType===3 && n.textContent.trim());
+      if (!txt.length) return;
+      // an emoji is a picture, and it is hidden from screen readers as one
+      if (el.closest('[aria-hidden="true"]')) return;
+      if (!/[A-Za-z0-9]/.test(txt.map(n => n.textContent).join(''))) return;
+      const s = getComputedStyle(el);
+      if (s.display === 'none' || s.visibility === 'hidden' || +s.opacity === 0) return;
+      let p = el, bg = 'rgba(0, 0, 0, 0)';
+      while (p && bg === 'rgba(0, 0, 0, 0)') { bg = getComputedStyle(p).backgroundColor; p = p.parentElement; }
+      const key = el.className + '|' + s.color + '|' + bg;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const a = lum(s.color), b = lum(bg);
+      const ratio = (Math.max(a,b)+0.05) / (Math.min(a,b)+0.05);
+      const size = parseFloat(s.fontSize);
+      const large = size >= 24 || (size >= 18.66 && +s.fontWeight >= 700);
+      if (ratio < (large ? 3 : 4.5))
+        out.push((el.className || el.tagName) + ' "' +
+          txt.map(n=>n.textContent.trim()).join('').slice(0,18) + '" ' + ratio.toFixed(1) + ':1');
+    });
+  return out;
+});
+
+test('every officer screen is readable in the dark', async ({ page }) => {
+  await onSettings(page);
+  await page.click('.pseg-b:has-text("Dark")');
+  await page.evaluate(() => {
+    sset('gc_offname_kofi@martinbrower.com','Kobe');
+    DB.orders = [{ date:isoToday(), order:'8036365', zone:'F', detail:'DROP', time:'700',
+      vendor:'MCCAIN', carrier:'DAY&ROSS', cases:100, pallets:5 }];
+    DB.logs = [];
+    DB.forms = [{ po:'1', datein:todayStr(), timein:'0700', carrier:'POPE',
+                  driver:'A', sealcond:'INTACT' }];
+    persist();
+  });
+  for (const sec of ['home','search','form','yard','log','dar','hist','settings']) {
+    await page.evaluate((s) => go(s), sec);
+    expect(await unreadable(page), 'on ' + sec).toEqual([]);
+  }
+});
+
+test('every receiving office screen is readable in the dark', async ({ page }) => {
+  await H.gotoApp(page, { user:{ email:'office@martinbrower.com' }, role:'office', orders: [] });
+  await page.evaluate(() => {
+    PREFS.theme = 'dark'; prefsSave();
+    DB.orders = [{ date:isoToday(), order:'8036365', zone:'F', detail:'DROP', time:'700',
+      vendor:'MCCAIN CA: CARBERRY', carrier:'DAY&ROSS', cases:1134, pallets:21 }];
+    DB.logs = [{ date:isoToday(), po:'8036365', timein:'0700', timeout:'0900' }];
+    const slot = ycShiftSlots().filter(s => ycSlotDate(s) === ycTodayISO())[0];
+    DB.yardslots = [{ id:ycTodayISO()+'_'+slot, date:ycTodayISO(), slot,
+      loadedAt:new Date().toISOString(), count:1, trailers:[{trailer:'LR7524',product:'FRIES'}] }];
+    ycSlotsPersist(); persist();
+  });
+  for (const sec of ['office','sched','block','stats','settings']) {
+    await page.evaluate((s) => go(s), sec);
+    expect(await unreadable(page), 'on ' + sec).toEqual([]);
+  }
+});
+
+test('a menu item you hover is still readable', async ({ page }) => {
+  await onSettings(page);
+  await page.click('.pseg-b:has-text("Dark")');
+  await page.evaluate(() => go('log'));
+  await page.click('#profbtn');
+  const item = page.locator('.usermenu .ditem:visible').first();
+  await item.hover();
+  const c = await item.evaluate(el => {
+    const s = getComputedStyle(el);
+    return { fg: s.color, bg: s.backgroundColor };
+  });
+  expect(H.ratio(H.parseRGB(c.fg), H.parseRGB(c.bg)),
+    'the hovered menu item is unreadable').toBeGreaterThan(4.5);
+});
+
+test('the Add trailer tile is still readable under the mouse', async ({ page }) => {
+  await onSettings(page);
+  await page.click('.pseg-b:has-text("Dark")');
+  await page.evaluate(() => { go('yard'); ycOpenSlot(ycShiftSlots()[2]); });
+  const add = page.locator('#ycgridwrap .ycgtile.add');
+  await add.hover();
+  const c = await add.evaluate(el => {
+    const s = getComputedStyle(el);
+    return { fg: getComputedStyle(el.querySelector('b')).color, bg: s.backgroundColor };
+  });
+  expect(H.ratio(H.parseRGB(c.fg), H.parseRGB(c.bg)),
+    'Add trailer is unreadable on hover').toBeGreaterThan(4.5);
+});
+
+test('the gate log is a working sheet, so it follows the theme', async ({ page }) => {
+  await onSettings(page);
+  await page.click('.pseg-b:has-text("Dark")');
+  await page.evaluate(() => { DB.logs = []; go('log'); });
+  const c = await page.locator('#logrows table').evaluate(el => getComputedStyle(el).backgroundColor);
+  const n = c.match(/\d+/g).map(Number);
+  // typed into for hours on a night shift; what gets emailed is drawn separately
+  expect(Math.max(...n.slice(0,3)), 'the gate log is still a white sheet').toBeLessThan(120);
+});

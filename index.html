@@ -25,6 +25,8 @@
   --field:#FFFFFF;
   --press:#F1ECE2;
   --warn:#FDF4F3;
+  --hover:#F3EFE6;
+  --redink:#C0392B; --greenink:#4C6C1A; --amberink:#8A6D1F;
   --gold:#FFF2CC; --green:#4C6C1A; --red:#C0392B;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
@@ -176,7 +178,10 @@
   .choice button{border:1.5px solid var(--bd);background:var(--card);border-radius:9px;
     padding:10px 14px;font-size:14.5px;font-weight:700;color:var(--ink);flex:1;min-width:70px}
   .choice button.sel{background:var(--blue);border-color:var(--blue);color:#fff}
-  .chk{display:flex;align-items:center;gap:10px;padding:11px 4px;font-size:15px;font-weight:600}
+  .chk{display:flex;align-items:center;gap:10px;padding:11px 4px;font-size:15px;
+    font-weight:600;color:var(--ink)}
+  .chk label{color:var(--ink)}
+  .chk label i{color:var(--mut)}
   .chk input{width:22px;height:22px}
   #sigwrap{border:1.5px dashed #98A7C0;border-radius:10px;background:var(--card);position:relative}
   #sig{width:100%;height:160px;display:block;border-radius:10px;touch-action:none}
@@ -292,8 +297,8 @@
   .slot.over{--c:#C2185B; --cd:#9A1148}      /* overdue                */
   .slot.due {--c:#7E57C2; --cd:#63449B}      /* due this hour          */
   .slot.next{--c:#5C6BC0; --cd:#47549B}      /* up next                */
-  .slot.wait{--c:#8D9AA8; --cd:#717E8C}      /* awaiting the list      */
-  .slot.past{--c:#A6A093; --cd:#867F72}      /* window closed, nothing */
+  .slot.wait{--c:#5F6B78; --cd:#4B5661}      /* awaiting the list      */
+  .slot.past{--c:#6B6559; --cd:#565046}      /* window closed, nothing */
 
   /* ready breathes: halo only, ~0.45Hz, far below the flash threshold */
   @keyframes ycBreathe{
@@ -378,23 +383,23 @@
   table.dg tr.dgtot td.num{text-align:right;font-variant-numeric:tabular-nums}
   /* one bar per day. The bar itself opens Preview, the safe read-only view;
      editing a published day stays behind its own icon. */
-  .dayacc{border:1px solid var(--line);border-radius:10px;background:#fff;
+  .dayacc{border:1px solid var(--line);border-radius:10px;background:var(--card);
     margin-bottom:10px;overflow:hidden}
-  .daybar{display:flex;align-items:stretch;background:#fff}
+  .daybar{display:flex;align-items:stretch;background:var(--card)}
   .dbmain{display:flex;align-items:center;gap:14px;flex:1 1 auto;min-width:0;
     background:none;border:none;padding:12px 4px 12px 14px;cursor:pointer;
     font-family:inherit;text-align:left}
-  .dbmain:hover{background:#FBF9F4}
+  .dbmain:hover{background:var(--hover)}
   .dbmain:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
   .dbtext{flex:1 1 auto;min-width:0}
-  .dbconf{display:block;font-size:9.5px;letter-spacing:.4px;color:#555}
+  .dbconf{display:block;font-size:9.5px;letter-spacing:.4px;color:var(--mut)}
   .dbdate{display:block;font-size:15px;font-weight:700;color:var(--ink);margin-top:2px}
   .dbsum{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--mut);
     white-space:nowrap;font-variant-numeric:tabular-nums}
   .dbicons{flex:0 0 auto;display:flex;align-items:center;gap:2px;padding:0 8px 0 4px}
   .dbico{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
     background:none;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1}
-  .dbico:hover{background:#EEF3E2}
+  .dbico:hover{background:var(--hover)}
   .dbico:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
   @media (max-width:640px){
     .dbmain{flex-wrap:wrap;gap:4px 12px}
@@ -462,9 +467,9 @@
   .anhead{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-bottom:16px}
   .anchips{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
   .anchip{font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 15px;
-    border-radius:999px;border:1px solid transparent;background:#E7E2D8;color:var(--mut);
+    border-radius:999px;border:1px solid transparent;background:var(--sunk);color:var(--mut);
     cursor:pointer;transition:background 140ms ease-out,color 140ms ease-out}
-  .anchip:hover{background:#DED8CC;color:var(--ink)}
+  .anchip:hover{background:var(--hover);color:var(--ink)}
   .anchip.on{background:var(--blue);color:var(--lime)}
   .anchip:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
   .anpick{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);font-weight:600}
@@ -527,20 +532,20 @@
   .kpi b{font-size:27px;font-weight:800;line-height:1.1;color:var(--ink);
     font-variant-numeric:tabular-nums}
   .kpi > span{font-size:11.5px;font-weight:700;color:var(--mut)}
-  .kpi.k-done{border-top-color:var(--green)} .kpi.k-done b{color:var(--green)}
+  .kpi.k-done{border-top-color:var(--greenink)} .kpi.k-done b{color:var(--greenink)}
   .kpi.k-onsite{border-top-color:#3E7CA8} .kpi.k-onsite b{color:#2F6E8F}
-  .kpi.k-due{border-top-color:#C9A227} .kpi.k-due b{color:#8A6D1F}
-  .kpi.k-bad{border-top-color:var(--red)} .kpi.k-bad b{color:var(--red)}
+  .kpi.k-due{border-top-color:#C9A227} .kpi.k-due b{color:var(--amberink)}
+  .kpi.k-bad{border-top-color:var(--redink)} .kpi.k-bad b{color:var(--redink)}
   .delta{font-size:10px;font-weight:700;margin-top:2px}
-  .delta.up{color:var(--green)} .delta.down{color:var(--red)} .delta.flat{color:var(--mut)}
+  .delta.up{color:var(--greenink)} .delta.down{color:var(--redink)} .delta.flat{color:var(--mut)}
   /* on the no-shows tile the meaning flips: fewer is better */
-  .kpi.k-bad .delta.up{color:var(--red)} .kpi.k-bad .delta.down{color:var(--green)}
+  .kpi.k-bad .delta.up{color:var(--redink)} .kpi.k-bad .delta.down{color:var(--greenink)}
   /* more work booked in is neither good nor bad, so it stays neutral */
   .kpi.k-plain .delta{color:var(--mut)}
 
   .big{font-size:30px;font-weight:800;color:var(--ink);line-height:1.1;margin:2px 0 12px;
     font-variant-numeric:tabular-nums}
-  .big.good{color:var(--green)} .big.bad{color:var(--red)}
+  .big.good{color:var(--greenink)} .big.bad{color:var(--redink)}
   .big em{display:block;font-size:11px;font-weight:600;font-style:normal;color:var(--mut);
     margin-top:3px}
   .brow{display:flex;align-items:center;gap:9px;margin-bottom:8px}
@@ -589,7 +594,7 @@
     font-variant-numeric:tabular-nums}
   .crow .cp{flex:0 0 38px;text-align:right;font-size:11.5px;font-weight:800;color:var(--mut);
     font-variant-numeric:tabular-nums}
-  .crow .cp.good{color:var(--green)} .crow .cp.due{color:#8A6D1F} .crow .cp.bad{color:var(--red)}
+  .crow .cp.good{color:var(--greenink)} .crow .cp.due{color:var(--amberink)} .crow .cp.bad{color:var(--redink)}
 
   /* who to chase */
   /* scoped past .btile .th span, which would otherwise paint the count grey on
@@ -616,7 +621,7 @@
     justify-content:center;text-align:center;gap:5px;font-size:12px;font-weight:700;
     color:var(--mut);padding:16px 4px}
   .waiting span{font-size:11px;font-weight:500;line-height:1.5;max-width:250px}
-  .waiting.allgood{font-size:30px;color:var(--green)}
+  .waiting.allgood{font-size:30px;color:var(--greenink)}
   .btile.blank{align-items:center;justify-content:center;text-align:center;gap:6px;
     padding:44px 20px;color:var(--mut)}
   .btile.blank b{font-size:15px;color:var(--ink)}
@@ -632,9 +637,9 @@
   table.antab td{font-size:12.5px;padding:8px 12px;border-bottom:1px solid #F0ECE3;
     white-space:nowrap}
   table.antab td.num,table.antab th.num{text-align:right;font-variant-numeric:tabular-nums}
-  table.antab td.good{color:var(--green);font-weight:700}
-  table.antab td.bad{color:var(--red);font-weight:700}
-  table.antab td.due{color:#8A6D1F;font-weight:700}
+  table.antab td.good{color:var(--greenink);font-weight:700}
+  table.antab td.bad{color:var(--redink);font-weight:700}
+  table.antab td.due{color:var(--amberink);font-weight:700}
 
   @media (max-width:1180px){
     .c4,.c5{grid-column:span 6} .c7{grid-column:span 6}
@@ -717,7 +722,7 @@
   .ycgtile.esc:hover{background:#CF4839}
   .ycgtile.esc em{color:#FADBD6}
   .ycgtile.add{background:transparent;border:2px dashed var(--bd);color:var(--mut)}
-  .ycgtile.add:hover{background:#F3EEE4}
+  .ycgtile.add:hover{background:var(--hover);border-color:var(--blue2)}
   .ycgtile.add b{font-size:15px;color:var(--ink);font-weight:700}
   .ycgtile.add em{color:var(--mut)}
   .ycgact{margin-top:26px}
@@ -746,7 +751,7 @@
     letter-spacing:-.5px;padding:0 44px}
   .ycmx{position:absolute;top:-4px;right:-4px;width:38px;height:38px;border:none;
     background:#EDE8DE;border-radius:10px;font-size:15px;color:var(--mut);cursor:pointer}
-  .ycmx:hover{background:#E3DCCF}
+  .ycmx:hover{background:var(--hover)}
   .ycmx:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
   /* one row of boxes, each labelled over the middle of its own box */
   .ycmrow{display:flex;gap:12px;align-items:flex-start}
@@ -762,14 +767,14 @@
   .ycmbox select{text-align-last:center}
   .ycmbox input:focus,.ycmbox select:focus{outline:3px solid var(--blue2);outline-offset:1px}
   /* Other, waiting on a value: the box itself says so */
-  .ycmset.want{border-color:var(--red);background:#FDF4F2}
-  .ycmset.want::placeholder{color:var(--red);opacity:.75}
+  .ycmset.want{border-color:var(--redink);background:#FDF4F2}
+  .ycmset.want::placeholder{color:var(--redink);opacity:.75}
   .ycmescbox{font-size:19px;font-weight:700;padding:16px 10px;border-radius:12px;
     border:1.5px solid var(--bd);background:var(--field);color:var(--mut);text-align:center;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ycmescbox.on{background:#FCEEEC;border-color:var(--red);color:var(--red);font-weight:800}
+  .ycmescbox.on{background:#FCEEEC;border-color:var(--redink);color:var(--redink);font-weight:800}
   .ycmdel{display:block;margin:0 0 16px auto;font-family:inherit;font-size:12.5px;
-    font-weight:700;color:var(--red);background:none;border:none;cursor:pointer;padding:4px 0}
+    font-weight:700;color:var(--redink);background:none;border:none;cursor:pointer;padding:4px 0}
   .ycmdel:hover{text-decoration:underline}
   .ycmfoot{margin-top:22px}
   .ycmfoot .btn{width:100%;font-size:18px;padding:17px}
@@ -803,8 +808,8 @@
     font-family:inherit;cursor:pointer}
   button.histitem[disabled]{cursor:default;opacity:.75}
   .hstate{margin-left:auto;flex:0 0 auto;font-size:11px;font-weight:800;
-    letter-spacing:.3px;color:var(--green);white-space:nowrap}
-  .hstate.esc{color:var(--red)}
+    letter-spacing:.3px;color:var(--greenink);white-space:nowrap}
+  .hstate.esc{color:var(--redink)}
   .hstate.wait{color:var(--mut)}
   .bkvmeta{padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
   .bkvmeta b{display:block;font-size:14px;color:var(--ink)}
@@ -848,7 +853,7 @@
     background:var(--field);color:var(--ink);cursor:pointer}
   .fnavb.pri{flex:1 1 auto;background:var(--blue);border-color:var(--blue);color:#fff;
     font-size:16px}
-  .fnavb:hover{background:#F6F3EC}
+  .fnavb:hover{background:var(--hover)}
   .fnavb.pri:hover{background:#16232E}
   .fnavb[hidden]{display:none}
   .fnavb:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
@@ -880,7 +885,7 @@
     background:none;border:none;border-bottom:1px solid #F0ECE3;cursor:pointer;
     font-family:inherit;text-align:left}
   .npitem:last-child{border-bottom:none}
-  .npitem:hover{background:#F6F2E9}
+  .npitem:hover{background:var(--hover)}
   .npitem:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
   .npslot{flex:0 0 auto;width:44px;height:38px;border-radius:9px;display:grid;
     place-items:center;font-size:15px;font-weight:800;color:#fff;background:var(--blue2)}
@@ -919,16 +924,16 @@
   }
   /* the box that caused an escalation says so by being marked */
   table.ycsheet td.bad{background:#FCEEEC}
-  table.ycsheet td.bad input,table.ycsheet td.bad select{color:var(--red);font-weight:800}
-  table.ycsheet td.ycro.bad{color:var(--red);font-weight:800}
-  .escyes{display:block;text-align:center;font-size:13px;font-weight:800;color:var(--red);
+  table.ycsheet td.bad input,table.ycsheet td.bad select{color:var(--redink);font-weight:800}
+  table.ycsheet td.ycro.bad{color:var(--redink);font-weight:800}
+  .escyes{display:block;text-align:center;font-size:13px;font-weight:800;color:var(--redink);
     padding:8px 6px}
-  .escno{display:block;text-align:center;font-size:13px;font-weight:700;color:var(--green);
+  .escno{display:block;text-align:center;font-size:13px;font-weight:700;color:var(--greenink);
     padding:8px 6px}
   /* what is still empty, marked where it sits */
   #sec-form .choice.miss{outline:2px solid var(--red);outline-offset:4px;border-radius:10px}
-  #sec-form #sigwrap.miss{border-color:var(--red);background:var(--warn)}
-  #sec-form .chk.miss label{color:var(--red);font-weight:700}
+  #sec-form #sigwrap.miss{border-color:var(--redink);background:var(--warn)}
+  #sec-form .chk.miss label{color:var(--redink);font-weight:700}
   .fdots i.want{background:var(--red)}
   .fdots i.want.on{background:var(--red);box-shadow:0 0 0 2px rgba(192,57,43,.3)}
   /* ---------- daily activity report ---------- */
@@ -1028,7 +1033,7 @@
   @keyframes darpulse{0%,100%{opacity:1}50%{opacity:.35}}
   .dpinc{font-family:inherit;font-size:13.5px;font-weight:600;color:#111;
     background:none;border:none;padding:2px 9px;cursor:pointer;border-radius:50%}
-  .dpinc:hover{background:#EFEBE2}
+  .dpinc:hover{background:var(--hover)}
   .dpinc.ring{border:1.5px solid #1B3A8A;color:#1B3A8A;font-weight:700}
   .dpinc:focus-visible{outline:3px solid var(--blue2);outline-offset:2px}
   .daract .btn[disabled]{opacity:.5;cursor:not-allowed}
@@ -1038,7 +1043,32 @@
      dark mode they read as a sheet lying on a dark desk, which is what they
      are. Everything the officer types into is a control, not a document, and
      lifts off the card instead. */
-  .darpaper,.ycwrap,.prnwrap,.dgwrap,#bkview .dvbody,.antwrap{color-scheme:light}
+  /* Two kinds of sheet, and the difference is what the officer does with it.
+     A PREVIEW shows what is about to be emailed, so it looks like the thing
+     that gets sent: white. A WORKING sheet is typed into for hours on a night
+     shift, and what gets emailed is drawn separately onto a canvas, so the
+     screen copy is free to follow the theme. */
+  .darpaper,.prnwrap,#bkview .dvbody{color-scheme:light}
+  /* worked on, not sent: the gate log and the yard check sheet */
+  table.ycsheet,table.logt{background:var(--card)}
+  table.ycsheet th,table.logt th{background:var(--card);color:var(--ink);
+    border-color:var(--bd)}
+  table.ycsheet td,table.logt td{border-color:var(--bd);color:var(--ink)}
+  .ycwrap{background:var(--card);border-color:var(--line)}
+  table.ycsheet input,table.ycsheet select,
+  table.logt input,table.logt select{background:transparent;color:var(--ink)}
+  table.logt tr.hand td{background:var(--hover)}
+  table.logt tr.carried td{background:var(--gold)}
+  table.ycsheet td.bad{background:var(--warn)}
+  .dgwrap{background:var(--card);border-color:var(--bd)}
+  table.dg{background:var(--card)}
+  table.dg tr.dgcols th,table.dg .gut{background:var(--sunk);color:var(--mut)}
+  table.dg td input{background:transparent;color:var(--ink)}
+  table.dg tr.d0 td,table.dg tr.d1 td{background:var(--card)}
+  :root[data-theme="dark"] table.dg tr.d1 td{background:#18222C}
+  table.antab{background:var(--card)}
+  table.antab th{background:var(--sunk);color:var(--mut);border-color:var(--line)}
+  table.antab td{color:var(--ink)}
   .darwhy[hidden]{display:none}
   /* a row the officer wrote by hand, rather than one a form created */
   table.logt tr.hand td{background:#FBF8F2}
@@ -1046,7 +1076,7 @@
   /* a blank line reads as paper until something is written on it */
   table.logt tr.blank input{background:transparent}
   table.logt td.logdel{text-align:center;padding:0}
-  table.logt td.logdel button{background:none;border:none;color:var(--red);
+  table.logt td.logdel button{background:none;border:none;color:var(--redink);
     font-size:13px;padding:6px;cursor:pointer}
   table.logt td.logdel button:hover{color:#9C2E22}
   /* the account menu: a panel under the profile, not a sheet off the side */
@@ -1079,10 +1109,10 @@
   .usermenu .ditem{display:flex;align-items:center;gap:12px;width:100%;
     background:none;border:none;border-radius:10px;padding:11px 12px;cursor:pointer;
     font-family:inherit;font-size:14.5px;font-weight:600;color:var(--ink);text-align:left}
-  .usermenu .ditem:hover{background:#F3EFE6}
+  .usermenu .ditem:hover{background:var(--hover)}
   .usermenu .ditem:focus-visible{outline:3px solid var(--blue2);outline-offset:-3px}
-  .usermenu .ditem.ddanger{color:var(--red)}
-  .usermenu .ditem.ddanger:hover{background:#FBECEA}
+  .usermenu .ditem.ddanger{color:var(--redink)}
+  .usermenu .ditem.ddanger:hover{background:var(--warn)}
   .usermenu .ditem span{font-size:16px;line-height:1;flex:0 0 auto}
   .usermenu .ditem[hidden]{display:none}
   /* nothing to go back to on the home screen */
@@ -1115,7 +1145,7 @@
     padding:10px 18px;border-radius:10px;border:none;background:var(--blue);color:#fff;
     cursor:pointer}
   .pinstall:hover{background:#16232E}
-  .pdone{flex:0 0 auto;font-size:18px;color:var(--green)}
+  .pdone{flex:0 0 auto;font-size:18px;color:var(--greenink)}
 
   /* ---------- dark ----------
      Only the tokens move. The printed sheets stay on white on purpose: they
@@ -1123,13 +1153,15 @@
   :root[data-theme="dark"]{
     --bg:#0B1117; --card:#141C24; --ink:#EEF2F6; --mut:#9BA7B4;
     --line:#25313C; --bd:#3C4A57; --gold:#3A3016; --sunk:#1D2831;
-    --field:#1B2530; --press:#233040; --warn:#2A1A19;
+    --field:#1B2530; --press:#233040; --warn:#2A1A19; --hover:#212C38;
+    --redink:#FF8A7A; --greenink:#A8DB4F; --amberink:#E8C260;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#0B1117; --card:#141C24; --ink:#EEF2F6; --mut:#9BA7B4;
       --line:#25313C; --bd:#3C4A57; --gold:#3A3016; --sunk:#1D2831;
-      --field:#1B2530; --press:#233040; --warn:#2A1A19;
+      --field:#1B2530; --press:#233040; --warn:#2A1A19; --hover:#212C38;
+      --redink:#FF8A7A; --greenink:#A8DB4F; --amberink:#E8C260;
     }
   }
   /* saved forms, as a diary */
@@ -1150,14 +1182,12 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .hseal{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.4px;
     padding:4px 9px;border-radius:999px;background:var(--sunk);color:var(--mut)}
-  .hseal.bad{background:#FCEEEC;color:var(--red)}
-  :root[data-theme="dark"] .hseal.bad{background:#2A1A19}
+  .hseal.bad{background:var(--warn);color:var(--redink)}
   .histbtns{flex:0 0 auto;display:flex;gap:4px}
   .hbtn{width:34px;height:34px;border:none;border-radius:9px;background:none;
     color:var(--mut);font-size:14px;cursor:pointer}
-  .hbtn:hover{background:var(--sunk);color:var(--ink)}
-  .hbtn.del:hover{background:#FCEEEC;color:var(--red)}
-  :root[data-theme="dark"] .hbtn.del:hover{background:#2A1A19}
+  .hbtn:hover{background:var(--hover);color:var(--ink)}
+  .hbtn.del:hover{background:var(--warn);color:var(--redink)}
   .hbtn:focus-visible{outline:3px solid var(--blue2);outline-offset:-2px}
   /* the printed sheet */
   .prnwrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
