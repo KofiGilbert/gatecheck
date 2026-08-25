@@ -475,6 +475,7 @@ function ycSet(i, k, v, save){
   r[k] = v;
   var reshape = false;
   if(k === 'set'){ r.type = ycAutoType(r); reshape = ycOffFill(r); }
+  if(k === 'door' || k === 'intact') reshape = ycSealDoorSync(r, k) || reshape;
   if(save) ycSaveDraft();
   /* redrawing the whole sheet on a keystroke would take the cursor with it,
      so only the escalate cell moves - unless the row changed shape */
@@ -528,6 +529,7 @@ function ycProblems(){
     if(!String(r.set).trim()) warn.push(lbl+': Set Point empty');
     if(!r.fuel) warn.push(lbl+': Fuel empty');
     if(!r.intact) warn.push(lbl+': Intact Y/N empty');
+    if(ycDoorWanted(r)) warn.push(lbl+': not sealed, so which door is it on?');
     if(ycEval(r).length && !r.action.trim()) warn.push(lbl+': escalation has no "action taken"');
   });
   return {block:block, warn:warn};
@@ -745,56 +747,66 @@ var YC_STOPWORDS = /TRAILER|PRODUCT|DATE:|TIME|NAME|ESCALATE|ACTION|DOOR|INTACT|
 
 /* ===================== reading a hand =====================
 
-   Tesseract is trained on print. It reads the ruled form and the typed parts
-   of it well and struggles with the pen, which is the part that matters on a
-   completed check - cropping each cell and restricting the alphabet took it
-   as far as it goes.
+   Tesseract is trained on print. It reads the ruled form well and struggles
+   with the pen, which is the part that matters on a completed check.
 
-   TrOCR is Microsoft's model trained on handwriting, converted to ONNX so it
-   runs in the browser with no server. Quantised it is about 64MB, fetched the
-   first time an officer photographs a completed form and cached by the
-   browser after that; a yard with no signal falls back to Tesseract rather
-   than refusing the photo.
+   PaddleOCR's PP-OCRv5 is the engine that replaced it here: its own release
+   notes put the error rate on non-standard handwritten forms 26% below the
+   version before, and its browser SDK runs on ONNX Runtime Web with WebGPU
+   where the device has it and WASM where it does not. Nothing is sent
+   anywhere - the models come down once and the reading happens on the iPad.
+
+   Every cell still falls back to Tesseract on its own if this engine is
+   unavailable: no signal, a blocked CDN, an old browser. A photograph is
+   never refused for want of the better reader.
 */
-var YC_TROCR_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-var YC_TROCR_MODEL = 'Xenova/trocr-small-handwritten';
-var _trocr = null, _trocrTry = null, _trocrDead = false;
-function trocrWanted(){
+var YC_HAND_URL = 'https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm';
+var _hand = null, _handTry = null, _handDead = false;
+function handWanted(){
   return (typeof PREFS === 'undefined') ? true : PREFS.handocr !== false;
 }
-function trocrReady(){ return !!_trocr; }
-function trocrLoad(){
-  if(_trocr) return Promise.resolve(_trocr);
-  if(_trocrDead || !trocrWanted()) return Promise.resolve(null);
-  if(_trocrTry) return _trocrTry;
-  _trocrTry = (async function(){
+function handReady(){ return !!_hand; }
+function handLoad(){
+  if(_hand) return Promise.resolve(_hand);
+  if(_handDead || !handWanted()) return Promise.resolve(null);
+  if(_handTry) return _handTry;
+  _handTry = (async function(){
     try{
-      ocrStatus('\u2b07\ufe0f Fetching the handwriting reader, once (about 64MB)\u2026');
-      var mod = await import(YC_TROCR_URL);
-      mod.env.allowLocalModels = false;
-      _trocr = await mod.pipeline('image-to-text', YC_TROCR_MODEL, {
-        quantized: true,
-        progress_callback: function(p){
-          if(p && p.status === 'progress' && p.progress != null)
-            ocrStatus('\u2b07\ufe0f Handwriting reader ' + Math.round(p.progress) + '%');
-        }
+      ocrStatus('\u2b07\ufe0f Fetching the handwriting reader, once\u2026');
+      var mod = await import(YC_HAND_URL);
+      _hand = await mod.PaddleOCR.create({
+        lang: 'en',
+        ocrVersion: 'PP-OCRv5',
+        /* the GPU where the device has one, the CPU where it does not */
+        ortOptions: { backend: 'auto' }
       });
-      return _trocr;
+      return _hand;
     }catch(e){
-      /* no signal, a blocked CDN, an old browser: the print reader still works */
-      _trocrDead = true;
+      _handDead = true;
       return null;
     }
   })();
-  return _trocrTry;
+  return _handTry;
 }
-/* one cell, read by the model trained on handwriting */
-async function trocrCell(cv){
-  if(!_trocr) return null;
+function ycCanvasBlob(cv){
+  return new Promise(function(res){
+    if(cv.toBlob) cv.toBlob(res, 'image/png');
+    else res(null);
+  });
+}
+/* one cell, read by the engine trained on handwriting */
+async function handCell(cv){
+  if(!_hand) return null;
   try{
-    var out = await _trocr(cv.toDataURL('image/png'));
-    var txt = Array.isArray(out) ? (out[0] && out[0].generated_text) : (out && out.generated_text);
-    return String(txt == null ? '' : txt).trim().toUpperCase();
+    var blob = await ycCanvasBlob(cv);
+    if(!blob) return null;
+    var out = await _hand.predict(blob);
+    var one = Array.isArray(out) ? out[0] : out;
+    var items = (one && one.items) || [];
+    var txt = items.map(function(i){
+      return String((i && (i.text != null ? i.text : i.transcription)) || '');
+    }).join(' ');
+    return txt.trim().toUpperCase();
   }catch(e){ return null; }
 }
 
@@ -1012,7 +1024,7 @@ async function ycGridRead(cv, worker){
   if(!geo) return null;
   /* the handwriting model if it is there or can be fetched; the print engine
      is what every cell falls back to, one cell at a time */
-  var hand = await trocrLoad();
+  var hand = await handLoad();
   var work = geo.canvas, hl = geo.hl, cols = geo.cols;
   var w = work.width;
   var data = work.getContext('2d').getImageData(0, 0, w, work.height).data;
@@ -1036,7 +1048,7 @@ async function ycGridRead(cv, worker){
       if(ycCellInk(data, w, rect) < 0.004){ grid[b][conf.k] = ''; continue; }
       var cell = ycCellCanvas(work, rect);
       var txt = null;
-      if(hand) txt = await trocrCell(cell);
+      if(hand) txt = await handCell(cell);
       if(txt == null){
         var res = await worker.recognize(cell);
         txt = (res.data.confidence >= 35)
@@ -1073,6 +1085,8 @@ async function ycGridRead(cv, worker){
     });
     if(r.set === 'OFF') ycOffFill(r);
     if(String(r.set || '').trim()) r.type = ycAutoType(r);
+    /* a door written on the paper says the trailer was open at a dock */
+    if(ycIsRealDoor(r.door) && !r.intact) r.intact = 'N';
     rows.push(r);
   });
   /* a band that straddled two rows reads a real trailer twice; the richer
@@ -1157,6 +1171,7 @@ function ycParseTrailers(text){
       var r = ycRowBlank(); r.trailer=trailer; r.product=prod.join(' ');
       /* whatever readings follow the product were written on the form in pen */
       ycReadHand(r, toks.slice(ti + 1 + prod.length));
+      if(ycIsRealDoor(r.door) && !r.intact) r.intact = 'N';
       out.push(r); }
   });
   return out.slice(0,40);
@@ -1680,7 +1695,26 @@ function ycFixPair(r){
 function ycSlotLabel(t){
   t = String(t||''); return t.length===4 ? t.slice(0,2)+':'+t.slice(2) : t;
 }
+/* ---- a seal and a door cannot both be true ----
+   INTACT asks one thing: is the trailer still sealed. A trailer standing at a
+   loading door is not - the seal is cut to open it. So the two answers are
+   locked together: choose a door and the trailer is unsealed; say it is
+   sealed and it cannot be at a door; say it is unsealed and the check is not
+   finished until it says which door it is on. */
+function ycIsRealDoor(v){ return /^\d{1,2}$/.test(String(v || '').trim()); }
+function ycSealDoorSync(r, changed){
+  if(!r) return false;
+  var before = r.intact + '\u0000' + r.door;
+  if(changed === 'door' && ycIsRealDoor(r.door)) r.intact = 'N';
+  else if(changed === 'intact' && r.intact === 'Y') r.door = 'N/A';
+  return before !== (r.intact + '\u0000' + r.door);
+}
+/* the door a trailer is on, when it has been said to be unsealed */
+function ycDoorWanted(r){
+  return !!r && r.intact === 'N' && !ycIsRealDoor(r.door);
+}
 function ycRowDone(r){
+  if(ycDoorWanted(r)) return false;      /* unsealed, but no door said */
   return !!(String(r.set||'').trim() && String(r.temp||'').trim()
     && r.fuel && r.intact && String(r.door||'').trim());
 }
@@ -1891,7 +1925,8 @@ function ycModalRender(){
               + ' oninput="ycmSet(\'temp\',this.value)">')
             + box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
             + box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
-            + box('Door #', ycmSel('door', YC_DOORS, r.door)))
+            + box('Door #', ycmSel('door', YC_DOORS, r.door,
+                    ycDoorWanted(r) ? ' class="ycmset want"' : '')))
     +   box('Escalate', '<div class="ycmescbox" id="ycm_escbox">N/A</div>', 'esc')
     + '</div>';
   ycModalEsc();
@@ -1946,6 +1981,12 @@ function ycmSet(k, v){
   if(k==='set'){
     r.type = ycAutoType(r);
     if(ycOffFill(r)){ ycSaveDraft(); ycModalRender(); return; }
+  }
+  if(k === 'door' || k === 'intact'){
+    /* the two answers move together, and the door box has to be able to say
+       it is now waiting on one - so the card is redrawn either way */
+    ycSealDoorSync(r, k);
+    ycSaveDraft(); ycModalRender(); return;
   }
   ycSaveDraft();
   ycModalEsc();

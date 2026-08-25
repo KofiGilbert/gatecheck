@@ -177,8 +177,8 @@ function prefsRender(){
           + '<span>This browser cannot hold the screen on. Open Checkpoint from '
           + 'the home screen, or set the screen timeout on the device.</span></div></div>')
     + prefsSwitch('handocr', 'Read handwriting on photos',
-        'A model trained on handwriting, about 64MB the first time. Off means '
-        + 'the print reader only.')
+        'A reader trained on handwriting, downloaded once. Off means the '
+        + 'print reader only.')
     + prefsInstallRow();
 }
 function prefsInstallRow(){
