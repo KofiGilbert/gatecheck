@@ -49,7 +49,8 @@ function schedOfficeDates(){
 function schedRebuild(){
   var have = schedOfficeDates();
   _orders = DB.office.concat(DB.local.filter(function(o){ return !have[o.date]; }));
-  _orders.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.zone<b.zone?-1:1); });
+  _orders.sort(function(a,b){
+    return a.date<b.date ? -1 : a.date>b.date ? 1 : schedSeqCmp(a,b); });
 }
 /* true when this day is only on this device, so the screen can say so */
 function schedDayIsLocal(date){
@@ -449,8 +450,24 @@ function normalizeRow(o){
     order:String(o.order||o.order_number||'').trim(),
     vendor:String(o.vendor||o.vendor_name||'').trim(),
     carrier:String(o.carrier||'').trim(), contact:String(o.contact||'').trim(),
-    cases:+o.cases||0, pallets:+o.pallets||0
+    cases:+o.cases||0, pallets:+o.pallets||0,
+    /* where this row stood in the file it came from. Kept on the record, so
+       the order survives the trip through Firestore, which returns documents
+       in whatever order it likes. */
+    seq: (o.seq == null || isNaN(+o.seq)) ? null : +o.seq
   };
+}
+/* the office's file is the authority on the order of a day, so rows are shown
+   in the order they were loaded, and only fall back to sorting when there is
+   no sequence to go on - an older schedule, loaded before this was kept */
+function schedSeqCmp(a, b){
+  var as = (a.seq == null) ? null : +a.seq, bs = (b.seq == null) ? null : +b.seq;
+  if(as != null && bs != null) return as - bs;
+  if(as != null) return -1;
+  if(bs != null) return 1;
+  var az = a.zone||'', bz = b.zone||'';
+  if(az !== bz) return az < bz ? -1 : 1;
+  return (a.time||'') < (b.time||'') ? -1 : 1;
 }
 function parseCSV(text){
   /* copying rows out of Excel gives tabs, not commas, so pick whichever the
@@ -569,11 +586,11 @@ var DG_COLS = [
 function stageOrders(arr, keepOrder){
   var rows = (arr||[]).map(normalizeRow).filter(function(n){ return n.order; });
   if(!rows.length){ toast('Nothing to load'); return; }
-  /* A photograph is checked against the paper it was taken from, line by
-     line, so the rows stay in the order they appear on that paper. Anything
-     else makes the office scan the page twice. */
-  if(!keepOrder)
-    rows.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:(a.order<b.order?-1:1); });
+  /* Whatever it was loaded from - a spreadsheet, a CSV, a photograph - is
+     checked against that source line by line, so the rows stay in the order
+     the source had them. Anything else makes the office read both twice. */
+  rows.forEach(function(r, i){ r.seq = i; });
+  void keepOrder;
   SCHED_DRAFT = rows;
   schedRenderDraft();
   toast('Loaded '+rows.length+' rows. Check them, then preview.');
@@ -737,8 +754,7 @@ function schedByDate(rows){
   var bydate = {};
   rows.forEach(function(r){ (bydate[r.date] = bydate[r.date] || []).push(r); });
   Object.keys(bydate).forEach(function(d){
-    bydate[d].sort(function(a,b){
-      return (a.zone||'')<(b.zone||'')?-1:(a.zone||'')>(b.zone||'')?1:((a.time||'')<(b.time||'')?-1:1); });
+    bydate[d].sort(schedSeqCmp);
   });
   return bydate;
 }
