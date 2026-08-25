@@ -115,6 +115,7 @@ function cloudInit(){
       } else {
         CLOUD.ready = false;
         sset('gc_wasin', '');
+        sset('gc_lastrole', '');
         stopSync();
         var _w2=$('whoami'); if(_w2) _w2.textContent = '';
         var _s2=$('signout'); if(_s2) _s2.style.display = 'none';
@@ -241,6 +242,10 @@ function setRole(role){
   CLOUD.role = role;
   var em = (CLOUD.user && CLOUD.user.email) || '';
   if(em) sset('gc_role_'+em, role);
+  /* and against the device itself, so the next refresh knows which app this
+     is before Firebase has answered - keyed by email is no use at first paint,
+     when the email is not known either */
+  sset('gc_lastrole', role);
   if(typeof applyRole === 'function') applyRole();
 }
 

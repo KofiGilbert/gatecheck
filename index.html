@@ -95,6 +95,11 @@
   body.role-office main{max-width:1600px}
   /* the menu fills the screen: this is used on a phone or an iPad, not a desktop */
   #sec-home,#sec-office{padding:14px;max-width:980px;margin:0 auto}
+  /* Between first paint and Firebase answering, the app has not decided which
+     screen it is on. On a device the office was last using, the officer's home
+     stays down rather than flashing up and being replaced. Removed the moment
+     the role is known, whichever role that turns out to be. */
+  html.boot-office #sec-home.on{visibility:hidden}
   #sec-office.on{display:flex;flex-direction:column;justify-content:center;gap:14px;
     min-height:calc(100dvh - var(--hdr-h, 62px))}
   #sec-block{padding:14px;padding-bottom:60px;max-width:640px;margin:0 auto}
@@ -2099,6 +2104,10 @@
    paint and only put back if the check actually comes back signed out. */
 (function(){
   try{
+    /* #sec-home ships with class="on", so on a device the receiving office
+       was last signed into it paints before a line of the app has run. */
+    if(localStorage.getItem('gc_lastrole') === 'office')
+      document.documentElement.classList.add('boot-office');
     if(localStorage.getItem('gc_wasin') === '1'){
       var o = document.getElementById('login');
       if(o){ o.style.display = 'none'; o.classList.remove('gc-checking'); }
