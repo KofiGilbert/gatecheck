@@ -32,7 +32,6 @@ Object.defineProperty(DB, 'orders', {
   }
   try{ var f = sget('gc_forms'); if(f) DB.forms = JSON.parse(f); }catch(e){}
   try{ var n = sget('gc_schednotes'); if(n) DB.notes = JSON.parse(n); }catch(e){}
-  schedRepairUndated();
   schedRebuild();
 })();
 function persist(){
@@ -41,36 +40,6 @@ function persist(){
   sset('gc_orders', JSON.stringify(DB.orders));   /* for anything still reading it */
   sset('gc_forms',  JSON.stringify(DB.forms));
   sset('gc_schednotes', JSON.stringify(DB.notes));
-}
-/* A schedule loaded before Checkpoint knew to read the day off the file name
-   was stored with no date at all. Those rows print no heading, they sit last
-   in a list that reads newest first, and the yard never sees them, because
-   the yard asks for today. A sheet with no day on it can only mean the day it
-   was loaded, so it is stamped once - and the office writes that back, so it
-   is not repaired again on every device for ever. */
-var SCHED_REPAIRED = {};
-function schedUndated(){
-  return DB.office.filter(function(o){ return !o.date; })
-    .concat(DB.local.filter(function(o){ return !o.date; }));
-}
-/* days is order number -> the day that row was loaded. Today is what is left
-   when there is nothing better, not what is reached for first. */
-function schedRepairUndated(days){
-  days = days || {};
-  var today = isoToday();
-  DB.office.forEach(function(o){
-    if(!o.date){ o.date = days[o.order] || today; SCHED_REPAIRED[o.order] = o; } });
-  DB.local.forEach(function(o){ if(!o.date){ o.date = days[o.order] || today; } });
-}
-function schedRepairReset(){ SCHED_REPAIRED = {}; }
-/* Stamped on this device, and the team has not been told yet. The role is not
-   always known when the schedule arrives, so this is tried again as soon as
-   it is, rather than being lost until something else happens to change. */
-function schedRepairPending(){
-  return Object.keys(SCHED_REPAIRED).map(function(k){ return SCHED_REPAIRED[k]; });
-}
-function schedRepairDone(rows){
-  rows.forEach(function(o){ delete SCHED_REPAIRED[o.order]; });
 }
 function schedOfficeDates(){
   var d = {}; DB.office.forEach(function(o){ d[o.date] = 1; }); return d;
@@ -181,23 +150,11 @@ var SECTION_TITLES = {
    enforcement is in the Firestore rules, not here. */
 var OFFICE_ONLY  = ['office','block','stats','queue'];
 var OFFICER_ONLY = ['yard','ycgrid','yardsheet','log','dar','form','hist','search'];
-/* Until Firebase answers there is no role, and assuming the officer's app
-   showed the receiving office four frames of the wrong screen on every
-   refresh. The device remembers which app it was last signed into; the
-   account document still corrects it a moment later. */
-function isOffice(){
-  if(window.CLOUD && CLOUD.user) return CLOUD.role === 'office';
-  var last = sget('gc_lastrole');
-  if(last) return last === 'office';
-  return (window.CLOUD && CLOUD.role) === 'office';
-}
+function isOffice(){ return (window.CLOUD && CLOUD.role) === 'office'; }
 function homeSection(){ return isOffice() ? 'office' : 'home'; }
 function applyRole(){
   var off = isOffice();
   document.body.classList.toggle('role-office', off);
-  /* the boot guess has done its job; leaving it on would hide the home screen
-     of an officer signing in on a device the office had been using */
-  document.documentElement.classList.remove('boot-office');
   /* The role starts as officer and is corrected once the account document
      arrives, so the bell has to be recounted: the office was inheriting a
      count of yard checks that were never theirs to do. */
@@ -576,7 +533,6 @@ $('file').addEventListener('change', function(){
 });
 function importPaste(){
   var t = $('paste').value;
-  ING_SOURCE = '';
   if(typeof ingPasteClose === 'function') ingPasteClose(); else $('paste').value='';
   /* the same box loads a schedule or a trailer list, depending on the screen
      the loader is standing on */
@@ -627,55 +583,13 @@ var DG_COLS = [
   {k:'cases',    t:'Open Cases', w:88},
   {k:'pallets',  t:'Pallets',   w:70}
 ];
-/* A schedule often carries its day only in the file name -
-   schedule_20260825.csv, "Aug 25 2026 loads.xlsx" - and never in a column.
-   Rows loaded without a date had no day to sit under: no heading, and last
-   in a list that reads newest first. The name is read, and today stands in
-   when the name says nothing either. */
-var ING_SOURCE = '';
-var MON_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-function dateFromName(name){
-  var s = String(name || '').replace(/\.[a-z0-9]+$/i, '');
-  var m;
-  /* 20260825 */
-  if((m = s.match(/(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])/)))
-    return m[1]+'-'+m[2]+'-'+m[3];
-  /* 2026-08-25, 2026_08_25, 2026.08.25 */
-  if((m = s.match(/(20\d{2})[-_.](\d{1,2})[-_.](\d{1,2})/)))
-    return isoParts(m[1], m[2], m[3]);
-  /* 08-25-2026 and 8/25/26 */
-  if((m = s.match(/(\d{1,2})[-_.\/](\d{1,2})[-_.\/](20\d{2}|\d{2})\b/)))
-    return isoParts(m[3].length === 2 ? '20'+m[3] : m[3], m[1], m[2]);
-  /* Aug 25 2026, August 25, 2026 */
-  if((m = s.match(/([a-z]{3,9})[^a-z0-9]{0,3}(\d{1,2})(?:st|nd|rd|th)?[^0-9]{0,3}(20\d{2})/i)))
-    return byMonthName(m[1], m[3], m[2]);
-  /* 25 Aug 2026 */
-  if((m = s.match(/(\d{1,2})(?:st|nd|rd|th)?[^a-z0-9]{0,3}([a-z]{3,9})[^0-9]{0,3}(20\d{2})/i)))
-    return byMonthName(m[2], m[3], m[1]);
-  return '';
-}
-function byMonthName(name, y, d){
-  var mi = MON_ABBR.indexOf(String(name).slice(0,3).toLowerCase());
-  return mi < 0 ? '' : isoParts(y, mi+1, d);
-}
-function isoParts(y, mo, d){
-  mo = +mo; d = +d;
-  if(!(mo >= 1 && mo <= 12) || !(d >= 1 && d <= 31)) return '';
-  return y + '-' + (mo<10?'0':'') + mo + '-' + (d<10?'0':'') + d;
-}
-/* the day a file's rows belong to when the rows themselves do not say */
-function schedFillDate(){
-  return dateFromName(ING_SOURCE) || isoToday();
-}
 function stageOrders(arr, keepOrder){
   var rows = (arr||[]).map(normalizeRow).filter(function(n){ return n.order; });
   if(!rows.length){ toast('Nothing to load'); return; }
   /* Whatever it was loaded from - a spreadsheet, a CSV, a photograph - is
      checked against that source line by line, so the rows stay in the order
      the source had them. Anything else makes the office read both twice. */
-  /* the day, if the file never gave one */
-  var fill = schedFillDate();
-  rows.forEach(function(r, i){ r.seq = i; if(!r.date) r.date = fill; });
+  rows.forEach(function(r, i){ r.seq = i; });
   void keepOrder;
   SCHED_DRAFT = rows;
   schedRenderDraft();

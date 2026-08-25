@@ -115,7 +115,6 @@ function cloudInit(){
       } else {
         CLOUD.ready = false;
         sset('gc_wasin', '');
-        sset('gc_lastrole', '');
         stopSync();
         var _w2=$('whoami'); if(_w2) _w2.textContent = '';
         var _s2=$('signout'); if(_s2) _s2.style.display = 'none';
@@ -242,14 +241,7 @@ function setRole(role){
   CLOUD.role = role;
   var em = (CLOUD.user && CLOUD.user.email) || '';
   if(em) sset('gc_role_'+em, role);
-  /* and against the device itself, so the next refresh knows which app this
-     is before Firebase has answered - keyed by email is no use at first paint,
-     when the email is not known either */
-  sset('gc_lastrole', role);
   if(typeof applyRole === 'function') applyRole();
-  /* the schedule can arrive before the role does, and only the office may
-     write the repaired day back for the team */
-  if(role === 'office' && CLOUD.ready) schedRepairSync();
 }
 
 function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
@@ -285,82 +277,6 @@ function logCloudSet(r){
   }, 700);
 }
 
-/* An order's document is named "<date>_<order>", so one stored with no date is
-   named "_<order>". Giving it a day means writing it under its proper name and
-   taking the old one away. Only the office may write the team's schedule. */
-function schedRepairSync(){
-  if(typeof schedRepairUndated !== 'function') return;
-  var undated = schedUndated();
-  if(!undated.length){ schedRepairPublish(); return; }
-  schedRepairReset();
-  schedLoadedDays(undated).then(function(days){
-    schedRepairUndated(days);
-    schedRebuild(); persist(); stat(); renderSched(); doSearch();
-    if(typeof ycUpdateBadge === 'function') ycUpdateBadge();
-    /* a day that was invisible a moment ago is today's sheet now, and the
-       officer is standing on the screen that should be showing it */
-    if(typeof routeResync === 'function') routeResync();
-    schedRepairPublish();
-  });
-}
-function schedRepairPublish(){
-  if(typeof isOffice === 'function' && !isOffice()) return;
-  schedPublishRepair(schedRepairPending());
-}
-/* Which day a row belongs to is not in the row - but Firestore stamps every
-   document with the time it was written, and for a schedule that is the day it
-   was loaded. The browser SDK does not hand that out, so it is read over the
-   REST interface, under the same rules and the same sign-in. */
-function schedLoadedDays(rows){
-  if(!CLOUD.user || !CLOUD.user.getIdToken || !rows.length) return Promise.resolve({});
-  var base = 'https://firestore.googleapis.com/v1/projects/'
-           + FIREBASE_CONFIG.projectId + '/databases/(default)/documents';
-  return CLOUD.user.getIdToken().then(function(tok){
-    var jobs = [];
-    for(var i = 0; i < rows.length; i += 100){
-      jobs.push(fetch(base + ':batchGet', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documents: rows.slice(i, i + 100).map(function(o){
-          return base + '/orders/_' + o.order; }) })
-      }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }));
-    }
-    return Promise.all(jobs);
-  }).then(function(parts){
-    var days = {};
-    parts.forEach(function(list){
-      (list || []).forEach(function(e){
-        var f = e && e.found;
-        if(!f || !f.createTime) return;
-        var day = schedLocalDay(f.createTime);
-        if(day) days[String(f.name || '').split('/').pop().replace(/^_/, '')] = day;
-      });
-    });
-    return days;
-  }).catch(function(){ return {}; });
-}
-/* the day it was loaded where it was loaded: a sheet sent at eight in the
-   evening here is already tomorrow by UTC's reckoning */
-function schedLocalDay(iso){
-  var d = new Date(iso);
-  if(isNaN(d.getTime())) return '';
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
-       + '-' + String(d.getDate()).padStart(2, '0');
-}
-function schedPublishRepair(rows){
-  if(!CLOUD.ready || !CLOUD.user || !rows.length) return;
-  schedRepairDone(rows);
-  var db = CLOUD.db;
-  for(var i = 0; i < rows.length; i += 200){
-    var b = db.batch();
-    rows.slice(i, i + 200).forEach(function(o){
-      o.updatedBy = CLOUD.user.email;
-      b.delete(db.collection('orders').doc('_' + o.order));
-      b.set(db.collection('orders').doc(o.date + '_' + o.order), o);
-    });
-    b.commit().catch(function(){});
-  }
-}
 function startSync(){
   stopSync();
   var db=CLOUD.db;
@@ -370,8 +286,6 @@ function startSync(){
        and then retired - it must never be quietly overwritten, because they
        may have been working from it. */
     DB.office = snap.docs.map(function(d){ return d.data(); });
-    /* days stored before the day was read off the file name */
-    schedRepairSync();
     schedReconcile();
     schedRebuild();
     persist(); stat(); renderSched(); doSearch();

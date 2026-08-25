@@ -41,15 +41,13 @@ test('the rows stay in the order they sit on the paper', async ({ page }) => {
     .toEqual(['8044981', '8047868', '8046871']);
 });
 
-/* A spreadsheet is checked against its own file, line by line, the same way a
-   photo is checked against the paper. Sorting it would mean reading both. */
-test('a spreadsheet keeps the file’s order too, not a sorted one', async ({ page }) => {
+test('a spreadsheet is still sorted, because it has no paper to match', async ({ page }) => {
   await asOffice(page);
   await page.evaluate(() => go('sched'));
   await page.evaluate((rows) => stageOrders(rows), PARSED.rows.map(
     r => Object.assign({ date:'2026-08-24' }, r)));
   expect(await page.evaluate(() => SCHED_DRAFT.map(r => r.order)))
-    .toEqual(['8044981', '8047868', '8046871']);
+    .toEqual(['8044981', '8046871', '8047868']);
 });
 
 test('when the totals match the sheet, it says so plainly', async ({ page }) => {

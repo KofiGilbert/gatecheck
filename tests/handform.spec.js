@@ -313,7 +313,7 @@ const FORM_ROWS = [
 ];
 
 test('the cell reader reads a straight form exactly', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
   await asOfficer(page);
   const got = await drawnForm(page, { rows: FORM_ROWS });
   expect(got, 'the grid was not even found').not.toBeNull();
@@ -325,7 +325,7 @@ test('the cell reader reads a straight form exactly', async ({ page }) => {
 });
 
 test('two degrees of tilt is found and undone', async ({ page }) => {
-  test.setTimeout(300000);
+  test.setTimeout(120000);
   await asOfficer(page);
   const got = await drawnForm(page, { rows: FORM_ROWS, rotate: 2 });
   expect(got).not.toBeNull();
