@@ -247,6 +247,9 @@ function setRole(role){
      when the email is not known either */
   sset('gc_lastrole', role);
   if(typeof applyRole === 'function') applyRole();
+  /* the schedule can arrive before the role does, and only the office may
+     write the repaired day back for the team */
+  if(role === 'office' && CLOUD.ready) schedRepairSync();
 }
 
 function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
@@ -282,6 +285,29 @@ function logCloudSet(r){
   }, 700);
 }
 
+/* An order's document is named "<date>_<order>", so one stored with no date is
+   named "_<order>". Giving it a day means writing it under its proper name and
+   taking the old one away. Only the office may write the team's schedule. */
+function schedRepairSync(){
+  if(typeof schedRepairUndated !== 'function') return;
+  schedRepairUndated();
+  if(typeof isOffice === 'function' && !isOffice()) return;
+  schedPublishRepair(schedRepairPending());
+}
+function schedPublishRepair(rows){
+  if(!CLOUD.ready || !CLOUD.user || !rows.length) return;
+  schedRepairDone(rows);
+  var db = CLOUD.db;
+  for(var i = 0; i < rows.length; i += 200){
+    var b = db.batch();
+    rows.slice(i, i + 200).forEach(function(o){
+      o.updatedBy = CLOUD.user.email;
+      b.delete(db.collection('orders').doc('_' + o.order));
+      b.set(db.collection('orders').doc(o.date + '_' + o.order), o);
+    });
+    b.commit().catch(function(){});
+  }
+}
 function startSync(){
   stopSync();
   var db=CLOUD.db;
@@ -291,6 +317,8 @@ function startSync(){
        and then retired - it must never be quietly overwritten, because they
        may have been working from it. */
     DB.office = snap.docs.map(function(d){ return d.data(); });
+    /* days stored before the day was read off the file name */
+    schedRepairSync();
     schedReconcile();
     schedRebuild();
     persist(); stat(); renderSched(); doSearch();

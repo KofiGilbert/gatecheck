@@ -32,6 +32,7 @@ Object.defineProperty(DB, 'orders', {
   }
   try{ var f = sget('gc_forms'); if(f) DB.forms = JSON.parse(f); }catch(e){}
   try{ var n = sget('gc_schednotes'); if(n) DB.notes = JSON.parse(n); }catch(e){}
+  schedRepairUndated();
   schedRebuild();
 })();
 function persist(){
@@ -40,6 +41,28 @@ function persist(){
   sset('gc_orders', JSON.stringify(DB.orders));   /* for anything still reading it */
   sset('gc_forms',  JSON.stringify(DB.forms));
   sset('gc_schednotes', JSON.stringify(DB.notes));
+}
+/* A schedule loaded before Checkpoint knew to read the day off the file name
+   was stored with no date at all. Those rows print no heading, they sit last
+   in a list that reads newest first, and the yard never sees them, because
+   the yard asks for today. A sheet with no day on it can only mean the day it
+   was loaded, so it is stamped once - and the office writes that back, so it
+   is not repaired again on every device for ever. */
+var SCHED_REPAIRED = {};
+function schedRepairUndated(){
+  var day = isoToday();
+  DB.office.forEach(function(o){
+    if(!o.date){ o.date = day; SCHED_REPAIRED[o.order] = o; } });
+  DB.local.forEach(function(o){ if(!o.date){ o.date = day; } });
+}
+/* Stamped on this device, and the team has not been told yet. The role is not
+   always known when the schedule arrives, so this is tried again as soon as
+   it is, rather than being lost until something else happens to change. */
+function schedRepairPending(){
+  return Object.keys(SCHED_REPAIRED).map(function(k){ return SCHED_REPAIRED[k]; });
+}
+function schedRepairDone(rows){
+  rows.forEach(function(o){ delete SCHED_REPAIRED[o.order]; });
 }
 function schedOfficeDates(){
   var d = {}; DB.office.forEach(function(o){ d[o.date] = 1; }); return d;
