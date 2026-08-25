@@ -139,3 +139,11 @@ how a ledger is read rather than from how a sentence is written:
 A tile in a bento grid is as tall as its tallest neighbour, so anything inside
 it with a fixed height leaves the rest empty. Give charts `flex:1 1 auto` and a
 `min-height`, not a `height`.
+
+## Copy on screens
+
+**A screen is a heading and its data.** No hint paragraph under a heading; if
+a screen needs explaining on the screen, the screen failed - redesign it.
+Empty states are one bold line plus at most one short plain line.
+Notifications are ten words or fewer. This rule has been re-taught four times;
+it is not optional.

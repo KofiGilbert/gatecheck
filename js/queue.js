@@ -1,20 +1,19 @@
 /* ===================== the gate queue =====================
 
-   Every seal verification is emailed to the receiving office, and an email is
-   a record, not a workflow: nothing in an inbox says who has been waiting
-   longest or who has already been seen to. This is the same forms, stood in
-   the order the trucks signed in at the gate - a line, the way people queue
-   to be served - and the office works down it from the top.
+   The officer at the gate files the seal form, and the driver walks over to
+   the receiving office to be served. This is the line at that window: the
+   same forms, stood in the order the drivers signed in, and the receiving
+   officer looks at it to know who is next.
 
-   Serving a truck touches nothing the officer recorded: the form stays
+   Serving a driver touches nothing the officer recorded: the form stays
    exactly as it was filed. It only gains served / servedAt / servedBy, which
    is the office's own note that this one has been dealt with. The Firestore
    rules allow the office those three fields and no others.
 */
 
-/* A truck queues for as long as its paperwork is today's problem. After 24
-   hours an unserved slip is stale - the truck is long gone - and it drops
-   off rather than standing at the head of the line forever. */
+/* A driver queues for as long as their paperwork is today's problem. After
+   24 hours an unserved slip is stale - that driver is long gone - and it
+   drops off rather than standing at the head of the line forever. */
 var Q_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function queueForms(){
@@ -76,45 +75,57 @@ function queueFind(id){
 function queueServe(id){ queueSetServed(queueFind(id), true); }
 function queueUnserve(id){ queueSetServed(queueFind(id), false); }
 
-/* ---------- the screen ---------- */
+/* ---------- the screen ----------
+   The rows wear the loaded-orders list's clothes - dayacc/daybar and the
+   three labelled stat columns - so the office reads one visual language,
+   not two. */
 function queueRowHTML(f, pos){
   var id = esc(f._id || f.ts);
   var flag = queueFlag(f);
   var next = pos === 1;
-  return '<div class="qrow' + (next ? ' qnext' : '') + (flag ? ' qflag' : '') + '">'
-    + '<span class="qpos">' + pos + '</span>'
-    + '<button type="button" class="qmain" onclick="queueView(\'' + id + '\')"'
-    +   ' aria-label="Open the seal form for ' + esc(queueWho(f)) + '">'
-    +   '<b>' + esc(queueWho(f))
-    +     (flag ? ' <i class="qseal">SEAL ' + esc(flag) + '</i>' : '') + '</b>'
-    +   '<span>' + esc(queueClock(f.ts)) + (f.driver ? ' · ' + esc(f.driver) : '')
-    +     (f.po ? ' · PO ' + esc(f.po) : '')
-    +     (f.trailer ? ' · ' + esc(String(f.trailer).toUpperCase()) : '') + '</span>'
-    + '</button>'
-    + '<button type="button" class="qserve" onclick="queueServe(\'' + id + '\')">'
-    +   (next ? 'Serve' : 'Served') + '</button>'
-    + '</div>';
+  return '<div class="dayacc' + (next ? ' qnext' : '') + (flag ? ' qflag' : '') + '">'
+    + '<div class="daybar">'
+    +   '<button type="button" class="dbmain" onclick="queueView(\'' + id + '\')"'
+    +     ' aria-label="Open the seal form for ' + esc(queueWho(f)) + '">'
+    +     '<span class="dbtext">'
+    +       '<span class="dbconf">#' + pos + (next ? ' \u00b7 NEXT' : '')
+    +         ' \u00b7 ' + esc(queueClock(f.ts)) + '</span>'
+    +       '<span class="dbdate">' + esc(queueWho(f))
+    +         (flag ? '<i class="qseal">SEAL ' + esc(flag) + '</i>' : '') + '</span>'
+    +     '</span>'
+    +     '<span class="dbsum">'
+    +       '<span class="dbstat"><b>' + esc(f.driver || '\u2014') + '</b><span>driver</span></span>'
+    +       '<span class="dbstat"><b>' + esc(f.po || '\u2014') + '</b><span>po</span></span>'
+    +       '<span class="dbstat"><b>' + esc(String(f.trailer || '\u2014').toUpperCase())
+    +         '</b><span>trailer</span></span>'
+    +     '</span>'
+    +   '</button>'
+    +   '<button type="button" class="qserve" onclick="queueServe(\'' + id + '\')">Serve</button>'
+    + '</div></div>';
 }
 function queueServedRowHTML(f){
   var id = esc(f._id || f.ts);
-  return '<div class="qrow qdone">'
-    + '<span class="qpos">✓</span>'
-    + '<button type="button" class="qmain" onclick="queueView(\'' + id + '\')">'
-    +   '<b>' + esc(queueWho(f)) + '</b>'
-    +   '<span>' + esc(queueClock(f.ts)) + ' · served '
-    +     esc(queueClock(f.servedAt || f.ts)) + '</span>'
+  return '<div class="dayacc qdone"><div class="daybar">'
+    + '<button type="button" class="dbmain" onclick="queueView(\'' + id + '\')">'
+    +   '<span class="dbtext">'
+    +     '<span class="dbconf">\u2713 served ' + esc(queueClock(f.servedAt || f.ts)) + '</span>'
+    +     '<span class="dbdate">' + esc(queueWho(f)) + '</span>'
+    +   '</span>'
+    +   '<span class="dbsum">'
+    +     '<span class="dbstat"><b>' + esc(queueClock(f.ts)) + '</b><span>in</span></span>'
+    +     '<span class="dbstat"><b>' + esc(f.po || '\u2014') + '</b><span>po</span></span>'
+    +   '</span>'
     + '</button>'
     + '<button type="button" class="qserve undo" onclick="queueUnserve(\'' + id + '\')"'
-    +   ' aria-label="Put this truck back in the line">Undo</button>'
-    + '</div>';
+    +   ' aria-label="Put this driver back in the line">Undo</button>'
+    + '</div></div>';
 }
 function renderQueue(){
   var host = $('queuebody'); if(!host) return;
   var line = queueWaiting(), done = queueServed();
   var html = '';
   if(!line.length){
-    html += '<div class="qempty"><b>Nobody waiting.</b>'
-      + '<span>Trucks join the line here the moment the gate files their seal form.</span></div>';
+    html += '<div class="qempty"><b>Nobody waiting.</b></div>';
   } else {
     html += line.map(function(f, i){ return queueRowHTML(f, i + 1); }).join('');
   }
@@ -128,7 +139,7 @@ function renderQueue(){
 }
 
 /* ---------- reading the form itself ----------
-   Tapping a truck opens its seal form as it was filed - the same drawn sheet
+   Tapping a driver opens their seal form as it was filed - the same drawn sheet
    the email carries - with the Print button. A sub-route, so a refresh keeps
    it open and back closes it. */
 function queueView(id){ go('queue', false, id); }
@@ -156,6 +167,6 @@ function queueTileSync(){
   var em = $('qtile_sub'); if(!em) return;
   var n = queueWaiting().length;
   em.textContent = n
-    ? (n === 1 ? 'One truck waiting' : n + ' trucks waiting')
+    ? (n === 1 ? 'One driver waiting' : n + ' drivers waiting')
     : 'Who to serve next';
 }

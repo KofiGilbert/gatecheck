@@ -1,4 +1,4 @@
-/* The gate queue: every seal form, stood in the order the trucks signed in,
+/* The gate queue: every seal form, stood in the order the drivers signed in,
    so the office knows who to serve next. */
 const { test, expect } = require('@playwright/test');
 const H = require('./helpers.js');
@@ -23,34 +23,34 @@ test('the office has a Gate queue tile, and the tile counts the line', async ({ 
                  { _id:'b', ts:new Date().toISOString(), carrier:'Y', sealcond:'INTACT' } ];
     officeStat();
   });
-  await expect(page.locator('#qtile_sub')).toHaveText('2 trucks waiting');
+  await expect(page.locator('#qtile_sub')).toHaveText('2 drivers waiting');
   await tile.click();
   await expect(page.locator('#sec-queue')).toBeVisible();
 });
 
-test('the line stands in the order the trucks signed in', async ({ page }) => {
+test('the line stands in the order the drivers signed in', async ({ page }) => {
   await onQueue(page, [F('late', 1, { carrier:'CH ROBINSON' }),
                        F('first', 5, { carrier:'ROEHL' }),
                        F('mid', 3, { carrier:'MARTEN' })]);
-  const names = await page.locator('.qrow:not(.qdone) .qmain b').allInnerTexts();
+  const names = await page.locator('.dayacc:not(.qdone) .dbdate').allInnerTexts();
   expect(names.map(n => n.trim().split(' ')[0])).toEqual(['ROEHL', 'MARTEN', 'CH']);
   // the head of the line is pointed at
-  await expect(page.locator('.qrow').first()).toHaveClass(/qnext/);
-  await expect(page.locator('.qrow').first().locator('.qpos')).toHaveText('1');
+  await expect(page.locator('#queuebody .dayacc').first()).toHaveClass(/qnext/);
+  await expect(page.locator('#queuebody .dayacc').first()).toContainText('#1 · NEXT');
 });
 
 test('a broken or missing seal is flagged on the row', async ({ page }) => {
   await onQueue(page, [F('a', 2), F('b', 1, { sealcond:'BROKEN', carrier:'CH ROBINSON' })]);
-  const flagged = page.locator('.qrow.qflag');
+  const flagged = page.locator('.dayacc.qflag');
   await expect(flagged).toHaveCount(1);
   await expect(flagged).toContainText('SEAL BROKEN');
 });
 
-test('serving moves the truck to the done pile, and records who served it', async ({ page }) => {
+test('serving moves the driver to the done pile, and records who served it', async ({ page }) => {
   await onQueue(page, [F('a', 2, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
-  await page.locator('.qrow').first().locator('.qserve').click();
-  await expect(page.locator('.qrow:not(.qdone)')).toHaveCount(1);
-  await expect(page.locator('.qrow.qdone')).toContainText('ROEHL');
+  await page.locator('#queuebody .dayacc').first().locator('.qserve').click();
+  await expect(page.locator('.dayacc:not(.qdone)')).toHaveCount(1);
+  await expect(page.locator('.dayacc.qdone')).toContainText('ROEHL');
   // only the serve fields go to the server: the form stays as it was filed
   const up = await page.evaluate(() => window.__fb.updated);
   expect(up).toHaveLength(1);
@@ -59,39 +59,38 @@ test('serving moves the truck to the done pile, and records who served it', asyn
   expect(up[0].data.servedBy).toBe('office@martinbrower.com');
 });
 
-test('the next truck steps up when the first is served', async ({ page }) => {
+test('the next driver steps up when the first is served', async ({ page }) => {
   await onQueue(page, [F('a', 2, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
-  await page.locator('.qrow').first().locator('.qserve').click();
-  const head = page.locator('.qrow:not(.qdone)').first();
+  await page.locator('#queuebody .dayacc').first().locator('.qserve').click();
+  const head = page.locator('.dayacc:not(.qdone)').first();
   await expect(head).toHaveClass(/qnext/);
   await expect(head).toContainText('MARTEN');
-  await expect(head.locator('.qpos')).toHaveText('1');
+  await expect(head).toContainText('#1 · NEXT');
 });
 
-test('a slip can be undone, and the truck rejoins the line in its old place', async ({ page }) => {
+test('a slip can be undone, and the driver rejoins the line in its old place', async ({ page }) => {
   await onQueue(page, [F('a', 3, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
-  await page.locator('.qrow').first().locator('.qserve').click();
-  await page.locator('.qrow.qdone .qserve.undo').click();
-  const names = await page.locator('.qrow:not(.qdone) .qmain b').allInnerTexts();
+  await page.locator('#queuebody .dayacc').first().locator('.qserve').click();
+  await page.locator('.dayacc.qdone .qserve.undo').click();
+  const names = await page.locator('.dayacc:not(.qdone) .dbdate').allInnerTexts();
   expect(names[0]).toContain('ROEHL');
-  await expect(page.locator('.qrow.qdone')).toHaveCount(0);
+  await expect(page.locator('.dayacc.qdone')).toHaveCount(0);
 });
 
 test('a slip older than a day is not still standing at the head of the line', async ({ page }) => {
   await onQueue(page, [F('old', 30, { carrier:'STALE INC' }), F('a', 1)]);
   await expect(page.locator('#queuebody')).not.toContainText('STALE INC');
-  await expect(page.locator('.qrow:not(.qdone)')).toHaveCount(1);
+  await expect(page.locator('.dayacc:not(.qdone)')).toHaveCount(1);
 });
 
 test('an empty line says so, and says how it fills', async ({ page }) => {
   await onQueue(page, []);
-  await expect(page.locator('.qempty')).toContainText('Nobody waiting');
-  await expect(page.locator('.qempty')).toContainText('seal form');
+  await expect(page.locator('.qempty')).toHaveText('Nobody waiting.');
 });
 
-test('tapping a truck opens its seal form, drawn as it was filed', async ({ page }) => {
+test('tapping a driver opens their seal form, drawn as it was filed', async ({ page }) => {
   await onQueue(page, [F('a', 1, { carrier:'ROEHL' })]);
-  await page.locator('.qmain').first().click();
+  await page.locator('#queuebody .dbmain').first().click();
   await expect(page.locator('#fqview')).toBeVisible();
   await expect(page.locator('#fqview .ycpaper img')).toBeVisible();
   await expect(page.locator('#fqview_title')).toContainText('ROEHL');
@@ -108,7 +107,7 @@ test('a refresh keeps the office on the queue, form open and all', async ({ page
   await H.gotoApp(page, { user:{email:'office@martinbrower.com'}, role:'office',
     forms: [F('a', 1, { carrier:'ROEHL' })] });
   await page.evaluate(() => go('queue'));
-  await page.locator('.qmain').first().click();
+  await page.locator('#queuebody .dbmain').first().click();
   await page.reload();
   await page.waitForFunction(() => window.CLOUD && CLOUD.role === 'office');
   await page.waitForTimeout(400);
@@ -124,7 +123,7 @@ test('a new form landing from the gate joins the line at once', async ({ page })
     renderQueue(); queueTileSync();
   });
   await expect(page.locator('#queuebody')).toContainText('FRESH TRANS');
-  await expect(page.locator('#qtile_sub')).toHaveText('2 trucks waiting');
+  await expect(page.locator('#qtile_sub')).toHaveText('2 drivers waiting');
 });
 
 test('officers do not get the queue', async ({ page }) => {
@@ -155,4 +154,29 @@ test('the queue is readable in the dark', async ({ page }) => {
     return out;
   });
   expect(bad).toEqual([]);
+});
+
+test('four tiles sit on one line and fit the screen', async ({ page }) => {
+  for (const [w, h] of [[1180, 820], [1366, 1024], [820, 1180]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await H.gotoApp(page, { user:{email:'office@martinbrower.com'}, role:'office' });
+    const m = await page.evaluate(() => {
+      const t = [...document.querySelectorAll('#sec-office .tile')];
+      const rows = new Set(t.map(x => Math.round(x.getBoundingClientRect().top))).size;
+      return { n: t.length, rows,
+               scrolls: document.documentElement.scrollHeight > innerHeight + 2 };
+    });
+    expect(m.n).toBe(4);
+    if (w > 760) expect(m.rows, `${w}x${h}: one line`).toBe(1);
+    expect(m.scrolls, `${w}x${h}: everything on screen`).toBe(false);
+  }
+});
+
+test('the queue wears the loaded-orders row, and carries no explainer', async ({ page }) => {
+  await onQueue(page, [F('a', 1, { carrier:'ROEHL' })]);
+  await expect(page.locator('#queuebody .daybar')).toHaveCount(1);
+  await expect(page.locator('#queuebody .dbstat')).toHaveCount(3);
+  const words = (await page.locator('#queuelist').innerText()).split(/\s+/).length;
+  expect(words, 'a heading and the data, nothing describing the screen').toBeLessThan(30);
+  await expect(page.locator('#sec-queue .hint')).toHaveCount(0);
 });

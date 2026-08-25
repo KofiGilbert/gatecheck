@@ -102,7 +102,12 @@
     min-height:calc(100dvh - var(--hdr-h, 62px));
     padding-bottom:max(14px,env(safe-area-inset-bottom))}
   /* square tiles: cap the grid width so 3 rows of squares still fit the screen */
-  .tiles.office{grid-template-columns:repeat(2,1fr)}
+  /* four tiles are one row; the cap keeps a square tile short enough that
+     the row and the stat line under it fit the window */
+  .tiles.office{grid-template-columns:repeat(4,1fr);
+    max-width:min(1240px, 100%, calc((100dvh - 260px) * 4 + 36px))}
+  @media (max-width:760px){ .tiles.office{grid-template-columns:repeat(2,1fr);
+    max-width:min(100%, calc(100dvh - 220px + 12px))} }
   .tiles{display:grid;gap:12px;grid-template-columns:repeat(2,1fr);
     width:100%;margin:0 auto;
     max-width:min(100%, calc((100dvh - 150px - 24px) * 2 / 3 + 12px))}
@@ -849,6 +854,31 @@
   .hstate.wait{color:var(--mut)}
   .bkvmeta{padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
   .bkvmeta b{display:block;font-size:14px;color:var(--ink)}
+  /* ---------- the gate queue ----------
+     the same row the loaded-orders list wears; only the queue's own bits
+     are styled here */
+  #sec-queue{max-width:960px;margin:0 auto;padding:14px}
+  .dayacc.qnext{border-color:var(--blue2);box-shadow:0 0 0 1px var(--blue2)}
+  .dayacc.qflag{border-color:var(--cautionbd)}
+  .dayacc.qdone{opacity:.7}
+  .qseal{font-style:normal;font-size:11px;font-weight:800;color:var(--redink);
+    margin-left:8px;letter-spacing:.3px}
+  .qserve{flex:0 0 auto;align-self:center;margin:0 10px 0 8px;min-height:44px;
+    min-width:76px;border:none;border-radius:10px;background:var(--blue);color:#fff;
+    font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;
+    transition:background 130ms ease-out,transform 90ms ease-out}
+  .qserve:hover{background:#16232E}
+  .qserve:active{transform:translateY(1px)}
+  .qserve:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
+  .qserve.undo{background:var(--sunk);color:var(--mut)}
+  .qserve.undo:hover{background:var(--hover);color:var(--ink)}
+  .qsep{margin:20px 4px 10px;font-size:11px;font-weight:700;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--mut)}
+  .qempty{display:flex;flex-direction:column;align-items:center;gap:6px;
+    text-align:center;padding:44px 20px;color:var(--mut)}
+  .qempty b{font-size:15px;color:var(--ink)}
+  .qempty span{font-size:12.5px}
+
   /* The filed check, as the sheet it was filed as. It is taller than any
      screen, so the box it sits in scrolls: without that you see the top of
      the form and nothing else, and every check looks like every other one. */
@@ -1768,9 +1798,7 @@
 <!-- ============ GATE QUEUE ============ -->
 <section id="sec-queue">
   <div id="queuelist" class="card">
-    <h2>Waiting at the gate <span id="queuecnt" style="color:var(--mut);font-weight:600"></span></h2>
-    <div class="hint">The line, in the order the trucks signed in. Tap a truck for its
-      seal form; Serve moves it to the done pile.</div>
+    <h2>Drivers waiting <span id="queuecnt" style="color:var(--mut);font-weight:600"></span></h2>
     <div id="queuebody"></div>
   </div>
 </section>
@@ -2144,7 +2172,7 @@
   </div>
   <div class="dvbody" id="dfv_body"></div>
 </div>
-<!-- one truck's seal form, as it was filed -->
+<!-- one driver's seal form, as it was filed -->
 <div id="fqview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="fqview_title" hidden>
   <div class="dvbar">
     <button type="button" class="dvback" aria-label="Back to the queue"

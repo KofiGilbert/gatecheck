@@ -1033,7 +1033,7 @@ function officeStat(){
   var q = (typeof queueWaiting==='function') ? queueWaiting().length : 0;
   el.textContent = (DB.orders? DB.orders.length : 0)+' orders loaded · '
     + released+' yard check'+(released===1?'':'s')+' released · '
-    + (q ? q+' truck'+(q===1?'':'s')+' waiting at the gate' : 'nobody at the gate');
+    + (q ? q+' driver'+(q===1?'':'s')+' waiting to be served' : 'nobody waiting');
   if(typeof queueTileSync==='function') queueTileSync();
   blockBadge();
 }
