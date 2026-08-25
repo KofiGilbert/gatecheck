@@ -332,8 +332,10 @@ test('past the hour it is Overdue, and still actionable', async ({ page }) => {
 test('a completed check shows when and who', async ({ page }) => {
   await onYard(page);
   const st = await page.evaluate(() => {
-    const slot = YC_SLOTS[2];
-    DB.yardchecks.push({ date: ycTodayISO(), time: slot, rows: [{escalate:[]}],
+    /* a slot on THIS officer's shift: the board says nothing about the other
+       one, which is right, and is not what this test is asking about */
+    const slot = ycShiftSlots()[2];
+    DB.yardchecks.push({ date: ycSlotDate(slot), time: slot, rows: [{escalate:[]}],
                          name: 'Musiliu Ibrahim', ts: new Date(2026,7,21,8,12).toISOString() });
     return ycSlotStatus(slot);
   });
@@ -345,7 +347,8 @@ test('a completed check shows when and who', async ({ page }) => {
 test('the officer is told when a check becomes available', async ({ page }) => {
   await onYard(page);
   await page.evaluate(() => {
-    DB.yardslots = [{ date: ycTodayISO(), slot: YC_SLOTS[5], loadedAt: new Date().toISOString() }];
+    const slot = ycShiftSlots()[5];
+    DB.yardslots = [{ date: ycSlotDate(slot), slot, loadedAt: new Date().toISOString() }];
     ycNotifyReady();
   });
   const toast = page.locator('#toast');
@@ -421,9 +424,10 @@ test('an officer is never blocked from starting a check', async ({ page }) => {
 test('a loaded slot shows how many trailers are in the block', async ({ page }) => {
   await onYard(page);
   const st = await page.evaluate(() => {
-    DB.yardslots = [{ date: ycTodayISO(), slot: YC_SLOTS[2],
+    const slot = ycShiftSlots()[2];
+    DB.yardslots = [{ date: ycSlotDate(slot), slot,
                       loadedAt: new Date().toISOString(), count: 14 }];
-    return ycSlotStatus(YC_SLOTS[2]);
+    return ycSlotStatus(slot);
   });
   expect(st.detail).toContain('14 trailers');
 });
@@ -569,11 +573,13 @@ test('the card follows the reference: status on top, time in the centre, KPI bel
 test('completed cards carry a real KPI, and empty states never invent one', async ({ page }) => {
   await onYard(page);
   const r = await page.evaluate(() => {
-    const t = ycTodayISO();
-    DB.yardchecks = [{ date:t, time:YC_SLOTS[0], name:'K', ts:new Date().toISOString(),
+    const mine = ycShiftSlots(), done = mine[0];
+    /* one on this shift, and one the officer has no business being asked about */
+    const other = YC_SLOTS.filter(s => mine.indexOf(s) < 0)[0];
+    DB.yardchecks = [{ date:ycSlotDate(done), time:done, name:'K', ts:new Date().toISOString(),
       rows:[{escalate:['TEMP']},{escalate:[]},{escalate:[]},{escalate:[]}] }];
     DB.yardslots = [];
-    return { done: ycSlotStatus(YC_SLOTS[0]), wait: ycSlotStatus(YC_SLOTS[11]) };
+    return { done: ycSlotStatus(done), wait: ycSlotStatus(other) };
   });
   expect(r.done.kpi).toBe('25%');                 // 1 of 4 escalated
   expect(r.done.kpiLabel).toBe('escalation rate');

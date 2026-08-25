@@ -155,7 +155,9 @@ test('tapping it opens that check, with a Print button', async ({ page }) => {
 test('reading it clears the bell, and it stays cleared', async ({ page }) => {
   await officeWith(page, '1000');
   await page.click('#notif');
-  await page.locator('#notifpanel .npitem', { hasText: 'Yard check completed' }).click();
+  const item = page.locator('#notifpanel .npitem', { hasText: 'Yard check completed' });
+  await expect(item).toBeVisible();        // drawn before it is tapped, or the tap lands on air
+  await item.click();
   await expect(page.locator('#notif')).toBeHidden();
   await page.reload();
   await page.waitForFunction(() => window.CLOUD && CLOUD.role === 'office');
