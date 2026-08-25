@@ -88,3 +88,42 @@ test('the preview refuses to open while a door is claimed twice', async ({ page 
   expect(said).toContain('Door 46');
   await expect(page.locator('#ycactions')).toBeHidden();
 });
+
+/* Things only looking at the screen turned up. */
+
+test('typing OFF and moving on does not throw', async ({ page }) => {
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await sheet(page, [ROW('LR7435'), ROW('57679')]);
+  await page.evaluate(() => { go('yardsheet', false, YC.time); renderYard(); });
+  const box = page.locator('#ycrows tr').nth(2).locator('input').nth(2);
+  await box.fill('OFF');
+  await box.blur();
+  await page.waitForTimeout(400);
+  expect(errs, 'redrawing the sheet during a blur throws').toEqual([]);
+  expect(await page.evaluate(() => YC.rows[1].set)).toBe('OFF');
+  expect(await page.evaluate(() => YC.rows[1].temp)).toBe('—');
+});
+
+test('the preview draws without throwing, and says so', async ({ page }) => {
+  const errs = [];
+  page.on('pageerror', e => errs.push(e.message));
+  await sheet(page, [ROW('LR7435', { intact:'N', door:'34', action:'' })]);
+  await page.evaluate(() => { go('yardsheet', false, YC.time); renderYard(); ycPreview(); });
+  await expect(page.locator('#ycpreview img')).toBeVisible({ timeout: 30000 });
+  await expect(page.locator('#toast')).toContainText('save / email');
+  expect(errs, 'ycactions was removed from the page years ago').toEqual([]);
+});
+
+test('the heading does not lecture about temperatures over a door clash',
+  async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'46' })]);
+  let said = '';
+  page.on('dialog', d => { said = d.message(); d.dismiss(); });
+  await page.evaluate(() => ycPreview());
+  await page.waitForTimeout(300);
+  expect(said).toContain('Fix these before continuing');
+  expect(said).not.toContain('tenth degree');
+  expect(said).toContain('a door holds one trailer');
+});

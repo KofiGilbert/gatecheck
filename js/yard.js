@@ -493,7 +493,10 @@ function ycBlurSet(i, el){
   var r = YC.rows[i]; if(!r || !el) return;
   var v = String(el.value || '').trim().toUpperCase();
   if(v !== String(r.set || '')){ ycSet(i, 'set', v, true); el.value = v; }
-  if(ycIsOff(r)) renderYard();
+  /* Redrawing the sheet takes away the box the browser is still leaving, and
+     it throws: "the node to be removed is no longer a child of this node."
+     It waits until the blur is over. */
+  if(ycIsOff(r)) setTimeout(renderYard, 0);
 }
 function ycBlurTemp(i, el){
   var r = YC.rows[i]; if(!r || !el) return;
@@ -576,14 +579,15 @@ function ycPreview(){
   ycSaveDraft();
   var p = ycProblems();
   if(p.block.length){
-    alert('Fix these before continuing (temps MUST be to the tenth degree):\n\n• '+p.block.join('\n• '));
+    /* the heading used to say temps must be to the tenth, which reads oddly
+       above "a door holds one trailer" - each line says what is wrong */
+    alert('Fix these before continuing:\n\n• '+p.block.join('\n• '));
     return;
   }
   if(p.warn.length && !confirm('These fields are still empty:\n\n• '+p.warn.join('\n• ')
       +'\n\nOK = continue anyway · Cancel = go back')) return;
   drawYardPaper(ycData(), function(cv){
     $('ycpreview').innerHTML = '<img alt="yard check preview" style="width:100%;border:1px solid var(--line);border-radius:8px" src="'+cv.toDataURL('image/png')+'">';
-    $('ycactions').style.display='block';
     toast('Check the log, then save / email below');
   });
 }
