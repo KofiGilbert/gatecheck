@@ -107,3 +107,38 @@ test('a sheet with a date column of its own keeps it', async ({ page }) => {
     + '2026-09-01,8065800,GRAPHIC PACKAGING,1570,30');
   expect((await draft(page))[0].date).toBe('2026-09-01');
 });
+
+/* Excel copies what is on the screen, not what is in the cell, so a thousand
+   arrives as "1,570". The app read that as not-a-number and stored a zero:
+   every order of a thousand cases or more came in empty, and a sheet of
+   50,622 cases totalled 11,332. */
+test('a thousand cases is a thousand, not nothing', async ({ page }) => {
+  await paste(page, TSV);
+  const d = await draft(page);
+  expect(d[0].cases, '"1,570" became a zero').toBe(1570);
+  expect(d.filter(r => r.cases === 0).length, 'orders arrived with no cases').toBe(0);
+  expect(d.reduce((a, r) => a + r.cases, 0)).toBe(50622);
+  expect(d.reduce((a, r) => a + r.pallets, 0)).toBe(939);
+});
+
+test('and the sheet then agrees with itself', async ({ page }) => {
+  await paste(page, TSV);
+  await expect(page.locator('#drafttally')).toContainText('totals match');
+  await expect(page.locator('#drafttally')).toHaveClass(/ok/);
+  await expect(page.locator('#drafttally')).not.toContainText('does not add up');
+});
+
+test('the figures under the grid add up to the sheet', async ({ page }) => {
+  await paste(page, TSV);
+  const foot = await page.textContent('#draftgrid tr:last-child');
+  expect(foot).toContain('44 orders');
+  expect(foot).toContain('50,622');
+  expect(foot).toContain('939');
+});
+
+test('every way of writing a number is read the same', async ({ page }) => {
+  await H.gotoApp(page, { user:{email:'o@m.com'}, role:'office' });
+  const got = await page.evaluate(() => ['1,570','1570',' 1,570 ','2,010','68','',
+    null, '1,053.0', '12,345,678'].map(cellNum));
+  expect(got).toEqual([1570, 1570, 1570, 2010, 68, 0, 0, 1053, 12345678]);
+});

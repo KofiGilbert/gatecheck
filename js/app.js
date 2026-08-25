@@ -442,6 +442,15 @@ function stat(){
 }
 
 /* ======================= import ======================= */
+/* Excel copies what is on the screen, not what is in the cell, so a thousand
+   arrives as "1,570". +"1,570" is NaN, and NaN||0 is a zero: every order of a
+   thousand cases or more came in empty, and a sheet of 50,622 cases totalled
+   11,332. Anything that is not a digit, a dot or a minus is not part of the
+   number. */
+function cellNum(v){
+  var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
 function normalizeRow(o){
   return {
     date:String(o.date||'').trim(), zone:String(o.zone||'').trim(),
@@ -450,7 +459,7 @@ function normalizeRow(o){
     order:String(o.order||o.order_number||'').trim(),
     vendor:String(o.vendor||o.vendor_name||'').trim(),
     carrier:String(o.carrier||'').trim(), contact:String(o.contact||'').trim(),
-    cases:+o.cases||0, pallets:+o.pallets||0,
+    cases:cellNum(o.cases), pallets:cellNum(o.pallets),
     /* where this row stood in the file it came from. Kept on the record, so
        the order survives the trip through Firestore, which returns documents
        in whatever order it likes. */
