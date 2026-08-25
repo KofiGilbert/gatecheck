@@ -118,3 +118,43 @@ test('a check with one trailer still draws a full sheet', async ({ page }) => {
   expect(w.filter(x => x.x > 900 && x.y > 350 && x.text !== '*ESCALATE*')
           .map(x => x.text)).toEqual(['N/A']);
 });
+
+/* ---- pressing Print prints the sheet, once ---- */
+async function openFiled(page) {
+  await asOffice(page);
+  await page.evaluate((c) => {
+    DB.yardchecks = [Object.assign({ date: ycTodayISO(), ts: new Date().toISOString() }, c)];
+    ycPersistAll(); go('block', false, '1000');
+  }, CHECK);
+  await expect(page.locator('#bkview_body .ycpaper img')).toBeVisible();
+}
+
+test('print emits one page: the sheet, and nothing around it', async ({ page }) => {
+  await openFiled(page);
+  await page.emulateMedia({ media: 'print' });
+  const m = await page.evaluate(() => {
+    const gone = (sel) => { const el = document.querySelector(sel);
+      return !el || getComputedStyle(el).display === 'none'; };
+    const img = document.querySelector('#bkview .ycpaper img').getBoundingClientRect();
+    return {
+      chrome: ['header', 'main', '#bkview .dvbar', '#bkview .bkvmeta'].every(gone),
+      sheetShown: img.height > 100,
+      // US Letter at 96dpi is 816x1056; one page means the sheet fits its height
+      fitsOnePage: img.height <= document.documentElement.clientHeight + 2,
+    };
+  });
+  expect(m.chrome, 'only the sheet prints').toBe(true);
+  expect(m.sheetShown).toBe(true);
+  expect(m.fitsOnePage, 'four pages meant the sheet was never capped to one').toBe(true);
+});
+
+test('nothing but the sheet contributes any printed height', async ({ page }) => {
+  await openFiled(page);
+  await page.emulateMedia({ media: 'print' });
+  const m = await page.evaluate(() => {
+    const img = document.querySelector('#bkview .ycpaper img').getBoundingClientRect();
+    return { page: document.body.scrollHeight, sheet: Math.round(img.height) };
+  });
+  expect(m.page, 'trailing furniture is what turned one page into four')
+    .toBeLessThanOrEqual(m.sheet + 40);
+});

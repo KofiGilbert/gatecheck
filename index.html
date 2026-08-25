@@ -971,11 +971,21 @@
   @media (max-width:900px){ .bkslots{grid-template-columns:repeat(3,1fr)} }
   @media (max-width:520px){ .bkslots{grid-template-columns:repeat(2,1fr)} }
   /* printing a completed check: the sheet, nothing round it */
+  /* Printing a filed check prints the sheet: one page, nothing else. The
+     canvas is drawn at US Letter proportions, so capped to the page height it
+     lands on exactly one sheet - uncapped, the browser pads it out over four. */
   @media print{
-    header,#bkboard,#bkload,.dvbar,.toast,#drawer{display:none !important}
-    #bkview{position:static !important;height:auto !important}
-    #bkview .dvbody{overflow:visible !important;height:auto !important}
+    header,main,.dvbar,.toast,#drawer,#dayview,#anlist{display:none !important}
     body{background:#fff}
+    #bkview{position:static !important;height:auto !important;display:block !important}
+    #bkview .dvbody{overflow:visible !important;height:auto !important;
+      background:#fff !important;display:block !important}
+    #bkview .bkvmeta{display:none !important}
+    #bkview .ycpaper{overflow:visible !important;padding:0 !important;margin:0 !important}
+    #bkview .ycpaper img{width:auto !important;max-width:100% !important;
+      max-height:96vh !important;margin:0 auto !important;
+      border:none !important;border-radius:0 !important;
+      page-break-inside:avoid;break-inside:avoid}
   }
   /* the box that caused an escalation says so by being marked */
   table.ycsheet td.bad{background:#FCEEEC}
