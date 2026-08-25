@@ -320,6 +320,70 @@ function ingPdfRows(tc){
                    .filter(function(s){ return s !== ''; });
   });
 }
+/* A PDF is one of two things. A printout carries its text, and the text is
+   pulled straight out. A picture of paper carries none - and that includes the
+   forms Checkpoint prints itself, which are drawn rather than typed, so there
+   is not one letter in the file to find.
+
+   A picture has to be read, and the page-of-text reader makes nonsense of a
+   small table: a form rendered at a thousand pixels across came back as
+   "pom [ee [= [wf=[e [=f =|". So a trailer list or a yard check goes to the
+   photo reader that was built for these forms, which renders the page large
+   and reads it cell by cell. */
+function ingPdfLoad(buf, name){
+  function asText(){
+    return ingPdfGrid(buf, name).then(function(g){
+      ingSay(name, 'Sorting the rows', 100);
+      ingGridLand(g, 'PDF');
+    });
+  }
+  /* a schedule is read the way it always was */
+  if(DZ_MODE !== 'block' && DZ_MODE !== 'yard') return asText();
+  return ingPdfLib().then(function(lib){
+    /* its own copy: opening a document takes the buffer away from whoever
+       else was going to read it, and the second reader then finds nothing */
+    return lib.getDocument({ data: new Uint8Array(buf).slice(0) }).promise;
+  }).then(function(pdf){
+    return ingPdfIsPicture(pdf).then(function(picture){
+      if(!picture) return asText();
+      ingSay(name, 'This PDF is a picture of the form, reading it as one', null);
+      return ingPdfPageFile(pdf, name).then(function(f){
+        if(DZ_MODE === 'block' && typeof ycPhotoTrailers === 'function')
+          return ycPhotoTrailers(f).then(function(rows){ ingBlockLand(rows, 'PDF'); });
+        if(typeof ycImportPhoto === 'function') return ycImportPhoto(f);
+        return asText();
+      });
+    });
+  }).catch(function(){ return asText(); });
+}
+/* barely a letter on the first page means nothing was typed into it */
+function ingPdfIsPicture(pdf){
+  return pdf.getPage(1).then(function(pg){
+    return pg.getTextContent().then(function(tc){
+      return ingPdfRows(tc).join('').replace(/[^A-Za-z0-9]/g, '').length < 40;
+    });
+  }).catch(function(){ return false; });
+}
+/* the page as a photograph, big enough for the reader to tell a 5 from an S */
+function ingPdfPageFile(pdf, name){
+  return pdf.getPage(1).then(function(pg){
+    var one = pg.getViewport({ scale: 1 });
+    var scale = Math.max(2, Math.min(6, 2600 / (one.width || 612)));
+    var vp = pg.getViewport({ scale: scale });
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    return pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise
+      .then(function(){
+        return new Promise(function(done, fail){
+          cv.toBlob(function(b){
+            if(!b) return fail(new Error('could not draw that page'));
+            done(new File([b], String(name).replace(/\.pdf$/i, '') + '.png',
+                          { type: 'image/png' }));
+          }, 'image/png');
+        });
+      });
+  });
+}
 function ingPdfGrid(buf, name){
   return ingPdfLib().then(function(lib){
     return lib.getDocument({ data: new Uint8Array(buf) }).promise;
@@ -345,7 +409,9 @@ function ingPdfGrid(buf, name){
 function ingPdfScan(pg, name, i, n, grid){
   if(typeof getWorker !== 'function' || typeof Tesseract === 'undefined') return Promise.resolve();
   ingSay(name, 'Page ' + i + ' of ' + n + ' is a scan, reading it as a photo', null);
-  var vp = pg.getViewport({ scale: 2 });
+  /* a thousand pixels across is not enough to read a table off */
+  var one = pg.getViewport({ scale: 1 });
+  var vp = pg.getViewport({ scale: Math.max(2, Math.min(6, 2600 / (one.width || 612))) });
   var cv = document.createElement('canvas');
   cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
   return pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise
@@ -482,10 +548,7 @@ function ingestFile(file){
     return ingBuffer(file).then(function(b){ ingGridLand(ingDocxGrid(b), 'Word document'); });
 
   if(kind === 'pdf')
-    return ingBuffer(file).then(function(b){ return ingPdfGrid(b, name); }).then(function(g){
-      ingSay(name, 'Sorting the rows', 100);
-      ingGridLand(g, 'PDF');
-    });
+    return ingBuffer(file).then(function(b){ return ingPdfLoad(b, name); });
 
   /* a photograph: the reader that was already here, now reachable */
   if(DZ_MODE === 'block' && typeof ycPhotoTrailers === 'function')
