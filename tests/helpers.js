@@ -1,5 +1,9 @@
 const FB_STUB = (opts) => {
   window.__fb = Object.assign({ user:null, authError:null, resetError:null, pending:false, authDelay:0, orders:[], role:'officer' }, opts||{});
+  /* a signed-in user can prove it: the app reads a document's own create time
+     over the REST interface, which the browser SDK does not hand out */
+  if(window.__fb.user && !window.__fb.user.getIdToken)
+    window.__fb.user.getIdToken = () => Promise.resolve('test-token');
   const listeners = [];
   const err = (code) => { const e = new Error('stub'); e.code = code; return e; };
   const authObj = {

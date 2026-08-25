@@ -49,12 +49,20 @@ function persist(){
    was loaded, so it is stamped once - and the office writes that back, so it
    is not repaired again on every device for ever. */
 var SCHED_REPAIRED = {};
-function schedRepairUndated(){
-  var day = isoToday();
-  DB.office.forEach(function(o){
-    if(!o.date){ o.date = day; SCHED_REPAIRED[o.order] = o; } });
-  DB.local.forEach(function(o){ if(!o.date){ o.date = day; } });
+function schedUndated(){
+  return DB.office.filter(function(o){ return !o.date; })
+    .concat(DB.local.filter(function(o){ return !o.date; }));
 }
+/* days is order number -> the day that row was loaded. Today is what is left
+   when there is nothing better, not what is reached for first. */
+function schedRepairUndated(days){
+  days = days || {};
+  var today = isoToday();
+  DB.office.forEach(function(o){
+    if(!o.date){ o.date = days[o.order] || today; SCHED_REPAIRED[o.order] = o; } });
+  DB.local.forEach(function(o){ if(!o.date){ o.date = days[o.order] || today; } });
+}
+function schedRepairReset(){ SCHED_REPAIRED = {}; }
 /* Stamped on this device, and the team has not been told yet. The role is not
    always known when the schedule arrives, so this is tried again as soon as
    it is, rather than being lost until something else happens to change. */

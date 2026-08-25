@@ -290,9 +290,62 @@ function logCloudSet(r){
    taking the old one away. Only the office may write the team's schedule. */
 function schedRepairSync(){
   if(typeof schedRepairUndated !== 'function') return;
-  schedRepairUndated();
+  var undated = schedUndated();
+  if(!undated.length){ schedRepairPublish(); return; }
+  schedRepairReset();
+  schedLoadedDays(undated).then(function(days){
+    schedRepairUndated(days);
+    schedRebuild(); persist(); stat(); renderSched(); doSearch();
+    if(typeof ycUpdateBadge === 'function') ycUpdateBadge();
+    /* a day that was invisible a moment ago is today's sheet now, and the
+       officer is standing on the screen that should be showing it */
+    if(typeof routeResync === 'function') routeResync();
+    schedRepairPublish();
+  });
+}
+function schedRepairPublish(){
   if(typeof isOffice === 'function' && !isOffice()) return;
   schedPublishRepair(schedRepairPending());
+}
+/* Which day a row belongs to is not in the row - but Firestore stamps every
+   document with the time it was written, and for a schedule that is the day it
+   was loaded. The browser SDK does not hand that out, so it is read over the
+   REST interface, under the same rules and the same sign-in. */
+function schedLoadedDays(rows){
+  if(!CLOUD.user || !CLOUD.user.getIdToken || !rows.length) return Promise.resolve({});
+  var base = 'https://firestore.googleapis.com/v1/projects/'
+           + FIREBASE_CONFIG.projectId + '/databases/(default)/documents';
+  return CLOUD.user.getIdToken().then(function(tok){
+    var jobs = [];
+    for(var i = 0; i < rows.length; i += 100){
+      jobs.push(fetch(base + ':batchGet', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documents: rows.slice(i, i + 100).map(function(o){
+          return base + '/orders/_' + o.order; }) })
+      }).then(function(r){ return r.ok ? r.json() : []; }).catch(function(){ return []; }));
+    }
+    return Promise.all(jobs);
+  }).then(function(parts){
+    var days = {};
+    parts.forEach(function(list){
+      (list || []).forEach(function(e){
+        var f = e && e.found;
+        if(!f || !f.createTime) return;
+        var day = schedLocalDay(f.createTime);
+        if(day) days[String(f.name || '').split('/').pop().replace(/^_/, '')] = day;
+      });
+    });
+    return days;
+  }).catch(function(){ return {}; });
+}
+/* the day it was loaded where it was loaded: a sheet sent at eight in the
+   evening here is already tomorrow by UTC's reckoning */
+function schedLocalDay(iso){
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+       + '-' + String(d.getDate()).padStart(2, '0');
 }
 function schedPublishRepair(rows){
   if(!CLOUD.ready || !CLOUD.user || !rows.length) return;
