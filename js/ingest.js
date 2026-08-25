@@ -450,6 +450,8 @@ function ingGridLand(grid, what){
 /* ---------- the one door ---------- */
 function ingestFile(file){
   var name = String(file && file.name || 'file');
+  /* many schedules carry their day only here */
+  ING_SOURCE = name;
   var kind = ingKind(file);
   if(kind === 'old'){
     ingQuiet();
