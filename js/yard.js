@@ -754,14 +754,84 @@ function ycParseTrailers(text){
       if(/^\d\/\d$/.test(t)) break;                  // fuel fraction
       if(/^[YN]$/.test(t) && prod.length) break;       // intact
       if(/^(N\/A|NA|NIA|MIA|MA)$/.test(t)) break;     // N/A scrawl
+      if(/^(OFF|DEF|FULL|EMPTY|E)$/.test(t) && prod.length) break;  // a reading word
       if(!/[A-Z]/.test(t) && !/^\d+:\d+$/.test(t)) break;
       prod.push(t);
     }
     if(!seen[trailer]){ seen[trailer]=1;
       var r = ycRowBlank(); r.trailer=trailer; r.product=prod.join(' ');
+      /* whatever readings follow the product were written on the form in pen */
+      ycReadHand(r, toks.slice(ti + 1 + prod.length));
       out.push(r); }
   });
   return out.slice(0,40);
+}
+/* ---- a form already filled in with a pen ----
+   A photo of the trailer LIST carries trailer and product. A photo of the
+   COMPLETED form carries the whole row: set point, temperature, fuel, Y/N,
+   door. The columns run left to right, so the tokens after the product are
+   claimed in that order - and a token that fits nothing is skipped rather
+   than guessed at, because a wrong reading filed under an officer's name is
+   worse than a blank one. */
+function ycReadHand(r, toks){
+  /* what a token would mean in each column, or null if it cannot be that */
+  var fits = {
+    set: function(t){
+      if(t === 'OFF' || t === 'DEF') return t;
+      if(/^-?\d{1,2}$/.test(t) && +t >= -30 && +t <= 45) return t;
+      if(/^-?\d{1,2}\.0$/.test(t)) return String(parseInt(t, 10));
+      return null;
+    },
+    temp: function(t){
+      if(t === 'DEF') return t;
+      if(/^-?\d{1,2}\.\d$/.test(t)) return t;
+      if(/^-?\d{1,2}$/.test(t) && +t >= -40 && +t <= 60) return (+t).toFixed(1);
+      return null;
+    },
+    fuel: function(t){
+      if(t === 'FULL' || t === 'F') return 'FULL';
+      if(/^[1-3]\/[24]$/.test(t)) return t;
+      if(t === 'E' || t === 'EMPTY') return 'EMPTY';
+      return null;
+    },
+    intact: function(t){
+      if(t === 'Y' || t === 'N') return t;
+      if(t === 'V') return 'Y';       /* a pen Y, as OCR usually reads it */
+      return null;
+    },
+    door: function(t){
+      if(/^\d{1,2}$/.test(t) && +t >= 1 && +t <= 46) return t;
+      if(/^(N\/A|NA)$/.test(t)) return 'N/A';
+      return null;
+    }
+  };
+  var want = ['set', 'temp', 'fuel', 'intact', 'door'];
+  var wi = 0;
+  for(var i = 0; i < toks.length && wi < want.length; i++){
+    var t = toks[i];
+    /* the first column, from here rightward, that this token can be: that is
+       how a blank column on the paper does not shift every reading after it,
+       and how a scrawl that fits nothing claims nothing */
+    for(var j = wi; j < want.length; j++){
+      var v = fits[want[j]](t);
+      if(v !== null){
+        r[want[j]] = v;
+        wi = j + 1;
+        if(want[j] === 'set' && v === 'OFF'){
+          if(typeof ycOffFill === 'function') ycOffFill(r);
+          return;
+        }
+        break;
+      }
+    }
+  }
+  if(String(r.set || '').trim()) r.type = ycAutoType(r);
+}
+/* how many rows the photo carried readings for, not just names */
+function ycHandCount(rows){
+  return (rows || []).filter(function(r){
+    return String(r.temp||'').trim() || r.fuel || r.intact;
+  }).length;
 }
 function ycPhotoScore(text){
   var up=text.toUpperCase();
@@ -830,7 +900,15 @@ async function ycImportPhoto(file){
   YC.rows = rows;
   ycSaveDraft(); renderYard();
   if(typeof renderYcGrid === 'function') renderYcGrid();
-  toast('📷 Found '+rows.length+' trailers. Check the list, then enter temps, fuel and the rest.');
+  var hand = ycHandCount(rows);
+  if(hand >= Math.max(1, Math.ceil(rows.length / 2))){
+    /* the pen already did the check: straight to the sheet, to be read over
+       against the paper before it is submitted */
+    go('yardsheet', false, YC.time);
+    toast('📷 Read the completed form: '+rows.length+' trailers. Check it against the paper, then submit.');
+  } else {
+    toast('📷 Found '+rows.length+' trailers. Check the list, then enter temps, fuel and the rest.');
+  }
 }
 
 /* ======================= receiving office: trailer blocks ======================= */
