@@ -131,10 +131,13 @@ function penStrip(d, n){
     if(sat > 0.34 && mx < 215) d[p]=d[p+1]=d[p+2]=255;
   }
 }
-function preprocess(cv){
+function preprocess(cv, keepInk){
   var w=cv.width,h=cv.height,g=cv.getContext('2d');
   var img=g.getImageData(0,0,w,h),d=img.data,n=w*h;
-  penStrip(d, n);
+  /* On a schedule, pen is somebody's scribble over the print and comes off.
+     On a completed yard check the pen IS the record - stripping it read the
+     ruled grid perfectly and erased every answer written on it. */
+  if(!keepInk) penStrip(d, n);
   var gray=new Float32Array(n);
   for(var i=0,p=0;i<n;i++,p+=4) gray[i]=0.299*d[p]+0.587*d[p+1]+0.114*d[p+2];
   var W=w+1;

@@ -26,6 +26,8 @@ const FB_STUB = (opts) => {
         return ()=>{};
       },
       orderBy(){ return chain; }, limit(){ return chain; },
+      add(data){ (window.__fb.added = window.__fb.added || []).push({ name, data });
+        return Promise.resolve({ id: 'new' + (window.__fb.added.length) }); },
       doc(id){ return {
         id: id,
         onSnapshot(cb){

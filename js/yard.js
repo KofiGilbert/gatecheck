@@ -730,19 +730,53 @@ function ycHistDel(i){
 }
 /* ---------- yard photo import ---------- */
 var YC_STOPWORDS = /TRAILER|PRODUCT|DATE:|TIME|NAME|ESCALATE|ACTION|DOOR|INTACT|FUEL|TEMP|SET POINT|INSPECTION|CRITICAL|FREEZER|COOLER|LIMITS|LOG|WAS TAKEN/;
+/* ---- what a pen looks like to a print-trained reader ----
+   Learned from a real photographed check: the ruled lines read as | and [,
+   a handwritten -10 comes out -{0, ~10 or ={0, the decimal point reads as a
+   dash (-8-3 is -8.3), a fraction bar smears (3H, 3f4 are 3/4) and a pen Y
+   is ¥ or V. These repairs are narrow - each one only fires in the shape it
+   was seen in - because inventing a reading is worse than leaving the box
+   blank for the officer. */
+function ycPenFix(line){
+  return String(line)
+    /* the table's own rules are separators, not characters */
+    .replace(/[|\[\]{}()]/g, ' ')
+    .replace(/[~=\u2014\u2013]/g, '-')
+    .replace(/[\u00b0\u00b7\u2022]/g, '.')
+    .replace(/\u00a5/g, 'Y')
+    /* -1o, -I0, -l0: a letter standing where a digit was written */
+    .replace(/(^|\s)(-?)[1Il]?[oO](\d)/g, '$1$210$3')
+    .replace(/(\d)[oO](\s|$)/g, '$10$2')
+    .replace(/(^|\s)-[Il](\s|$)/g, '$1-1$2')
+    /* the pen's decimal point, read as a dash: -8-3 is -8.3 */
+    .replace(/(^|\s)(-?\d)-(\d)(\s|$)/g, '$1$2.$3$4');
+}
 function ycParseTrailers(text){
   var out=[], seen={};
   text.split(/\n/).forEach(function(line){
-    var up = line.toUpperCase();
+    var up = ycPenFix(line).toUpperCase();
     if(YC_STOPWORDS.test(up)) return;
     var toks = up.trim().split(/\s+/).map(function(t){
       return t.replace(/[^A-Z0-9:\/.-]/g,'');
     }).filter(Boolean);
     if(!toks.length) return;
-    // find trailer token
+    // find trailer token. OCR misreads a digit as I, O, S or B often enough
+    // that a letter WEDGED BETWEEN digits is treated as the digit it was -
+    // R25I06 is R25106 - while the real letters at the edges are left alone.
+    function unOcr(t){
+      var prev = '';
+      while(prev !== t){ prev = t;
+        t = t.replace(/(\d)[IL](?=\d)/g, '$11').replace(/(\d)O(?=\d)/g, '$10')
+             .replace(/(\d)S(?=\d)/g, '$15').replace(/(\d)B(?=\d)/g, '$18');
+      }
+      return t;
+    }
     var ti=-1;
     for(var i=0;i<Math.min(toks.length,2);i++){
-      if(/^[A-Z]{0,2}\d{3,6}[A-Z]{0,2}$/.test(toks[i]) && /\d{3}/.test(toks[i])){ ti=i; break; }
+      var cand = unOcr(toks[i]);
+      if(/^[A-Z]{0,2}\d{3,6}[A-Z]{0,2}$/.test(cand) && /\d{3}/.test(cand)){
+        toks[i] = cand; ti = i; break;
+      }
     }
     if(ti<0) return;
     var trailer = toks[ti];
@@ -777,21 +811,29 @@ function ycReadHand(r, toks){
   /* what a token would mean in each column, or null if it cannot be that */
   var fits = {
     set: function(t){
+      /* the form only ever has these four, so nothing else may claim the
+         column - a scrawl that OCR turns into -1 or 10 stays a blank box */
       if(t === 'OFF' || t === 'DEF') return t;
-      if(/^-?\d{1,2}$/.test(t) && +t >= -30 && +t <= 45) return t;
-      if(/^-?\d{1,2}\.0$/.test(t)) return String(parseInt(t, 10));
+      if(/^-?\d{1,2}\.0$/.test(t)) t = String(parseInt(t, 10));
+      if(YC_SETPOINTS.indexOf(t) >= 0) return t;
       return null;
     },
     temp: function(t){
       if(t === 'DEF') return t;
+      /* an explicit decimal, or nothing: promoting whole numbers turned
+         OCR debris into temperatures on a real photo */
       if(/^-?\d{1,2}\.\d$/.test(t)) return t;
-      if(/^-?\d{1,2}$/.test(t) && +t >= -40 && +t <= 60) return (+t).toFixed(1);
       return null;
     },
     fuel: function(t){
       if(t === 'FULL' || t === 'F') return 'FULL';
       if(/^[1-3]\/[24]$/.test(t)) return t;
       if(t === 'E' || t === 'EMPTY') return 'EMPTY';
+      /* a smeared fraction still carries its digits: 3H, 3F4, 13/4 are 3/4 */
+      var d = t.replace(/[^0-9]/g, '');
+      if(/^1?34$|^34$/.test(d) && /[^0-9]/.test(t)) return '3/4';
+      if(d === '12' && /[^0-9]/.test(t)) return '1/2';
+      if(d === '14' && /[^0-9]/.test(t)) return '1/4';
       return null;
     },
     intact: function(t){
@@ -801,7 +843,8 @@ function ycReadHand(r, toks){
     },
     door: function(t){
       if(/^\d{1,2}$/.test(t) && +t >= 1 && +t <= 46) return t;
-      if(/^(N\/A|NA)$/.test(t)) return 'N/A';
+      if(/^(N\/A|NA|N\/?[A-Z])$/.test(t) && t.charAt(0) === 'N') return 'N/A';
+      if(/^N[I1]E$/.test(t)) return 'N/A';
       return null;
     }
   };
@@ -852,7 +895,7 @@ async function ycPhotoTrailers(file){
     for(var k=0;k<4;k++){
       var rot=k*90;
       ocrStatus('🧭 Checking orientation '+(k+1)+'/4…');
-      var small=preprocess(drawToCanvas(im,1800,rot));
+      var small=preprocess(drawToCanvas(im,1800,rot), true);
       var res=await worker.recognize(small);
       var sc=ycPhotoScore(res.data.text);
       if(sc>bestScore){ bestScore=sc; bestRot=rot; bestText=res.data.text; }
@@ -865,7 +908,7 @@ async function ycPhotoTrailers(file){
       return [];
     }
     ocrStatus('🔎 Reading the trailer list at full quality…');
-    var big=preprocess(drawToCanvas(im,2600,bestRot));
+    var big=preprocess(drawToCanvas(im,2600,bestRot), true);
     var res2=await worker.recognize(big);
     await worker.setParameters({tessedit_pageseg_mode:'6'});
     ocrStatus(null);
@@ -891,10 +934,43 @@ async function ycPhotoTrailers(file){
   }
 }
 /* the officer's own draft */
+/* The office released this slot's trailer list, products and all. The photo
+   only has to be read for what the list cannot know - the pen. Anything the
+   OCR got wrong or missed about names is corrected from the list, and a
+   released trailer the photo missed entirely still joins the check. */
+function ycMergeReleased(rows, slot){
+  var rec = (typeof ycSlotRecord === 'function') ? ycSlotRecord(slot) : null;
+  var listed = (rec && rec.trailers) || [];
+  if(!listed.length) return rows;
+  function near(a, b){
+    a = String(a||'').toUpperCase(); b = String(b||'').toUpperCase();
+    if(a === b) return true;
+    if(a.length >= 3 && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) return true;
+    if(a.length === b.length){ var d = 0;
+      for(var q = 0; q < a.length; q++) if(a[q] !== b[q]) d++;
+      return d <= 1; }
+    return false;
+  }
+  listed.forEach(function(t){
+    var hit = rows.filter(function(r){ return near(r.trailer, t.trailer); })[0];
+    if(hit){
+      /* the list is the authority on what the trailer is called and carries */
+      hit.trailer = String(t.trailer || hit.trailer).toUpperCase();
+      if(t.product) hit.product = String(t.product).toUpperCase();
+    } else {
+      var r = ycRowBlank();
+      r.trailer = String(t.trailer || '').toUpperCase();
+      r.product = String(t.product || '').toUpperCase();
+      rows.push(r);
+    }
+  });
+  return rows;
+}
 async function ycImportPhoto(file){
   var rows = await ycPhotoTrailers(file);
   if(!rows || !rows.length) return;
   if(!YC) ycLoadDraft();
+  rows = ycMergeReleased(rows, YC.time);
   if(YC.rows.length && !confirm('Replace the current '+YC.rows.length+' trailer(s) with the '
       +rows.length+' found in the photo?')) return;
   YC.rows = rows;
@@ -1230,6 +1306,31 @@ function ycGridAdd(){
   ycModalOpen(YC.rows.length - 1);
 }
 function ycGridReview(){ go('yardsheet', false, YC.time); }
+/* A photo that came out badly is thrown away and taken again - the same rule
+   the schedule follows. Back to the released list if the office sent one,
+   back to nothing if not. */
+function ycClearCheck(){
+  if(!YC) ycLoadDraft();
+  var n = YC.rows.length;
+  if(!n){ toast('Nothing on this check yet'); return; }
+  if(!confirm('Clear all ' + n + ' trailer' + (n===1?'':'s') + ' from this check?')) return;
+  var rec = ycSlotRecord(YC.time);
+  YC.rows = (rec && rec.trailers && rec.trailers.length)
+    ? rec.trailers.map(ycFixPair).map(function(t){
+        return { trailer:(t.trailer||'').toUpperCase(), product:(t.product||'').toUpperCase(),
+                 set:'', temp:'', type:'', fuel:'', intact:'', door:'', action:'' };
+      })
+    : [];
+  ycSaveDraft();
+  if(typeof renderYcGrid === 'function') renderYcGrid();
+  var sheet = $('sec-yardsheet');
+  if(sheet && sheet.classList.contains('on')){
+    if(YC.rows.length) renderYard(); else go('ycgrid', false, YC.time);
+  }
+  toast(YC.rows.length
+    ? 'Cleared. The released list is back, unchecked.'
+    : 'Cleared. Load a photo or add trailers.');
+}
 
 /* The same thing from the sheet. A truck the office never listed still turns
    up in the yard, so the officer must be able to write one in from either
