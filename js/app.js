@@ -469,9 +469,34 @@ function schedSeqCmp(a, b){
   if(az !== bz) return az < bz ? -1 : 1;
   return (a.time||'') < (b.time||'') ? -1 : 1;
 }
-function parseCSV(text){
-  /* copying rows out of Excel gives tabs, not commas, so pick whichever the
-     first line actually uses */
+/* What the receiving office actually sends.
+
+   Their sheet is not a bare table. Row one is the day - "Tuesday, August 25,
+   2026" - merged across the width. The header is under it, and the star column
+   between Zones and Detail has no heading at all. There is a blank row between
+   each zone, and a totals row at the foot. The office selects the lot in Excel
+   and pastes it in, so all of that has to be read rather than rejected: taking
+   row one for the header turned every column into "tuesday_august_25_2026" and
+   the paste came back "Nothing to load".
+
+   Names are matched with the spaces taken out, so "Order Number", "order_number"
+   and a cell that wrapped to "Zone/s" all land in the same place. */
+var SCHED_ALIAS = {
+  ordernumber:'order', 'order#':'order', order:'order', ordernum:'order',
+  vendor:'vendor', vendorname:'vendor',
+  appointmentcarrier:'carrier', carrier:'carrier',
+  contactname:'contact', contact:'contact',
+  opencases:'cases', cases:'cases', pallets:'pallets', pallet:'pallets',
+  zones:'zone', zone:'zone',
+  inyard:'in_yard', 'inyard?':'in_yard',
+  detail:'detail', time:'time', appttime:'time', date:'date',
+  'priority(*)':'priority', 'priority(★)':'priority', priority:'priority'
+};
+function hdrKey(h){
+  return String(h == null ? '' : h).toLowerCase().replace(/[^a-z0-9#?()*★]/g, '');
+}
+/* the scanner: quotes, and whichever of tab or comma the sheet actually uses */
+function csvRows(text){
   var firstLine = String(text).split(/\r?\n/)[0] || '';
   var DELIM = (firstLine.split('\t').length > firstLine.split(',').length) ? '\t' : ',';
   var rows=[],row=[],cur='',inQ=false;
@@ -484,18 +509,82 @@ function parseCSV(text){
     else cur+=ch;
   }
   if(cur!==''||row.length){row.push(cur);rows.push(row);}
-  if(!rows.length) return [];
-  var ALIAS = { order_number:'order', 'order_#':'order', vendor:'vendor', vendor_name:'vendor',
-    appointment_carrier:'carrier', carrier:'carrier', contact_name:'contact',
-    open_cases:'cases', cases:'cases', pallets:'pallets', zones:'zone', zone:'zone',
-    in_yard:'in_yard', 'in_yard?':'in_yard', detail:'detail', time:'time', date:'date',
-    'priority_(*)':'priority', 'priority_(\u2605)':'priority', priority:'priority' };
-  var hdr = rows[0].map(function(h){
-    var k = h.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_#?()*\u2605]/g,'');
-    return ALIAS[k] || k;
+  return rows;
+}
+/* how many columns of a row are names we know: the header is the row that
+   knows the most, not the row that happens to be first */
+function hdrScore(row){
+  var seen={}, n=0;
+  (row||[]).forEach(function(c){
+    var a = SCHED_ALIAS[hdrKey(c)];
+    if(a && !seen[a]){ seen[a]=1; n++; }
   });
-  return rows.slice(1).map(function(r){
-    var o={}; hdr.forEach(function(h,i){o[h]=r[i];}); return o; });
+  return n;
+}
+function sheetHeaderAt(rows){
+  var best=0, bestScore=0;
+  for(var i=0; i<Math.min(rows.length, 15); i++){
+    var sc = hdrScore(rows[i]);
+    if(sc > bestScore){ bestScore=sc; best=i; }
+  }
+  return bestScore >= 3 ? best : 0;
+}
+/* The star column carries no heading, so it is known by what is in it: stars,
+   and nothing else. Guessing by position would break the first time somebody
+   moved a column. */
+function nameStarColumn(hdr, body){
+  hdr.forEach(function(h, i){
+    if(h) return;
+    var stars=0, other=0;
+    body.forEach(function(r){
+      var v = String((r||[])[i] == null ? '' : r[i]).trim();
+      if(!v) return;
+      if(/^[★⭐*x]$/i.test(v)) stars++; else other++;
+    });
+    if(stars && !other) hdr[i] = 'priority';
+  });
+}
+/* the day, from the title the office puts over the table */
+function sheetDate(rows, headerAt){
+  for(var i=0; i<headerAt; i++){
+    var line = (rows[i]||[]).join(' ').replace(/\s+/g,' ').trim();
+    var d = line && (typeof dateFromName === 'function') && dateFromName(line);
+    if(d) return d;
+  }
+  return '';
+}
+/* The foot of the sheet: no order number, but the two figures the office adds
+   up. Kept, because they are what says whether anything was lost on the way in. */
+function sheetTotals(rows, headerAt, hdr){
+  var ci = hdr.indexOf('cases'), pi = hdr.indexOf('pallets'), oi = hdr.indexOf('order');
+  if(ci < 0 && pi < 0) return null;
+  var num = function(v){ var n = parseFloat(String(v==null?'':v).replace(/[^0-9.-]/g,'')); return isNaN(n)?0:n; };
+  for(var i = rows.length - 1; i > headerAt; i--){
+    var r = rows[i] || [];
+    if(oi >= 0 && String(r[oi]||'').trim()) return null;   /* a real row: no totals line */
+    var c = ci<0?0:num(r[ci]), p = pi<0?0:num(r[pi]);
+    if(c || p) return { cases:c, pallets:p };
+  }
+  return null;
+}
+/* set by the last parse, so the draft can say whether the totals still add up */
+var SCHED_SHEET_TOTALS = null;
+function parseCSV(text){
+  var rows = csvRows(text);
+  SCHED_SHEET_TOTALS = null;
+  if(!rows.length) return [];
+  var at = sheetHeaderAt(rows);
+  var body = rows.slice(at + 1);
+  var hdr = (rows[at]||[]).map(function(h){ var k = hdrKey(h); return SCHED_ALIAS[k] || k; });
+  nameStarColumn(hdr, body);
+  var day = sheetDate(rows, at);
+  SCHED_SHEET_TOTALS = sheetTotals(rows, at, hdr);
+  return body.map(function(r){
+    var o={};
+    hdr.forEach(function(h,i){ if(h) o[h] = r[i]; });
+    if(day && !String(o.date == null ? '' : o.date).trim()) o.date = day;
+    return o;
+  });
 }
 function mergeOrders(arr){
   var into = (schedBucket() === 'local') ? DB.local : DB.office;
@@ -518,6 +607,9 @@ function ingest(text){
       arr = Array.isArray(j) ? j : (j.orders||[]);
     } else arr = parseCSV(text);
   }catch(e){ toast('Could not read file: '+e.message); return; }
+  /* the figures at the foot of the sheet, so the draft can say whether what
+     arrived still adds up to what the office sent */
+  SCHED_CLAIM = SCHED_SHEET_TOTALS;
   receiveOrders(arr);
 }
 /* Whoever loads it checks it first. An officer with the printed sheet in

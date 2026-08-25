@@ -127,3 +127,37 @@ test('the heading does not lecture about temperatures over a door clash',
   expect(said).not.toContain('tenth degree');
   expect(said).toContain('a door holds one trailer');
 });
+
+/* Submitting is the one action that must never fail quietly. It refused with a
+   toast that was gone in under three seconds: a yard check the officer believed
+   they had filed had not been sent, and the office waited for it. */
+test('a refused submit says so, and cannot be missed', async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'46' })]);
+  let said = '';
+  page.on('dialog', d => { said = d.message(); d.dismiss(); });
+  await page.evaluate(() => ycSubmit());
+  await page.waitForTimeout(300);
+  expect(said, 'a toast is not enough for this').toContain('NOT been submitted');
+  expect(said).toContain('Door 46');
+  expect(said).toContain('still here');
+  // and nothing was sent
+  expect(await page.evaluate(() => (window.__fb.added||[]).length)).toBe(0);
+  // the officer still has their work
+  expect(await page.evaluate(() => YC.rows.length)).toBe(2);
+});
+
+test('a check with an off trailer does reach the office', async ({ page }) => {
+  await sheet(page, [
+    ROW('LR7435', { intact:'N', door:'34' }),
+    ROW('57679', { set:'OFF', temp:'—', fuel:'—', intact:'—', door:'—' }),
+    ROW('2202', { product:'COOKIES', intact:'N', door:'42' }),
+  ]);
+  page.on('dialog', d => d.accept());
+  await page.evaluate(() => ycSubmit());
+  await page.waitForTimeout(500);
+  const sent = await page.evaluate(() => (window.__fb.added||[]).filter(a => a.name === 'yardchecks'));
+  expect(sent.length, 'the office never got it').toBe(1);
+  expect(sent[0].data.rows.length).toBe(3);
+  expect(sent[0].data.ts, 'the office lists by ts; without one it is invisible').toBeTruthy();
+});

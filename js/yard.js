@@ -2066,7 +2066,16 @@ document.addEventListener('keydown', function(e){
    the paperwork. */
 function ycSubmit(){
   var p = (typeof ycProblems === 'function') ? ycProblems() : { block: [], warn: [] };
-  if(p.block && p.block.length){ toast(p.block[0]); return; }
+  if(p.block && p.block.length){
+    /* This is the one action that must never fail quietly. It refused with a
+       toast that was gone in under three seconds, so a yard check the officer
+       believed they had filed had not been sent anywhere - and the office
+       waited for a check that was never coming. It says so, and stays said. */
+    alert('This yard check has NOT been submitted.\n\nFix these first:\n\n\u2022 '
+      + p.block.join('\n\u2022 ')
+      + '\n\nNothing has been lost - the check is still here.');
+    return;
+  }
   var d = ycData();
   var n = d.rows.length;
   var escN = d.rows.filter(function(r){ return r.escalate && r.escalate.length; }).length;

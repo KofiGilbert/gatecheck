@@ -3,7 +3,7 @@
    app opens whether or not there is a connection; the data behind it comes from
    Firestore, which keeps its own offline copy. Nothing here caches a request to
    Firebase: stale gate log rows would be worse than none. */
-var SHELL = 'checkpoint-shell-v4';
+var SHELL = 'checkpoint-shell-v5';
 var FILES = [
   './', './index.html',
   './js/app.js', './js/cloud.js', './js/yard.js', './js/stats.js', './js/dar.js',
@@ -28,6 +28,25 @@ self.addEventListener('activate', function(e){
   }).then(function(){ return self.clients.claim(); }));
 });
 
+/* the network, with the cache waiting behind it */
+function swFresh(req){
+  var fromCache = caches.match(req);
+  var timer;
+  var live = new Promise(function(done, fail){
+    timer = setTimeout(function(){ fail(new Error('slow')); }, 3000);
+    fetch(req).then(done, fail);
+  }).then(function(res){
+    clearTimeout(timer);
+    if(res && res.status === 200){
+      var copy = res.clone();
+      caches.open(SHELL).then(function(c){ c.put(req, copy); });
+    }
+    return res;
+  });
+  return live.catch(function(){
+    return fromCache.then(function(hit){ return hit || live; });
+  });
+}
 self.addEventListener('fetch', function(e){
   var url = new URL(e.request.url);
   if(e.request.method !== 'GET') return;
@@ -58,15 +77,19 @@ self.addEventListener('fetch', function(e){
     return;
   }
 
-  /* everything else: use the cache at once, and quietly refresh it for next time */
-  e.respondWith(caches.match(e.request).then(function(hit){
-    var live = fetch(e.request).then(function(res){
-      if(res && res.status === 200){
-        var copy = res.clone();
-        caches.open(SHELL).then(function(c){ c.put(e.request, copy); });
-      }
-      return res;
-    }).catch(function(){ return hit; });
-    return hit || live;
-  }));
+  /* The app's own code, the same way as the page: from the network when there
+     is one, from the cache when there is not.
+
+     It used to answer from the cache at once and refresh it "for next time".
+     That meant the first refresh after a deploy served the new index.html with
+     the previous version's JavaScript - a new page running old code - and only
+     the second refresh put them right. It is why every deploy came with an
+     instruction to clear Safari's website data, and on 25 August 2026 it cost
+     a completed yard check: the tablet was still running a version that
+     refused it, the officer saw a toast and thought it had gone, and the
+     office waited for a check that was never sent.
+
+     A yard has bad signal, so the cache still answers when the network cannot,
+     and a slow network is given three seconds before falling back. */
+  e.respondWith(swFresh(e.request));
 });
