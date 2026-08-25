@@ -1,0 +1,90 @@
+/* A trailer with its unit off has no readings to give - the dashes are the
+   record - and the sheet was refusing to go on until the dash was a
+   temperature to the tenth of a degree. And a door holds one trailer: the
+   same door twice on one check means one was typed against the wrong one. */
+const { test, expect } = require('@playwright/test');
+const H = require('./helpers.js');
+
+const ROW = (t, over) => Object.assign({
+  trailer:t, product:'FRIES', set:'-10', temp:'-10.0', type:'FROZEN',
+  fuel:'1/2', intact:'Y', door:'N/A', action:'', escalate:[] }, over||{});
+
+async function sheet(page, rows) {
+  await H.gotoApp(page, { user:{email:'kofi@martinbrower.com'}, role:'officer' });
+  await page.evaluate((rs) => {
+    go('yard');
+    ycOpenSlot(ycShiftSlots()[0]);
+    YC.rows = rs; YC.name = 'Kobe';
+    renderYard();
+  }, rows);
+}
+const problems = (page) => page.evaluate(() => ycProblems());
+
+test('an off unit is not held to the tenth of a degree', async ({ page }) => {
+  await sheet(page, [ROW('57679', { set:'OFF', temp:'—', fuel:'—',
+                                    intact:'—', door:'—', action:'Called shift manager' })]);
+  const p = await problems(page);
+  expect(p.block, 'nothing should stop an off trailer going through').toEqual([]);
+  expect(p.warn.join(' ')).not.toContain('Temp empty');
+  expect(p.warn.join(' ')).not.toContain('Fuel empty');
+  expect(p.warn.join(' ')).not.toContain('Intact');
+});
+
+test('and it is still an escalation that needs an action taken', async ({ page }) => {
+  await sheet(page, [ROW('57679', { set:'OFF', temp:'—', fuel:'—',
+                                    intact:'—', door:'—', action:'' })]);
+  const p = await problems(page);
+  expect(p.block).toEqual([]);
+  expect(p.warn.join(' ')).toContain('action taken');
+});
+
+test('a running trailer is still held to the tenth', async ({ page }) => {
+  await sheet(page, [ROW('LR7435', { temp:'-12' })]);
+  const p = await problems(page);
+  expect(p.block.join(' ')).toContain('not to the tenth');
+});
+
+test('the same door twice stops the check', async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'46' })]);
+  const p = await problems(page);
+  expect(p.block.length).toBe(1);
+  expect(p.block[0]).toContain('Door 46');
+  expect(p.block[0]).toContain('2202');
+  expect(p.block[0]).toContain('9354');
+});
+
+test('two trailers on different doors are fine', async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'44' })]);
+  expect((await problems(page)).block).toEqual([]);
+});
+
+test('N/A is not a door, so it may repeat', async ({ page }) => {
+  await sheet(page, [ROW('2202'), ROW('9354'), ROW('7479')]);
+  expect((await problems(page)).block).toEqual([]);
+});
+
+test('the officer is told at the moment they type it', async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'' })]);
+  await page.evaluate(() => ycSet(1, 'door', '46', true));
+  await expect(page.locator('#toast')).toContainText('Door 46 is already on 2202');
+});
+
+test('and the clashing door is marked on the sheet', async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'46' })]);
+  await expect(page.locator('#ycrows td.bad')).toHaveCount(2);
+});
+
+test('the preview refuses to open while a door is claimed twice', async ({ page }) => {
+  await sheet(page, [ROW('2202', { intact:'N', door:'46' }),
+                     ROW('9354', { intact:'N', door:'46' })]);
+  let said = '';
+  page.on('dialog', d => { said = d.message(); d.dismiss(); });
+  await page.evaluate(() => ycPreview());
+  await page.waitForTimeout(300);
+  expect(said).toContain('Door 46');
+  await expect(page.locator('#ycactions')).toBeHidden();
+});

@@ -464,7 +464,8 @@ function ycRowHTML(r,i){
         : '<td'+m('temp')+'><input inputmode="decimal" autocomplete="off" value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)"></td>'
           +'<td'+m('fuel')+'>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
           +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
-          +'<td><input placeholder="N/A" value="'+esc(r.door)+'" oninput="ycSet('+i+',\'door\',this.value,true)"></td>')
+          +'<td'+(ycDupDoors()[String(r.door||'').trim()] ? ' class="bad"' : '')
+            +'><input placeholder="N/A" value="'+esc(r.door)+'" oninput="ycSet('+i+',\'door\',this.value,true)"></td>')
     +'<td id="ycb'+i+'"></td>'
     +'</tr>';
 }
@@ -476,6 +477,10 @@ function ycSet(i, k, v, save){
   var reshape = false;
   if(k === 'set'){ r.type = ycAutoType(r); reshape = ycOffFill(r); }
   if(k === 'door' || k === 'intact') reshape = ycSealDoorSync(r, k) || reshape;
+  if(k === 'door'){
+    var taken = ycDoorTaken(i, v);
+    if(taken) toast('Door ' + String(v).trim() + ' is already on ' + taken);
+  }
   if(save) ycSaveDraft();
   /* redrawing the whole sheet on a keystroke would take the cursor with it,
      so only the escalate cell moves - unless the row changed shape */
@@ -521,18 +526,51 @@ function ycProblems(){
   if(!YC.rows.length) block.push('No trailers on this check');
   YC.rows.forEach(function(r,i){
     var lbl = r.trailer? r.trailer : 'Row '+(i+1);
-    var t = String(r.temp).trim();
-    if(t && t.toUpperCase()!=='DEF' && !ycIsTenth(t))
-      block.push(lbl+': temp "'+t+'" is not to the tenth (e.g. -10.0)');
     if(!r.trailer) warn.push('Row '+(i+1)+': Trailer # empty');
-    if(!t) warn.push(lbl+': Temp empty');
-    if(!String(r.set).trim()) warn.push(lbl+': Set Point empty');
-    if(!r.fuel) warn.push(lbl+': Fuel empty');
-    if(!r.intact) warn.push(lbl+': Intact Y/N empty');
-    if(ycDoorWanted(r)) warn.push(lbl+': not sealed, so which door is it on?');
+    /* A trailer with its unit off has no readings to give. The dashes are the
+       record, so there is no temperature to hold to the tenth, and no fuel,
+       seal or door to ask after. It is still an escalation, and still needs
+       an action taken. */
+    if(!ycIsOff(r)){
+      var t = String(r.temp).trim();
+      if(t && t.toUpperCase()!=='DEF' && !ycIsTenth(t))
+        block.push(lbl+': temp "'+t+'" is not to the tenth (e.g. -10.0)');
+      if(!t) warn.push(lbl+': Temp empty');
+      if(!String(r.set).trim()) warn.push(lbl+': Set Point empty');
+      if(!r.fuel) warn.push(lbl+': Fuel empty');
+      if(!r.intact) warn.push(lbl+': Intact Y/N empty');
+      if(ycDoorWanted(r)) warn.push(lbl+': not sealed, so which door is it on?');
+    }
     if(ycEval(r).length && !r.action.trim()) warn.push(lbl+': escalation has no "action taken"');
   });
+  /* A door holds one trailer. The same door twice on one check means one of
+     them was typed against the wrong trailer. */
+  var dup = ycDupDoors();
+  Object.keys(dup).forEach(function(d){
+    block.push('Door '+d+' is on '+dup[d].join(' and ')+' - a door holds one trailer');
+  });
   return {block:block, warn:warn};
+}
+/* door number -> the trailers claiming it, only where there is more than one */
+function ycDupDoors(){
+  var by = {}, dup = {};
+  (YC.rows||[]).forEach(function(r, i){
+    if(!ycIsRealDoor(r.door)) return;
+    var d = String(r.door).trim();
+    (by[d] = by[d] || []).push(r.trailer ? String(r.trailer).toUpperCase() : 'row '+(i+1));
+  });
+  Object.keys(by).forEach(function(d){ if(by[d].length > 1) dup[d] = by[d]; });
+  return dup;
+}
+/* which trailer already has that door, if any other row does */
+function ycDoorTaken(i, v){
+  if(!ycIsRealDoor(v)) return '';
+  var d = String(v).trim(), who = '';
+  (YC.rows||[]).forEach(function(r, j){
+    if(j !== i && String(r.door||'').trim() === d && !who)
+      who = r.trailer ? String(r.trailer).toUpperCase() : 'row '+(j+1);
+  });
+  return who;
 }
 function ycPreview(){
   ycSaveDraft();
