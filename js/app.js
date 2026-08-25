@@ -437,7 +437,7 @@ function stat(){
   var dates = {}; DB.orders.forEach(function(o){ dates[o.date]=1; });
   var ds = Object.keys(dates).sort();
   $('datastat').textContent = DB.orders.length
-    ? DB.orders.length+' orders loaded • '+ds.map(function(d){return fmtDate(d).replace(/ \d{4}$/,'');}).join('  |  ')
+    ? DB.orders.length+' order'+(DB.orders.length===1?'':'s')+' loaded · '+ds.map(function(d){return fmtDate(d).replace(/ \d{4}$/,'');}).join('  |  ')
     : 'No schedule loaded yet. Go to the Schedule tab.';
 }
 

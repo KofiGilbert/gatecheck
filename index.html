@@ -94,23 +94,28 @@
   /* the office works at a desk on a spreadsheet, so it gets the whole window */
   body.role-office main{max-width:1600px}
   /* the menu fills the screen: this is used on a phone or an iPad, not a desktop */
-  #sec-home,#sec-office{padding:14px;max-width:980px;margin:0 auto}
+  #sec-home{padding:14px;max-width:980px;margin:0 auto}
+  /* four tiles of the same square as the officer's three need more room than
+     980 across; the grid itself is what caps them */
+  #sec-office{padding:14px;max-width:1400px;margin:0 auto}
   #sec-office.on{display:flex;flex-direction:column;justify-content:center;gap:14px;
     min-height:calc(100dvh - var(--hdr-h, 62px))}
   #sec-block{padding:14px;padding-bottom:60px;max-width:640px;margin:0 auto}
   #sec-home.on{display:flex;flex-direction:column;justify-content:center;gap:14px;
     min-height:calc(100dvh - var(--hdr-h, 62px));
     padding-bottom:max(14px,env(safe-area-inset-bottom))}
-  /* square tiles: cap the grid width so 3 rows of squares still fit the screen */
-  /* four tiles are one row; the cap keeps a square tile short enough that
-     the row and the stat line under it fit the window */
-  .tiles.office{grid-template-columns:repeat(4,1fr);
-    max-width:min(1240px, 100%, calc((100dvh - 260px) * 4 + 36px))}
-  @media (max-width:760px){ .tiles.office{grid-template-columns:repeat(2,1fr);
-    max-width:min(100%, calc(100dvh - 220px + 12px))} }
-  .tiles{display:grid;gap:12px;grid-template-columns:repeat(2,1fr);
+  /* One square, one size, both apps. The officer's home sets it - six tiles
+     that have to fit the window with the stat line under them - and the
+     receiving office's four are that same square, on one line. The grid is
+     capped rather than the tile, so --tile is the side of one. */
+  .tiles{--tile:calc((100dvh - 174px) / 3);          /* 2 across, 3 down */
+    display:grid;gap:12px;grid-template-columns:repeat(2,1fr);
     width:100%;margin:0 auto;
-    max-width:min(100%, calc((100dvh - 150px - 24px) * 2 / 3 + 12px))}
+    max-width:min(100%, calc(var(--tile) * 2 + 12px))}
+  .tiles.office{grid-template-columns:repeat(4,1fr);
+    max-width:min(100%, calc(var(--tile) * 4 + 36px))}
+  @media (max-width:760px){ .tiles.office{grid-template-columns:repeat(2,1fr);
+    max-width:min(100%, calc(var(--tile) * 2 + 12px))} }
   .tile{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
     background:var(--card);border:1px solid var(--line);border-radius:16px;
     padding:14px;min-height:96px;text-align:center;font-family:inherit;
@@ -128,8 +133,9 @@
   .homestat{flex:0 0 auto;text-align:center;font-size:12.5px;color:var(--mut);line-height:1.5}
   /* wide and short (landscape iPad, desktop): three across, two down */
   @media (min-width:860px) and (min-aspect-ratio:1/1){
-    .tiles{grid-template-columns:repeat(3,1fr);
-      max-width:min(100%, calc((100dvh - 150px - 12px) * 3 / 2 + 24px))}
+    .tiles{--tile:calc((100dvh - 162px) / 2);        /* 3 across, 2 down */
+      grid-template-columns:repeat(3,1fr);
+      max-width:min(100%, calc(var(--tile) * 3 + 24px))}
   }
   /* these sections live outside <main>, so they need their own gutters */
   #sec-yard,#sec-log{padding:14px;padding-bottom:60px;max-width:1180px;margin:0 auto}
@@ -1789,7 +1795,7 @@
       <b>Schedule</b><em>Upload today&rsquo;s orders</em></button>
     <button class="tile" onclick="go('block')"><span class="tico" aria-hidden="true">&#128230;</span>
       <b>Trailer blocks</b><em>Load a yard check</em></button>
-      <button class="tile" onclick="go('queue')"><span class="tico" aria-hidden="true">&#128666;</span>
+      <button class="tile" onclick="go('queue')"><span class="tico" aria-hidden="true">&#128667;</span>
       <b>Gate queue</b><em id="qtile_sub">Who to serve next</em></button>
     <button class="tile" onclick="go('stats')"><span class="tico" aria-hidden="true">&#128202;</span>
       <b>Analytics</b><em>Arrivals, carriers and trends</em></button>

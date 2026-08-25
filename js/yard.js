@@ -1710,7 +1710,8 @@ function officeStat(){
   var t=ycTodayISO();
   var released = (DB.yardslots||[]).filter(function(r){ return r && r.date===t; }).length;
   var q = (typeof queueWaiting==='function') ? queueWaiting().length : 0;
-  el.textContent = (DB.orders? DB.orders.length : 0)+' orders loaded · '
+  var n = DB.orders ? DB.orders.length : 0;
+  el.textContent = n+' order'+(n===1?'':'s')+' loaded · '
     + released+' yard check'+(released===1?'':'s')+' released · '
     + (q ? q+' driver'+(q===1?'':'s')+' waiting to be served' : 'nobody waiting');
   if(typeof queueTileSync==='function') queueTileSync();
