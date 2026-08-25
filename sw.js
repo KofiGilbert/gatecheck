@@ -34,6 +34,9 @@ self.addEventListener('fetch', function(e){
   /* never come between the app and its data */
   if(url.origin !== self.location.origin) return;
   if(/googleapis|gstatic|firebase/.test(url.href)) return;
+  /* the handwriting model is tens of megabytes and the browser caches it
+     already; putting it in the app shell would evict everything else */
+  if(/jsdelivr|huggingface|hf\.co/.test(url.href)) return;
 
   /* The page itself comes from the network when there is one. Serving a
      cached index.html first meant every change landed one refresh late, and

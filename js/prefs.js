@@ -15,7 +15,7 @@
    follows the device.
 */
 
-var PREFS = { theme:'system', size:'normal', sound:true, awake:false };
+var PREFS = { theme:'system', size:'normal', sound:true, awake:false, handocr:true };
 
 function prefsLoad(){
   try{
@@ -27,6 +27,7 @@ function prefsLoad(){
         if(p.size)  PREFS.size  = p.size;
         if(typeof p.sound === 'boolean') PREFS.sound = p.sound;
         if(typeof p.awake === 'boolean') PREFS.awake = p.awake;
+        if(typeof p.handocr === 'boolean') PREFS.handocr = p.handocr;
       }
     }
   }catch(e){}
@@ -175,6 +176,9 @@ function prefsRender(){
         : '<div class="prow"><div class="ptext"><b>Keep the screen awake</b>'
           + '<span>This browser cannot hold the screen on. Open Checkpoint from '
           + 'the home screen, or set the screen timeout on the device.</span></div></div>')
+    + prefsSwitch('handocr', 'Read handwriting on photos',
+        'A model trained on handwriting, about 64MB the first time. Off means '
+        + 'the print reader only.')
     + prefsInstallRow();
 }
 function prefsInstallRow(){

@@ -269,3 +269,80 @@ test('the sheet has the same way out', async ({ page }) => {
   // nothing left, so the grid is where trailers are added
   await expect(page.locator('#sec-ycgrid')).toBeVisible();
 });
+
+/* ---- the cell reader, on a form we draw ourselves ----
+   A real photograph proves the idea but cannot anchor a test suite. This
+   draws the printed form onto a canvas - grid, header, values - and reads it
+   back through the whole pipeline: skew search, line detection, pitch, cell
+   OCR with per-column alphabets. */
+async function drawnForm(page, opts) {
+  return page.evaluate(async (o) => {
+    const cv = document.createElement('canvas');
+    cv.width = 1600; cv.height = 1200;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, 1600, 1200);
+    if (o.rotate) { g.translate(800, 600); g.rotate(o.rotate * Math.PI / 180); g.translate(-800, -600); }
+    const left = 120, right = 1480, top = 220, rows = o.rows.length + 1, pitch = 90;
+    const colr = [0, 0.113, 0.26, 0.39, 0.485, 0.563, 0.658, 0.744, 1];
+    const cols = colr.map(r => Math.round(left + r * (right - left)));
+    g.strokeStyle = '#111'; g.lineWidth = 3;
+    for (let r = 0; r <= rows; r++) {
+      g.beginPath(); g.moveTo(left, top + r * pitch); g.lineTo(right, top + r * pitch); g.stroke();
+    }
+    cols.forEach(x => { g.beginPath(); g.moveTo(x, top); g.lineTo(x, top + rows * pitch); g.stroke(); });
+    g.fillStyle = '#111'; g.font = 'bold 26px Arial';
+    const put = (r, c, t) => g.fillText(t, cols[c] + 12, top + r * pitch + 58);
+    ['TRAILER#','PRODUCT','SET','TEMP','FUEL','YN','DOOR'].forEach((h, c) => put(0, c, h));
+    o.rows.forEach((vals, i) => vals.forEach((v, c) => v && put(i + 1, c, v)));
+    // straighten the canvas back so the photo itself is what is rotated
+    const out = document.createElement('canvas');
+    out.width = 1600; out.height = 1200;
+    out.getContext('2d').drawImage(cv, 0, 0);
+    const worker = await getWorker();
+    const bin = preprocess(out, true);
+    const got = await ycGridRead(bin, worker);
+    return got && got.map(r => [r.trailer, r.product, r.set, r.temp, r.fuel, r.intact, r.door]);
+  }, opts);
+}
+
+const FORM_ROWS = [
+  ['LR7524', 'FRIES', '-10', '-9.1', 'FULL', 'Y', '20'],
+  ['R25106', 'BUNS', '34', '36.0', '3/4', 'N', '4'],
+  ['H50117', 'CHICKEN', '-10', '-8.3', '1/2', 'Y', 'N/A'],
+  ['57729', 'FE', 'OFF', '', '', '', ''],
+];
+
+test('the cell reader reads a straight form exactly', async ({ page }) => {
+  test.setTimeout(120000);
+  await asOfficer(page);
+  const got = await drawnForm(page, { rows: FORM_ROWS });
+  expect(got, 'the grid was not even found').not.toBeNull();
+  expect(got.map(r => r[0])).toEqual(['LR7524', 'R25106', 'H50117', '57729']);
+  expect(got[0]).toEqual(['LR7524', 'FRIES', '-10', '-9.1', 'FULL', 'Y', '20']);
+  expect(got[1].slice(2)).toEqual(['34', '36.0', '3/4', 'N', '4']);
+  expect(got[3][2], 'OFF read from the set cell').toBe('OFF');
+  expect(got[3][3], 'and the rest of that row dashed').toBe('—');
+});
+
+test('two degrees of tilt is found and undone', async ({ page }) => {
+  test.setTimeout(120000);
+  await asOfficer(page);
+  const got = await drawnForm(page, { rows: FORM_ROWS, rotate: 2 });
+  expect(got).not.toBeNull();
+  expect(got.map(r => r[0])).toEqual(['LR7524', 'R25106', 'H50117', '57729']);
+  expect(got[0][3]).toBe('-9.1');
+});
+
+test('a page with no table falls back rather than failing', async ({ page }) => {
+  await asOfficer(page);
+  const got = await page.evaluate(() => {
+    const cv = document.createElement('canvas');
+    cv.width = 800; cv.height = 600;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, 800, 600);
+    g.fillStyle = '#111'; g.font = '24px Arial';
+    g.fillText('LR7524 FRIES', 40, 100);
+    return ycFindGrid(preprocess(cv, true));
+  });
+  expect(got, 'no grid: the line reader takes over').toBeNull();
+});

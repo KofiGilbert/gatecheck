@@ -730,6 +730,367 @@ function ycHistDel(i){
 }
 /* ---------- yard photo import ---------- */
 var YC_STOPWORDS = /TRAILER|PRODUCT|DATE:|TIME|NAME|ESCALATE|ACTION|DOOR|INTACT|FUEL|TEMP|SET POINT|INSPECTION|CRITICAL|FREEZER|COOLER|LIMITS|LOG|WAS TAKEN/;
+/* ===================== the cell reader =====================
+
+   Reading the photograph as one page of text loses the table: handwriting
+   smears across column boundaries and every stroke competes with every other.
+   The printed grid is the strongest thing on the page, so it is found first -
+   the ruled lines stand out as walls of dark pixels - and then every cell is
+   read ALONE, with only its own column's alphabet allowed. A temperature box
+   may only contain -0123456789. and DEF; an intact box only Y, N or the V a
+   pen Y reads as. The engine cannot wander.
+
+   If no grid is found (a crop, a crumpled sheet), the line reader below takes
+   over, so a photo is never refused outright. */
+
+/* ===================== reading a hand =====================
+
+   Tesseract is trained on print. It reads the ruled form and the typed parts
+   of it well and struggles with the pen, which is the part that matters on a
+   completed check - cropping each cell and restricting the alphabet took it
+   as far as it goes.
+
+   TrOCR is Microsoft's model trained on handwriting, converted to ONNX so it
+   runs in the browser with no server. Quantised it is about 64MB, fetched the
+   first time an officer photographs a completed form and cached by the
+   browser after that; a yard with no signal falls back to Tesseract rather
+   than refusing the photo.
+*/
+var YC_TROCR_URL = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+var YC_TROCR_MODEL = 'Xenova/trocr-small-handwritten';
+var _trocr = null, _trocrTry = null, _trocrDead = false;
+function trocrWanted(){
+  return (typeof PREFS === 'undefined') ? true : PREFS.handocr !== false;
+}
+function trocrReady(){ return !!_trocr; }
+function trocrLoad(){
+  if(_trocr) return Promise.resolve(_trocr);
+  if(_trocrDead || !trocrWanted()) return Promise.resolve(null);
+  if(_trocrTry) return _trocrTry;
+  _trocrTry = (async function(){
+    try{
+      ocrStatus('\u2b07\ufe0f Fetching the handwriting reader, once (about 64MB)\u2026');
+      var mod = await import(YC_TROCR_URL);
+      mod.env.allowLocalModels = false;
+      _trocr = await mod.pipeline('image-to-text', YC_TROCR_MODEL, {
+        quantized: true,
+        progress_callback: function(p){
+          if(p && p.status === 'progress' && p.progress != null)
+            ocrStatus('\u2b07\ufe0f Handwriting reader ' + Math.round(p.progress) + '%');
+        }
+      });
+      return _trocr;
+    }catch(e){
+      /* no signal, a blocked CDN, an old browser: the print reader still works */
+      _trocrDead = true;
+      return null;
+    }
+  })();
+  return _trocrTry;
+}
+/* one cell, read by the model trained on handwriting */
+async function trocrCell(cv){
+  if(!_trocr) return null;
+  try{
+    var out = await _trocr(cv.toDataURL('image/png'));
+    var txt = Array.isArray(out) ? (out[0] && out[0].generated_text) : (out && out.generated_text);
+    return String(txt == null ? '' : txt).trim().toUpperCase();
+  }catch(e){ return null; }
+}
+
+/* Dark-pixel projections on a binarised canvas. A photographed rule is thin
+   and broken, so each pixel is smeared a couple of pixels along the line's
+   own direction before counting - a dashed rule projects like a solid one. */
+function ycProjections(cv, x0, x1, y0, y1){
+  var w = cv.width, h = cv.height;
+  x0 = x0 || 0; y0 = y0 || 0; x1 = x1 || w; y1 = y1 || h;
+  var d = cv.getContext('2d').getImageData(0, 0, w, h).data;
+  var dark = new Uint8Array(w * h);
+  for(var i = 0, px = 0; i < w * h; i++, px += 4) dark[i] = d[px] < 128 ? 1 : 0;
+  var rows = new Float64Array(h), cols = new Float64Array(w);
+  for(var y = y0; y < y1; y++){
+    var base = y * w;
+    for(var x = x0; x < x1; x++){
+      if(dark[base + x] || dark[base + Math.max(0, x - 2)] || dark[base + Math.min(w - 1, x + 2)])
+        rows[y]++;
+      if(dark[base + x] || (y > 1 && dark[base - 2 * w + x]) || (y < h - 2 && dark[base + 2 * w + x]))
+        cols[x]++;
+    }
+  }
+  return { rows: rows, cols: cols, w: w, h: h };
+}
+function ycRotated(cv, deg){
+  if(!deg) return cv;
+  var out = document.createElement('canvas');
+  out.width = cv.width; out.height = cv.height;
+  var g = out.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, out.width, out.height);
+  g.translate(out.width / 2, out.height / 2);
+  g.rotate(deg * Math.PI / 180);
+  g.drawImage(cv, -cv.width / 2, -cv.height / 2);
+  return out;
+}
+/* A hand-held photo is a degree or three off level, which smears the ruled
+   lines across many pixel rows. The skew is whatever angle makes the
+   horizontal projection sharpest. Searched small, applied full-size. */
+function ycFindSkew(cv){
+  var small = document.createElement('canvas');
+  var k = 700 / cv.width;
+  small.width = 700; small.height = Math.round(cv.height * k);
+  small.getContext('2d').drawImage(cv, 0, 0, small.width, small.height);
+  var best = 0, bestScore = -1;
+  for(var a = -4; a <= 4; a += 0.5){
+    var pr = ycProjections(ycRotated(small, a)).rows;
+    /* Sum of squares, with no threshold: a straight page gathers its ink into
+       few dense rows, which squares high. A threshold relative to each
+       rotation's own maximum made every angle self-normalise, so the scores
+       stopped being comparable and the search ran to its boundary. */
+    var score = 0;
+    for(var y = 0; y < pr.length; y++) score += pr[y] * pr[y];
+    if(score > bestScore){ bestScore = score; best = a; }
+  }
+  return best;
+}
+/* runs of dense dark clustered into line centres */
+function ycLineCentres(proj, ref, need, maxThick){
+  /* A ruled line is dense AND thin. A band of handwriting also projects
+     densely once dilated, but it is tall - so a cluster thicker than a rule
+     could be is not a rule and is dropped. */
+  var out = [], run = [];
+  function flush(){
+    if(!run.length) return;
+    if(!maxThick || run.length <= maxThick)
+      out.push(Math.round(run.reduce(function(a, b){ return a + b; }, 0) / run.length));
+    run = [];
+  }
+  for(var i = 0; i < proj.length; i++){
+    if(proj[i] > ref * need){ run.push(i); }
+    else flush();
+  }
+  flush();
+  var merged = [];
+  out.forEach(function(c){
+    if(merged.length && c - merged[merged.length - 1] < 12) return;
+    merged.push(c);
+  });
+  return merged;
+}
+/* ---- the table's heartbeat ----
+   The one thing noise cannot fake is the pitch: the printed rows repeat at
+   one spacing, top to bottom. Find that spacing in the detected lines, find
+   the anchor that fits the most of them, and lay the rows out on the beat -
+   snapping to a detected rule where there is one, synthesising it where the
+   photo lost it, and ignoring the pen-strokes that only pretended. */
+function ycRowsFromPitch(hl, top, bottom){
+  if(hl.length < 4) return null;
+  var gaps = [], i;
+  for(i = 1; i < hl.length; i++){
+    var g = hl[i] - hl[i - 1];
+    if(g >= 35 && g <= 160) gaps.push(g);
+  }
+  if(gaps.length < 3) return null;
+  var pitch = 0, bestVotes = 0;
+  gaps.forEach(function(g){
+    var votes = 0;
+    gaps.forEach(function(h){ if(Math.abs(h - g) <= 4) votes++; });
+    if(votes > bestVotes){ bestVotes = votes; pitch = g; }
+  });
+  if(bestVotes < 3) return null;
+  var close = gaps.filter(function(g){ return Math.abs(g - pitch) <= 4; });
+  pitch = close.reduce(function(a, b){ return a + b; }, 0) / close.length;
+  /* Half the true beat also shows up: the handwriting baseline sits mid-cell
+     at its own steady spacing. A pitch that would give the table more rows
+     than the printed form has is that half-beat, so take the octave up. */
+  if((bottom - top) / pitch > 26) pitch *= 2;
+  /* the anchor: the detected line that the most other lines beat against */
+  var bestA = hl[0], bestFit = -1;
+  hl.forEach(function(a){
+    var fit = 0;
+    hl.forEach(function(c){
+      var k = Math.round((c - a) / pitch);
+      if(Math.abs(c - (a + k * pitch)) <= pitch * 0.18) fit++;
+    });
+    if(fit > bestFit){ bestFit = fit; bestA = a; }
+  });
+  /* lay the rows out on the beat across the table's height */
+  var start = bestA;
+  while(start - pitch >= top - pitch * 0.4) start -= pitch;
+  var rows = [], yy;
+  for(yy = start; yy <= bottom + pitch * 0.4; yy += pitch){
+    var snapped = Math.round(yy), bd = pitch * 0.2;
+    hl.forEach(function(c){
+      if(Math.abs(c - yy) < bd){ bd = Math.abs(c - yy); snapped = c; }
+    });
+    if(!rows.length || snapped - rows[rows.length - 1] > pitch * 0.5) rows.push(snapped);
+  }
+  if(rows.length < 4) return null;
+  /* the table's own edges are boundaries whether or not their rules survived
+     detection - without them the top rows drift half a beat and every cell
+     straddles two answers */
+  if(rows[0] - top > pitch * 0.5) rows.unshift(top);
+  if(bottom - rows[rows.length - 1] > pitch * 0.5) rows.push(bottom);
+  return rows;
+}
+/* where the drawn form puts its eight columns, as fractions of the table
+   width: the printed one it copies has the same shape. Used only when the
+   photo's own vertical lines cannot all be found. */
+var YC_COL_RATIOS = [0, 0.113, 0.26, 0.39, 0.485, 0.563, 0.658, 0.744, 1];
+function ycFindGrid(cv){
+  /* ycFindSkew returns the angle that straightens the page, so it is applied
+     as it comes - negating it tilted a crooked photo twice as far over */
+  var skew = ycFindSkew(cv);
+  var work = ycRotated(cv, skew);
+  /* pass one, full frame: where the table is at all */
+  var p = ycProjections(work);
+  var maxR = 0, y;
+  for(y = 0; y < p.rows.length; y++) if(p.rows[y] > maxR) maxR = p.rows[y];
+  if(maxR < p.w * 0.3) return null;
+  var hl0 = ycLineCentres(p.rows, maxR, 0.55, 9);
+  if(hl0.length < 4) return null;
+  var top = hl0[0], bottom = hl0[hl0.length - 1];
+  if(bottom - top < p.h * 0.25) return null;
+  /* the table's own left and right, from its vertical rules */
+  var q = ycProjections(work, 0, p.w, top, bottom);
+  var maxCq = 0, x;
+  for(x = 0; x < q.cols.length; x++) if(q.cols[x] > maxCq) maxCq = q.cols[x];
+  var vl = ycLineCentres(q.cols, maxCq, 0.55, 9);
+  if(vl.length < 2) return null;
+  var left = vl[0], right = vl[vl.length - 1];
+  if(right - left < p.w * 0.45) return null;
+  /* pass two, confined to the table: the rows, cleanly */
+  var q2 = ycProjections(work, left, right, 0, p.h);
+  var maxR2 = 0;
+  for(y = top; y <= bottom; y++) if(q2.rows[y] > maxR2) maxR2 = q2.rows[y];
+  var hlRaw = ycLineCentres(q2.rows, maxR2, 0.55, 9).filter(function(c){
+    return c >= top - 10 && c <= bottom + 10;
+  });
+  var hl = ycRowsFromPitch(hlRaw, top, bottom);
+  if(!hl || hl.length < 4) return null;
+  var cols = (vl.length === 9) ? vl
+    : YC_COL_RATIOS.map(function(r){ return Math.round(left + r * (right - left)); });
+  return { canvas: work, hl: hl, cols: cols };
+}
+/* A cell handed to the engine as a rectangle on a big page competes with
+   every other stroke on it, and a minus sign written hard against the ruled
+   line gets clipped by the crop. Cutting the cell onto its own canvas, with
+   white space around it and scaled up, gives the engine one thing to look at
+   and room to see the whole of it. */
+function ycCellCanvas(src, rect){
+  var pad = 14, scale = 2;
+  var cv = document.createElement('canvas');
+  cv.width = (rect.width + pad * 2) * scale;
+  cv.height = (rect.height + pad * 2) * scale;
+  var g = cv.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(src, rect.left, rect.top, rect.width, rect.height,
+              pad * scale, pad * scale, rect.width * scale, rect.height * scale);
+  return cv;
+}
+/* how much ink a cell holds; an empty box is not worth an engine call */
+function ycCellInk(data, w, rect){
+  var dark = 0, all = 0;
+  for(var y = rect.top; y < rect.top + rect.height; y += 2){
+    var off = y * w * 4;
+    for(var x = rect.left; x < rect.left + rect.width; x += 2){
+      all++; if(data[off + x * 4] < 128) dark++;
+    }
+  }
+  return all ? dark / all : 0;
+}
+var YC_CELL_OCR = [
+  { k:'trailer', wl:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789' },
+  { k:'product', wl:'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 /&.-:' },
+  { k:'set',     wl:'-0134DEFO' },
+  { k:'temp',    wl:'-0123456789.DEF' },
+  { k:'fuel',    wl:'1234/FULE' },
+  { k:'intact',  wl:'YNV' },
+  { k:'door',    wl:'0123456789NA/' }
+];
+async function ycGridRead(cv, worker){
+  var geo = ycFindGrid(cv);
+  if(!geo) return null;
+  /* the handwriting model if it is there or can be fetched; the print engine
+     is what every cell falls back to, one cell at a time */
+  var hand = await trocrLoad();
+  var work = geo.canvas, hl = geo.hl, cols = geo.cols;
+  var w = work.width;
+  var data = work.getContext('2d').getImageData(0, 0, w, work.height).data;
+  var bands = [];
+  for(var r = 0; r + 1 < hl.length; r++){
+    if(hl[r + 1] - hl[r] > 18) bands.push([hl[r], hl[r + 1]]);
+  }
+  if(!bands.length) return null;
+  var grid = bands.map(function(){ return {}; });
+  for(var c = 0; c < YC_CELL_OCR.length; c++){
+    var conf = YC_CELL_OCR[c];
+    ocrStatus('\ud83d\udcd6 Reading the ' + conf.k + ' column\u2026 (' + (c + 1) + '/' + YC_CELL_OCR.length + ')');
+    await worker.setParameters({
+      tessedit_char_whitelist: conf.wl, tessedit_pageseg_mode: '7' });
+    for(var b = 0; b < bands.length; b++){
+      /* inside the rules, but only just: a minus sign is written hard against
+         the line it follows, and four pixels of inset used to shave it off */
+      var rect = { left: cols[c] + 2, top: bands[b][0] + 3,
+                   width: cols[c + 1] - cols[c] - 4, height: bands[b][1] - bands[b][0] - 6 };
+      if(rect.width < 8 || rect.height < 8){ grid[b][conf.k] = ''; continue; }
+      if(ycCellInk(data, w, rect) < 0.004){ grid[b][conf.k] = ''; continue; }
+      var cell = ycCellCanvas(work, rect);
+      var txt = null;
+      if(hand) txt = await trocrCell(cell);
+      if(txt == null){
+        var res = await worker.recognize(cell);
+        txt = (res.data.confidence >= 35)
+          ? String(res.data.text || '').trim().toUpperCase() : '';
+      }
+      /* the reader punctuates where it is unsure: a product is words and
+         digits, so its leading debris is not part of the name */
+      txt = String(txt || '').replace(/\s+/g, ' ').trim();
+      /* only the product: the trailer number is validated by shape further
+         down, and trimming it here changed which rows passed that test */
+      if(conf.k === 'product')
+        txt = txt.replace(/^[^A-Z0-9]+/, '').replace(/[^A-Z0-9]+$/, '');
+      grid[b][conf.k] = txt;
+    }
+  }
+  await worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: '6' });
+  /* raw cells to rows, judged by the same rules however a value arrived */
+  var rows = [];
+  grid.forEach(function(cell){
+    var t = String(cell.trailer || '').replace(/\s+/g, '');
+    /* the header band names the column; it is not a trailer */
+    if(/TRAILER/.test(t)) return;
+    t = t.replace(/(\d)[IL](?=\d)/g, '$11').replace(/(\d)O(?=\d)/g, '$10')
+         .replace(/(\d)S(?=\d)/g, '$15').replace(/(\d)B(?=\d)/g, '$18');
+    if(!/^[A-Z]{0,2}\d{3,6}[A-Z]{0,2}$/.test(t) || !/\d{3}/.test(t)) return;
+    var r = ycRowBlank();
+    r.trailer = t;
+    r.product = String(cell.product || '').trim();
+    ['set', 'temp', 'fuel', 'intact', 'door'].forEach(function(k){
+      var raw = ycPenFix(String(cell[k] || '')).trim().replace(/\s+/g, '');
+      if(!raw) return;
+      var v = YC_FITS[k](raw);
+      if(v !== null) r[k] = v;
+    });
+    if(r.set === 'OFF') ycOffFill(r);
+    if(String(r.set || '').trim()) r.type = ycAutoType(r);
+    rows.push(r);
+  });
+  /* a band that straddled two rows reads a real trailer twice; the richer
+     reading is the one that was actually aligned */
+  var richness = function(r){
+    return ['product','set','temp','fuel','intact','door'].filter(function(k){
+      return String(r[k] || '').trim();
+    }).length;
+  };
+  var byTrailer = {};
+  rows.forEach(function(r){
+    var k = r.trailer;
+    if(!byTrailer[k] || richness(r) > richness(byTrailer[k])) byTrailer[k] = r;
+  });
+  var out2 = rows.filter(function(r){ return byTrailer[r.trailer] === r; });
+  return out2.length >= 3 ? out2.slice(0, 40) : null;
+}
+
 /* ---- what a pen looks like to a print-trained reader ----
    Learned from a real photographed check: the ruled lines read as | and [,
    a handwritten -10 comes out -{0, ~10 or ={0, the decimal point reads as a
@@ -807,9 +1168,10 @@ function ycParseTrailers(text){
    claimed in that order - and a token that fits nothing is skipped rather
    than guessed at, because a wrong reading filed under an officer's name is
    worse than a blank one. */
-function ycReadHand(r, toks){
-  /* what a token would mean in each column, or null if it cannot be that */
-  var fits = {
+/* what a token would mean in each column, or null if it cannot be that.
+   Shared by the line reader and the cell reader, so a value is judged by one
+   set of rules however it arrived. */
+var YC_FITS = {
     set: function(t){
       /* the form only ever has these four, so nothing else may claim the
          column - a scrawl that OCR turns into -1 or 10 stays a blank box */
@@ -847,7 +1209,9 @@ function ycReadHand(r, toks){
       if(/^N[I1]E$/.test(t)) return 'N/A';
       return null;
     }
-  };
+};
+function ycReadHand(r, toks){
+  var fits = YC_FITS;
   var want = ['set', 'temp', 'fuel', 'intact', 'door'];
   var wi = 0;
   for(var i = 0; i < toks.length && wi < want.length; i++){
@@ -869,6 +1233,108 @@ function ycReadHand(r, toks){
     }
   }
   if(String(r.set || '').trim()) r.type = ycAutoType(r);
+}
+/* ---- two readings of one photograph, laid over each other ----
+   Rows are matched by trailer number, allowing for the digit OCR habitually
+   drops or mistakes. A box filled in either reading is taken; where both are
+   filled and disagree, the cell reading wins, because a box read on its own
+   with only its column's alphabet allowed had the better chance. A trailer
+   only one reading found is still a trailer that was on the paper. */
+/* Letters standing where digits were written. Inside a run of digits this is
+   almost always OCR; at the edges of a token that is otherwise all digits it
+   usually is too - 220S is 2205, I570203 is 570203. A genuine prefix like LR
+   or H is two letters or fewer against four or more digits, and is kept. */
+function ycDigits(t){
+  var up = String(t || '').toUpperCase();
+  var body = up.replace(/^[A-Z]{1,2}(?=\d)/, '');       /* a real prefix */
+  return body.replace(/[ILT]/g, '1').replace(/[OQD]/g, '0')
+             .replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2')
+             .replace(/[^0-9]/g, '');
+}
+function ycSameTrailer(a, b){
+  a = String(a || '').toUpperCase(); b = String(b || '').toUpperCase();
+  if(!a || !b) return false;
+  if(a === b) return true;
+  var da = ycDigits(a), db = ycDigits(b);
+  if(da.length < 3 || db.length < 3) return false;
+  if(da === db) return true;
+  /* Nothing looser than an exact match once OCR's letter-for-digit habits
+     are undone. A yard runs 2201, 2202, 2205, 2206 side by side: treating a
+     one-digit difference as the same trailer merged four real rows into one
+     and lost three checks the officer would never have got back. A duplicate
+     row is visible and deletable; a swallowed row is not. */
+  return false;
+}
+function ycMergeReadings(cells, lines){
+  if(!cells || !cells.length) return lines || [];
+  if(!lines || !lines.length) return cells;
+  var lead = ycReadScore(cells) >= ycReadScore(lines) ? cells : lines;
+  var other = (lead === cells) ? lines : cells;
+  var cellsLead = (lead === cells);
+  var out = lead.map(function(r){ return r; });
+  other.forEach(function(o){
+    var hit = null;
+    for(var i = 0; i < out.length; i++){
+      if(ycSameTrailer(out[i].trailer, o.trailer)){ hit = out[i]; break; }
+    }
+    if(!hit){ out.push(o); return; }
+    ['product','set','temp','fuel','intact','door'].forEach(function(k){
+      var mine = String(hit[k] || '').trim(), theirs = String(o[k] || '').trim();
+      if(!theirs) return;                      /* nothing to add */
+      if(!mine){ hit[k] = o[k]; return; }      /* fills a blank */
+      /* both read it and they disagree: the cell reading is the better bet,
+         so the other reading only overrules when IT is the cell one */
+      if(mine !== theirs && !cellsLead) hit[k] = o[k];
+    });
+    /* keep the tidier number: a real prefix and digits, over OCR's leftovers */
+    var clean = function(t){
+      t = String(t || '');
+      return (/^[A-Z]{0,2}\d{3,6}$/.test(t) ? 2 : 0) + (/^[A-Z]{1,2}\d/.test(t) ? 1 : 0);
+    };
+    if(clean(o.trailer) > clean(hit.trailer)) hit.trailer = o.trailer;
+    if(hit.set === 'OFF') ycOffFill(hit);
+    if(String(hit.set || '').trim()) hit.type = ycAutoType(hit);
+  });
+  return ycDedupeRows(out).slice(0, 40);
+}
+/* One trailer, read two or three ways, is still one trailer. The readings
+   disagree about its number - a dropped digit, an invented prefix - so they
+   are collapsed here, keeping the tidiest number and every box either of
+   them managed to fill. */
+function ycDedupeRows(rows){
+  var out = [];
+  var clean = function(t){
+    t = String(t || '');
+    return (/^[A-Z]{0,2}\d{3,6}$/.test(t) ? 2 : 0) + (/^[A-Z]{1,2}\d/.test(t) ? 1 : 0);
+  };
+  rows.forEach(function(r){
+    var hit = null;
+    for(var i = 0; i < out.length; i++){
+      if(ycSameTrailer(out[i].trailer, r.trailer)){ hit = out[i]; break; }
+    }
+    if(!hit){ out.push(r); return; }
+    ['product','set','temp','fuel','intact','door'].forEach(function(k){
+      if(!String(hit[k] || '').trim() && String(r[k] || '').trim()) hit[k] = r[k];
+    });
+    if(clean(r.trailer) > clean(hit.trailer)) hit.trailer = r.trailer;
+    if(hit.set === 'OFF') ycOffFill(hit);
+    if(String(hit.set || '').trim()) hit.type = ycAutoType(hit);
+  });
+  return out;
+}
+/* how much of a check a reading recovered: every row counts, and a row with
+   the pen on it counts double */
+function ycReadScore(rows){
+  if(!rows || !rows.length) return 0;
+  var score = 0;
+  rows.forEach(function(r){
+    score += 1;
+    ['set','temp','fuel','intact','door'].forEach(function(k){
+      if(String(r[k] || '').trim()) score += 2;
+    });
+    if(String(r.product || '').trim()) score += 1;
+  });
+  return score;
 }
 /* how many rows the photo carried readings for, not just names */
 function ycHandCount(rows){
@@ -909,10 +1375,20 @@ async function ycPhotoTrailers(file){
     }
     ocrStatus('🔎 Reading the trailer list at full quality…');
     var big=preprocess(drawToCanvas(im,2600,bestRot), true);
+    /* the grid first: cell by cell, each with only its own alphabet. The
+       page-of-text reader is the fallback for photos with no grid to find. */
+    var cells = null;
+    try{ cells = await ycGridRead(big, worker); }catch(gerr){ cells = null; }
     var res2=await worker.recognize(big);
     await worker.setParameters({tessedit_pageseg_mode:'6'});
     ocrStatus(null);
     var rows = ycParseTrailers(res2.data.text);
+    /* Two readings of the same photograph: the grid, cell by cell, and the
+       page as one block of text. They fail in different places - a crumpled
+       sheet beats the grid finder, a dense hand beats the line reader - so
+       neither is thrown away. What one recovered fills what the other left
+       blank, and the fuller reading leads. */
+    rows = ycMergeReadings(cells, rows);
     // merge in extras from the quick pass, skipping near-duplicates (truncated/misread variants)
     function ycNearTrailer(a,b){
       if(a===b) return true;
@@ -942,15 +1418,7 @@ function ycMergeReleased(rows, slot){
   var rec = (typeof ycSlotRecord === 'function') ? ycSlotRecord(slot) : null;
   var listed = (rec && rec.trailers) || [];
   if(!listed.length) return rows;
-  function near(a, b){
-    a = String(a||'').toUpperCase(); b = String(b||'').toUpperCase();
-    if(a === b) return true;
-    if(a.length >= 3 && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) return true;
-    if(a.length === b.length){ var d = 0;
-      for(var q = 0; q < a.length; q++) if(a[q] !== b[q]) d++;
-      return d <= 1; }
-    return false;
-  }
+  var near = ycSameTrailer;
   listed.forEach(function(t){
     var hit = rows.filter(function(r){ return near(r.trailer, t.trailer); })[0];
     if(hit){
