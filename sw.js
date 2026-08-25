@@ -3,11 +3,11 @@
    app opens whether or not there is a connection; the data behind it comes from
    Firestore, which keeps its own offline copy. Nothing here caches a request to
    Firebase: stale gate log rows would be worse than none. */
-var SHELL = 'checkpoint-shell-v3';
+var SHELL = 'checkpoint-shell-v4';
 var FILES = [
   './', './index.html',
   './js/app.js', './js/cloud.js', './js/yard.js', './js/stats.js', './js/dar.js',
-  './js/import.js', './js/prefs.js', './js/ingest.js', './vendor/fflate.js',
+  './js/import.js', './js/prefs.js', './js/ingest.js', './js/queue.js', './vendor/fflate.js',
   './assets/mb-logo.png', './assets/icon.svg',
   './manifest.webmanifest'
 ];

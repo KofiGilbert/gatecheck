@@ -1,0 +1,161 @@
+/* ===================== the gate queue =====================
+
+   Every seal verification is emailed to the receiving office, and an email is
+   a record, not a workflow: nothing in an inbox says who has been waiting
+   longest or who has already been seen to. This is the same forms, stood in
+   the order the trucks signed in at the gate - a line, the way people queue
+   to be served - and the office works down it from the top.
+
+   Serving a truck touches nothing the officer recorded: the form stays
+   exactly as it was filed. It only gains served / servedAt / servedBy, which
+   is the office's own note that this one has been dealt with. The Firestore
+   rules allow the office those three fields and no others.
+*/
+
+/* A truck queues for as long as its paperwork is today's problem. After 24
+   hours an unserved slip is stale - the truck is long gone - and it drops
+   off rather than standing at the head of the line forever. */
+var Q_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function queueForms(){
+  var cutoff = Date.now() - Q_WINDOW_MS;
+  return (DB.forms || []).filter(function(f){
+    var t = Date.parse(f && f.ts || '');
+    return isFinite(t) && t >= cutoff;
+  });
+}
+/* the line: oldest arrival first, which is what a queue is */
+function queueWaiting(){
+  return queueForms().filter(function(f){ return !f.served; })
+    .sort(function(a, b){ return a.ts < b.ts ? -1 : 1; });
+}
+/* already seen to: most recent first, the way a done pile reads */
+function queueServed(){
+  return queueForms().filter(function(f){ return f.served; })
+    .sort(function(a, b){
+      return String(b.servedAt || b.ts) < String(a.servedAt || a.ts) ? -1 : 1;
+    });
+}
+/* a seal that is not intact is the row the office reads first */
+function queueFlag(f){
+  var c = String(f && f.sealcond || '').toUpperCase();
+  if(c.indexOf('BROKEN') >= 0 || c.indexOf('MISSING') >= 0) return c.split(' ')[0];
+  return '';
+}
+function queueWho(f){
+  return String(f.carrier || f.vendor || 'Unknown carrier').toUpperCase();
+}
+function queueClock(iso){
+  var t = new Date(iso);
+  if(isNaN(t)) return '';
+  var h = t.getHours(), m = String(t.getMinutes()).padStart(2, '0');
+  return String(h).padStart(2, '0') + ':' + m;
+}
+
+/* ---------- serving ---------- */
+function queueSetServed(f, on){
+  if(!f) return;
+  f.served = !!on;
+  f.servedAt = on ? new Date().toISOString() : '';
+  f.servedBy = on ? ((window.CLOUD && CLOUD.user && CLOUD.user.email) || '') : '';
+  if(window.CLOUD && CLOUD.ready && f._id){
+    CLOUD.db.collection('forms').doc(f._id)
+      .update({ served: f.served, servedAt: f.servedAt, servedBy: f.servedBy })
+      .catch(function(e){ toast('Not marked: ' + e.message); });
+  } else {
+    persist();
+  }
+  renderQueue();
+  if(typeof officeStat === 'function') officeStat();
+}
+function queueFind(id){
+  return (DB.forms || []).filter(function(f){
+    return (f._id || f.ts) === id;
+  })[0] || null;
+}
+function queueServe(id){ queueSetServed(queueFind(id), true); }
+function queueUnserve(id){ queueSetServed(queueFind(id), false); }
+
+/* ---------- the screen ---------- */
+function queueRowHTML(f, pos){
+  var id = esc(f._id || f.ts);
+  var flag = queueFlag(f);
+  var next = pos === 1;
+  return '<div class="qrow' + (next ? ' qnext' : '') + (flag ? ' qflag' : '') + '">'
+    + '<span class="qpos">' + pos + '</span>'
+    + '<button type="button" class="qmain" onclick="queueView(\'' + id + '\')"'
+    +   ' aria-label="Open the seal form for ' + esc(queueWho(f)) + '">'
+    +   '<b>' + esc(queueWho(f))
+    +     (flag ? ' <i class="qseal">SEAL ' + esc(flag) + '</i>' : '') + '</b>'
+    +   '<span>' + esc(queueClock(f.ts)) + (f.driver ? ' · ' + esc(f.driver) : '')
+    +     (f.po ? ' · PO ' + esc(f.po) : '')
+    +     (f.trailer ? ' · ' + esc(String(f.trailer).toUpperCase()) : '') + '</span>'
+    + '</button>'
+    + '<button type="button" class="qserve" onclick="queueServe(\'' + id + '\')">'
+    +   (next ? 'Serve' : 'Served') + '</button>'
+    + '</div>';
+}
+function queueServedRowHTML(f){
+  var id = esc(f._id || f.ts);
+  return '<div class="qrow qdone">'
+    + '<span class="qpos">✓</span>'
+    + '<button type="button" class="qmain" onclick="queueView(\'' + id + '\')">'
+    +   '<b>' + esc(queueWho(f)) + '</b>'
+    +   '<span>' + esc(queueClock(f.ts)) + ' · served '
+    +     esc(queueClock(f.servedAt || f.ts)) + '</span>'
+    + '</button>'
+    + '<button type="button" class="qserve undo" onclick="queueUnserve(\'' + id + '\')"'
+    +   ' aria-label="Put this truck back in the line">Undo</button>'
+    + '</div>';
+}
+function renderQueue(){
+  var host = $('queuebody'); if(!host) return;
+  var line = queueWaiting(), done = queueServed();
+  var html = '';
+  if(!line.length){
+    html += '<div class="qempty"><b>Nobody waiting.</b>'
+      + '<span>Trucks join the line here the moment the gate files their seal form.</span></div>';
+  } else {
+    html += line.map(function(f, i){ return queueRowHTML(f, i + 1); }).join('');
+  }
+  if(done.length){
+    html += '<div class="qsep">Served today</div>'
+      + done.map(queueServedRowHTML).join('');
+  }
+  host.innerHTML = html;
+  var n = $('queuecnt');
+  if(n) n.textContent = line.length ? '(' + line.length + ')' : '';
+}
+
+/* ---------- reading the form itself ----------
+   Tapping a truck opens its seal form as it was filed - the same drawn sheet
+   the email carries - with the Print button. A sub-route, so a refresh keeps
+   it open and back closes it. */
+function queueView(id){ go('queue', false, id); }
+function queueViewSync(sub){
+  var view = $('fqview'); if(!view) return;
+  var f = sub ? queueFind(sub) : null;
+  view.hidden = !f;
+  document.body.classList.toggle('dayview-open', !!f);
+  var list = $('queuelist'); if(list) list.hidden = !!f;
+  if(!f) return;
+  $('fqview_title').textContent = queueWho(f) + ' · ' + queueClock(f.ts);
+  var host = $('fqview_body');
+  host.innerHTML = '<div class="ycpaper" id="fqpaper"></div>';
+  if(typeof drawPaper !== 'function') return;
+  drawPaper(f, function(cv){
+    var w = $('fqpaper');
+    if(w) w.innerHTML = '<img alt="The seal form as it was filed" src="'
+      + cv.toDataURL('image/png') + '">';
+  });
+}
+function queueViewClose(){ go('queue'); }
+
+/* the tile and the stat line say how many are standing in it */
+function queueTileSync(){
+  var em = $('qtile_sub'); if(!em) return;
+  var n = queueWaiting().length;
+  em.textContent = n
+    ? (n === 1 ? 'One truck waiting' : n + ' trucks waiting')
+    : 'Who to serve next';
+}

@@ -101,7 +101,10 @@ async function officeWith(page, slot, rows) {
    some hours there genuinely is one. Release them so these tests are looking
    at the filed-check half of the bell and nothing else. */
 const quiet = (page) => page.evaluate(() => {
-  DB.yardslots = blockDue().map(function(slot){
+  /* every slot, not just the ones due this minute: a slot entering its
+     15-minute lead window mid-test would ring the bell and fail the test
+     for a reason that has nothing to do with it */
+  DB.yardslots = blockSlots().map(function(slot){
     return { id: ycSlotDate(slot)+'_'+slot, date: ycSlotDate(slot), slot: slot,
              loadedAt: new Date().toISOString(), count: 1,
              trailers: [{ trailer:'LR0001', product:'FILLER' }] };

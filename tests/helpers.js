@@ -20,8 +20,9 @@ const FB_STUB = (opts) => {
   const mkChain = (name) => {
     const chain = {
       onSnapshot(cb){
-        const rows = name === 'orders' ? (window.__fb.orders || []) : [];
-        setTimeout(()=>cb({ docs: rows.map(r => ({ id: r.order || '', data: () => r })) }),0);
+        const rows = name === 'orders' ? (window.__fb.orders || [])
+                   : name === 'forms'  ? (window.__fb.forms  || []) : [];
+        setTimeout(()=>cb({ docs: rows.map(r => ({ id: r._id || r.order || '', data: () => r })) }),0);
         return ()=>{};
       },
       orderBy(){ return chain; }, limit(){ return chain; },
@@ -36,6 +37,8 @@ const FB_STUB = (opts) => {
           return ()=>{};
         },
         set(){ return Promise.resolve(); },
+        update(data){ (window.__fb.updated = window.__fb.updated || []).push({ id, data });
+          return Promise.resolve(); },
         delete(){ return Promise.resolve(); },
       }; },
     };

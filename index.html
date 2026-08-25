@@ -102,7 +102,7 @@
     min-height:calc(100dvh - var(--hdr-h, 62px));
     padding-bottom:max(14px,env(safe-area-inset-bottom))}
   /* square tiles: cap the grid width so 3 rows of squares still fit the screen */
-  .tiles.office{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr}
+  .tiles.office{grid-template-columns:repeat(2,1fr)}
   .tiles{display:grid;gap:12px;grid-template-columns:repeat(2,1fr);
     width:100%;margin:0 auto;
     max-width:min(100%, calc((100dvh - 150px - 24px) * 2 / 3 + 12px))}
@@ -976,13 +976,15 @@
      lands on exactly one sheet - uncapped, the browser pads it out over four. */
   @media print{
     header,main,.dvbar,.toast,#drawer,#dayview,#anlist{display:none !important}
+    #fqview[hidden]{display:none !important}
+    #bkview[hidden]{display:none !important}
     body{background:#fff}
-    #bkview{position:static !important;height:auto !important;display:block !important}
-    #bkview .dvbody{overflow:visible !important;height:auto !important;
+    #bkview,#fqview{position:static !important;height:auto !important;display:block !important}
+    #bkview .dvbody,#fqview .dvbody{overflow:visible !important;height:auto !important;
       background:#fff !important;display:block !important}
     #bkview .bkvmeta{display:none !important}
-    #bkview .ycpaper{overflow:visible !important;padding:0 !important;margin:0 !important}
-    #bkview .ycpaper img{width:auto !important;max-width:100% !important;
+    #bkview .ycpaper,#fqview .ycpaper{overflow:visible !important;padding:0 !important;margin:0 !important}
+    #bkview .ycpaper img,#fqview .ycpaper img{width:auto !important;max-width:100% !important;
       max-height:96vh !important;margin:0 auto !important;
       border:none !important;border-radius:0 !important;
       page-break-inside:avoid;break-inside:avoid}
@@ -1755,10 +1757,22 @@
       <b>Schedule</b><em>Upload today&rsquo;s orders</em></button>
     <button class="tile" onclick="go('block')"><span class="tico" aria-hidden="true">&#128230;</span>
       <b>Trailer blocks</b><em>Load a yard check</em></button>
-      <button class="tile" onclick="go('stats')"><span class="tico" aria-hidden="true">&#128202;</span>
+      <button class="tile" onclick="go('queue')"><span class="tico" aria-hidden="true">&#128666;</span>
+      <b>Gate queue</b><em id="qtile_sub">Who to serve next</em></button>
+    <button class="tile" onclick="go('stats')"><span class="tico" aria-hidden="true">&#128202;</span>
       <b>Analytics</b><em>Arrivals, carriers and trends</em></button>
 </div>
   <div class="homestat" id="officestat"></div>
+</section>
+
+<!-- ============ GATE QUEUE ============ -->
+<section id="sec-queue">
+  <div id="queuelist" class="card">
+    <h2>Waiting at the gate <span id="queuecnt" style="color:var(--mut);font-weight:600"></span></h2>
+    <div class="hint">The line, in the order the trucks signed in. Tap a truck for its
+      seal form; Serve moves it to the done pile.</div>
+    <div id="queuebody"></div>
+  </div>
 </section>
 
 <!-- ============ TRAILER BLOCK ============ -->
@@ -2130,6 +2144,17 @@
   </div>
   <div class="dvbody" id="dfv_body"></div>
 </div>
+<!-- one truck's seal form, as it was filed -->
+<div id="fqview" class="dayview" role="dialog" aria-modal="true" aria-labelledby="fqview_title" hidden>
+  <div class="dvbar">
+    <button type="button" class="dvback" aria-label="Back to the queue"
+      onclick="queueViewClose()">&#8592;</button>
+    <span class="dvttl"><b class="dvdate" id="fqview_title"></b></span>
+    <span class="dvright"><button type="button" class="bkprint"
+      onclick="window.print()">Print</button></span>
+  </div>
+  <div class="dvbody" id="fqview_body"></div>
+</div>
 <!-- a long analytics list, on its own screen -->
 <div id="anlist" class="dayview" role="dialog" aria-modal="true" aria-labelledby="anlist_title" hidden>
   <div class="dvbar">
@@ -2184,4 +2209,5 @@
 <script src="js/dar.js"></script>
 <script src="js/prefs.js"></script>
 <script src="js/ingest.js"></script>
+<script src="js/queue.js"></script>
 </body>

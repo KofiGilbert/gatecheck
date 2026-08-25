@@ -235,9 +235,10 @@ test('the scorecard puts the worst carrier at the top', async ({ page }) => {
 test('the office gets an Analytics tile beside Schedule and Trailer blocks', async ({ page }) => {
   await asOffice(page);
   const tiles = page.locator('#sec-office .tile');
-  await expect(tiles).toHaveCount(3);
-  await expect(tiles.nth(2)).toContainText('Analytics');
-  await tiles.nth(2).click();
+  await expect(tiles).toHaveCount(4);      // Schedule, Trailer blocks, Gate queue, Analytics
+  const analytics = tiles.filter({ hasText: 'Analytics' });
+  await expect(analytics).toHaveCount(1);
+  await analytics.click();
   await expect(page.locator('#sec-stats')).toBeVisible();
   expect(await page.evaluate(() => location.hash)).toBe('#stats');
 });

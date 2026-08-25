@@ -137,8 +137,9 @@ function fmtDate(iso){
   var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   return days[d.getDay()]+' '+(+p[1])+'/'+(+p[2])+'/'+p[0];
 }
-var SECTIONS = ['home','office','block','stats','search','sched','form','hist','yard','ycgrid','yardsheet','log','dar','settings'];
-var SECTION_TITLES = { home:'', office:'', block:'Trailer block', stats:'Analytics', search:'Search', sched:'Schedule',
+var SECTIONS = ['home','office','block','stats','queue','search','sched','form','hist','yard','ycgrid','yardsheet','log','dar','settings'];
+var SECTION_TITLES = {
+  queue:'Gate Queue', home:'', office:'', block:'Trailer block', stats:'Analytics', search:'Search', sched:'Schedule',
   form:'Seal Verification', hist:'Saved', yard:'Yard Check', ycgrid:'Yard Check', yardsheet:'Yard Check',
   log:'Log', dar:'Daily Activity Report', settings:'Settings' };
 /* Navigation runs on real browser history, so the platform's own back works:
@@ -146,7 +147,7 @@ var SECTION_TITLES = { home:'', office:'', block:'Trailer block', stats:'Analyti
    trackpad, and the browser back button on a laptop. */
 /* Which screens a role may reach. The UI hides the rest, but the real
    enforcement is in the Firestore rules, not here. */
-var OFFICE_ONLY  = ['office','block','stats'];
+var OFFICE_ONLY  = ['office','block','stats','queue'];
 var OFFICER_ONLY = ['yard','ycgrid','yardsheet','log','dar','form','hist','search'];
 function isOffice(){ return (window.CLOUD && CLOUD.role) === 'office'; }
 function homeSection(){ return isOffice() ? 'office' : 'home'; }
@@ -214,6 +215,7 @@ function routeResync(){
   if(r.sec==='yard'){ call('renderYardSlots'); call('renderYardHist'); call('ycStartTicking'); }
   if(r.sec==='block'){ call('blockRender'); call('blockViewSync', r.sub); }
   if(r.sec==='stats') call('renderStats');
+  if(r.sec==='queue'){ call('renderQueue'); call('queueViewSync', r.sub); }
   if(r.sec==='block') call('blockBadge');
   if(r.sec==='dar'){ call('renderDar'); call('darStartTicking'); }
   if(r.sec==='office') call('officeStat');
@@ -308,6 +310,8 @@ function go(name, fromHistory, sub, replace){
   if(name==='office') call('officeStat');
   if(name==='block'){ call('blockRender'); call('blockViewSync', sub); }
   if(name==='stats') call('renderStats');
+  if(name==='queue'){ call('renderQueue'); call('queueViewSync', sub); }
+  else call('queueViewSync', '');
   if(name==='hist') renderHist();
   if(name==='log') renderLog();
   if(name==='dar'){ call('renderDar'); call('darStartTicking'); }

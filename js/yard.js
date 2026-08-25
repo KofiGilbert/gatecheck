@@ -1030,8 +1030,11 @@ function officeStat(){
   var el=$('officestat'); if(!el) return;
   var t=ycTodayISO();
   var released = (DB.yardslots||[]).filter(function(r){ return r && r.date===t; }).length;
+  var q = (typeof queueWaiting==='function') ? queueWaiting().length : 0;
   el.textContent = (DB.orders? DB.orders.length : 0)+' orders loaded · '
-    + released+' yard check'+(released===1?'':'s')+' released today';
+    + released+' yard check'+(released===1?'':'s')+' released · '
+    + (q ? q+' truck'+(q===1?'':'s')+' waiting at the gate' : 'nobody at the gate');
+  if(typeof queueTileSync==='function') queueTileSync();
   blockBadge();
 }
 (function(){

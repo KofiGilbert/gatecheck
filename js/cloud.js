@@ -296,6 +296,8 @@ function startSync(){
   CLOUD.subs.push(db.collection('forms').orderBy('ts','desc').limit(200).onSnapshot(function(snap){
     DB.forms = snap.docs.map(function(d){ var o=d.data(); o._id=d.id; return o; });
     persist(); renderHist();
+    /* a truck at the gate joins the office's queue the moment its form lands */
+    if(typeof renderQueue==='function'){ renderQueue(); queueTileSync(); }
   }, function(e){}));
   CLOUD.subs.push(db.collection('logs').orderBy('ts','desc').limit(300).onSnapshot(function(snap){
     /* rows written before the gate log stored ISO come back in the old form */
