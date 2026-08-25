@@ -241,15 +241,56 @@ function go(name, fromHistory, sub, replace){
   /* an officer's schedule IS today's sheet, so go straight to it */
   if(name==='sched' && !isOffice() && !sub && typeof schedHasDay==='function'
      && schedHasDay(isoToday())) sub = isoToday()+'/preview';
+  /* ---- the back stack is the tree, not the diary ----
+     The screens are a tree: home, its sections, their sub-places. Back walks
+     UP that tree, the way it does in any app on the device. Recording every
+     visit chronologically meant home piled up in the stack over and over, and
+     an iPad edge-swipe from home re-opened sheets the officer had already
+     closed. So: going DEEPER pushes, moving SIDEWAYS replaces, and going UP
+     unwinds the entries that were pushed - the stack is never more than
+     home > section > sub-place, and from home, back leaves the app. */
   if(!fromHistory){
     try{
+      /* An unwind is mid-flight: history.go() has not landed yet. Whatever is
+         asked for now becomes where the unwind lands, or a quick second tap
+         would race the stack and lose. */
+      if(NAV_PENDING){
+        NAV_PENDING = {sec:name, sub:sub};
+        throw 'queued';
+      }
       var st = history.state || {};
+      var curIdx = (typeof st.idx === 'number') ? st.idx : 0;
       var same = (st.sec === name) && ((st.sub||'') === sub);
-      if(!same){
-        if(replace || (st.sec == null && name==='home' && !sub))
-          history.replaceState({sec:name, sub:sub}, '', routeHash(name, sub));
-        else
-          history.pushState({sec:name, sub:sub}, '', routeHash(name, sub));
+      var homeTarget = (name === homeSection());
+      if(same){
+        /* nothing new to record */
+      } else if(replace){
+        history.replaceState({sec:name, sub:sub, idx:curIdx}, '', routeHash(name, sub));
+      } else if(homeTarget && curIdx > 0){
+        NAV_PENDING = {sec:name, sub:sub};
+        history.go(-curIdx);
+        return;
+      } else if(homeTarget){
+        history.replaceState({sec:name, sub:sub, idx:0}, '', routeHash(name, sub));
+      } else if(st.sec === name && st.sub && !sub){
+        /* closing a sub-place: one step up */
+        NAV_PENDING = {sec:name, sub:''};
+        history.go(-1);
+        return;
+      } else if(st.sec === name && st.sub && sub){
+        /* preview to edit, one form step to the next: a mode, not a place */
+        history.replaceState({sec:name, sub:sub, idx:curIdx}, '', routeHash(name, sub));
+      } else if(st.sec === name || curIdx === 0 || sub){
+        /* deeper: opening a sub-place, or the first step off home */
+        history.pushState({sec:name, sub:sub, idx:curIdx+1}, '', routeHash(name, sub));
+      } else if(curIdx > 1){
+        /* a sideways hop out of somewhere deep: surface first, then swap */
+        NAV_PENDING = {sec:name, sub:sub};
+        history.go(-(curIdx-1));
+        return;
+      } else {
+        /* section to section off the menu: sideways, one entry per level */
+        history.replaceState({sec:name, sub:sub, idx:curIdx}, '', routeHash(name, sub));
       }
     }catch(e){}
   }
@@ -336,15 +377,37 @@ document.addEventListener('click', function(e){
   if(d && !d.hidden && !d.contains(e.target) && !e.target.closest('#profbtn')) closeMenu();
 });
 /* the arrow does what the browser's own back does, so the two never disagree */
+var NAV_PENDING = null;
 function goBack(){
-  if(history.length > 1) history.back();
-  else go(homeSection());
+  var st = history.state;
+  var idx = (st && typeof st.idx === 'number') ? st.idx : 0;
+  /* only unwind entries this app pushed: at the base, back goes home in
+     place rather than walking out into whatever was open before the app */
+  if(idx > 0) history.back();
+  else go(homeSection(), false, '', true);
 }
 function menuGo(name){ closeMenu(); go(name); }
 window.addEventListener('popstate', function(e){
   /* an open menu swallows the first back, which is what a drawer should do */
   var d=$('drawer');
   if(d && !d.hidden){ closeMenu(); }
+  /* the tail end of an unwind: we have surfaced, now stand on the target */
+  if(NAV_PENDING){
+    var pend = NAV_PENDING; NAV_PENDING = null;
+    var at = e.state || {};
+    var atIdx = (typeof at.idx === 'number') ? at.idx : 0;
+    if(at.sec !== pend.sec || (at.sub||'') !== (pend.sub||'')){
+      /* landing on a sub-place is a step DOWN from where we surfaced */
+      if(pend.sub)
+        history.pushState({sec:pend.sec, sub:pend.sub, idx:atIdx+1}, '',
+          routeHash(pend.sec, pend.sub));
+      else
+        history.replaceState({sec:pend.sec, sub:'', idx:atIdx}, '',
+          routeHash(pend.sec, ''));
+    }
+    go(pend.sec, true, pend.sub || '');
+    return;
+  }
   var st = e.state || parseRoute(location.hash);
   go(st.sec || 'home', true, st.sub || '');
 });
@@ -353,7 +416,7 @@ window.addEventListener('popstate', function(e){
   var start = SECTIONS.indexOf(r.sec)>=0 ? r.sec : 'home';
   var sub = (start === r.sec) ? r.sub : '';
   try{
-    history.replaceState({sec:start, sub:sub}, '', routeHash(start, sub));
+    history.replaceState({sec:start, sub:sub, idx:0}, '', routeHash(start, sub));
     /* Show that screen now, so nothing flashes; the parts owned by yard.js are
        filled in below. applyRole() corrects the choice when the role arrives. */
     go(start, true, sub);
