@@ -1735,6 +1735,12 @@ function pushForm(){
   if(m.length && !confirm(m.length + (m.length===1?' field is':' fields are') + ' still empty:'
       + '\n\n\u2022 ' + m.join('\n\u2022 ')
       + '\n\nOK = send it anyway   \u00b7   Cancel = go back and fill them')) return;
+  /* The gate log is a record of trucks through the gate, not a record of
+     emails sent. It was written inside emailData, so a form delivered any
+     other way left no row at all - and turning email off in the admin panel
+     emptied the log without anyone touching the log. A truck that was signed
+     in is on the sheet, however the paperwork travelled. */
+  logAdd(d);
   /* Where it goes is the admin panel's business, not this button's. Until
      there was a panel this only ever emailed, and the copy it kept stayed on
      the officer's own phone - so the receiving office's gate queue never saw
