@@ -14,10 +14,14 @@
 /* A driver queues for as long as their paperwork is today's problem. After
    24 hours an unserved slip is stale - that driver is long gone - and it
    drops off rather than standing at the head of the line forever. */
-var Q_WINDOW_MS = 24 * 60 * 60 * 1000;
+/* how long a driver stays on the list, set in the admin panel */
+function qWindowMs(){
+  var h = (typeof admSettings === 'function') ? admSettings().queueHours : 12;
+  return (h > 0 ? h : 12) * 3600e3;
+}
 
 function queueForms(){
-  var cutoff = Date.now() - Q_WINDOW_MS;
+  var cutoff = Date.now() - qWindowMs();
   return (DB.forms || []).filter(function(f){
     var t = Date.parse(f && f.ts || '');
     return isFinite(t) && t >= cutoff;

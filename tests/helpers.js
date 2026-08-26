@@ -38,7 +38,11 @@ const FB_STUB = (opts) => {
           }),0);
           return ()=>{};
         },
-        set(){ return Promise.resolve(); },
+        /* recorded like a batched write, so a test can tell what the app
+           really published for the team */
+        set(data, opts){ (window.__fb.written = window.__fb.written || [])
+            .push({ id: id, data: data, merge: !!(opts && opts.merge) });
+          return Promise.resolve(); },
         update(data){ (window.__fb.updated = window.__fb.updated || []).push({ id, data });
           return Promise.resolve(); },
         /* recorded the same way a batched delete is, so a test can tell

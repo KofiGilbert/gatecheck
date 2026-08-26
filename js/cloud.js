@@ -237,7 +237,10 @@ function doReset(){
 }
 /* ---- role: officer on the gate, or the receiving office ---- */
 function setRole(role){
-  role = (role === 'office') ? 'office' : 'officer';
+  /* three roles now: the office runs the yard, an officer walks it, an admin
+     sets how the app behaves. Anything unrecognised is an officer, which is
+     the role that can do the least. */
+  role = (role === 'office' || role === 'admin') ? role : 'officer';
   CLOUD.role = role;
   var em = (CLOUD.user && CLOUD.user.email) || '';
   if(em) sset('gc_role_'+em, role);
@@ -248,6 +251,28 @@ function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
 
 /* ---- receiving office: releasing a trailer block ---- */
 /* taking a released check back off the board, for the whole team */
+/* A submitted seal verification, for the whole team. The office's gate queue
+   is built on this collection, so a form that never arrives here is a driver
+   the office is never told about. */
+function formCloudPush(d){
+  if(!CLOUD.ready || !CLOUD.user || !d) return;
+  d.createdBy = CLOUD.user.email;
+  CLOUD.db.collection('forms').add(d)
+    .catch(function(e){ toast('Could not send to the office: '+e.message); });
+}
+/* the admin panel's settings, shared the way the addresses already were */
+function adminCloudField(field, value){
+  if(!CLOUD.ready) return;
+  var o = {}; o[field] = value;
+  CLOUD.db.collection('settings').doc('app').set(o, {merge:true})
+    .catch(function(e){ toast('Could not save that for the team: '+e.message); });
+}
+function adminCloudSave(s){
+  if(!CLOUD.ready || !s) return;
+  CLOUD.db.collection('settings').doc('app')
+    .set({ deliver: s.deliver, queueHours: s.queueHours }, {merge:true})
+    .catch(function(e){ toast('Could not save that for the team: '+e.message); });
+}
 function blockCloudDelete(id){
   if(!CLOUD.ready || !id) return;
   CLOUD.db.collection('yardslots').doc(id).delete()
@@ -339,8 +364,10 @@ function startSync(){
     if(nm){ sset('gc_offname_'+_em, nm);
       var i=$('set_offname'); if(i && document.activeElement!==i) i.value=nm;
       var v=$('f_verified'); if(v && !v.value) v.value=nm; }
-    /* the role comes from the account, never from anything the user picks */
-    setRole(d.role === 'office' ? 'office' : 'officer');
+    /* the role comes from the account, never from anything the user picks.
+       setRole knows the three it accepts and treats anything else as an
+       officer, which is the role that can do the least. */
+    setRole(d.role);
   }, function(e){}));
   CLOUD.subs.push(db.collection('settings').doc('app').onSnapshot(function(doc){
     var d = doc.exists? doc.data():{};
@@ -353,6 +380,18 @@ function startSync(){
     var cc = d.ccEmails||'';
     sset('gc_cc', cc);
     var c=$('set_cc'); if(c && document.activeElement!==c) c.value=cc;
+    /* the rest of what the admin panel decides, for every device */
+    if(d.managerEmail != null) sset('gc_manager', d.managerEmail);
+    if(d.site) sset('gc_location', d.site);
+    if(d.deliver || d.queueHours){
+      var a = {};
+      try{ a = JSON.parse(sget('gc_admin')||'{}'); }catch(e2){}
+      if(d.deliver) a.deliver = d.deliver;
+      if(d.queueHours) a.queueHours = d.queueHours;
+      sset('gc_admin', JSON.stringify(a));
+    }
+    if(typeof ADMIN_IN !== 'undefined' && ADMIN_IN && typeof adminRender === 'function'
+       && curRoute().sec === 'admin' && document.activeElement === document.body) adminRender();
   }, function(e){}));
 }
 function stopSync(){ CLOUD.subs.forEach(function(u){ try{u();}catch(e){} }); CLOUD.subs=[]; }

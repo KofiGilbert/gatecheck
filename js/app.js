@@ -138,11 +138,11 @@ function fmtDate(iso){
   var days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   return days[d.getDay()]+' '+(+p[1])+'/'+(+p[2])+'/'+p[0];
 }
-var SECTIONS = ['home','office','block','stats','queue','search','sched','form','hist','yard','ycgrid','yardsheet','log','dar','settings'];
+var SECTIONS = ['home','office','block','stats','queue','search','sched','form','hist','yard','ycgrid','yardsheet','log','dar','settings','admin'];
 var SECTION_TITLES = {
   queue:'Gate Queue', home:'', office:'', block:'Trailer block', stats:'Analytics', search:'Search', sched:'Schedule',
   form:'Seal Verification', hist:'Saved', yard:'Yard Check', ycgrid:'Yard Check', yardsheet:'Yard Check',
-  log:'Log', dar:'Daily Activity Report', settings:'Settings' };
+  log:'Log', dar:'Daily Activity Report', settings:'Settings', admin:'Admin' };
 /* Navigation runs on real browser history, so the platform's own back works:
    one finger from the left edge on iOS/iPadOS and Android, two fingers on a Mac
    trackpad, and the browser back button on a laptop. */
@@ -159,6 +159,9 @@ function applyRole(){
      arrives, so the bell has to be recounted: the office was inheriting a
      count of yard checks that were never theirs to do. */
   call('ycUpdateBadge');
+  /* and the admin panel decides what it shows by the account, which may only
+     have arrived just now */
+  if(curRoute().sec === 'admin') call('adminGate');
   var r = curRoute();
   var cur = r.sec, sub = r.sub;
   var shown = document.querySelector('section.on');
@@ -330,6 +333,7 @@ function go(name, fromHistory, sub, replace){
     var i=$('set_offname'); if(i) i.value=getOfficerName();
     call('prefsRender');
   }
+  if(name==='admin') call('adminGate');
   if(name!=='yardsheet' && name!=='ycgrid') call('ycExitView');
   if(name==='yard'){ call('renderYardSlots'); call('renderYardHist'); call('ycStartTicking'); }
   else if(name!=='yardsheet' && name!=='ycgrid') call('ycStopTicking');
@@ -1709,12 +1713,26 @@ function pushForm(){
   if(m.length && !confirm(m.length + (m.length===1?' field is':' fields are') + ' still empty:'
       + '\n\n\u2022 ' + m.join('\n\u2022 ')
       + '\n\nOK = send it anyway   \u00b7   Cancel = go back and fill them')) return;
-  DB.forms.unshift(d);
-  if(DB.forms.length>60) DB.forms.length=60;
+  /* Where it goes is the admin panel's business, not this button's. Until
+     there was a panel this only ever emailed, and the copy it kept stayed on
+     the officer's own phone - so the receiving office's gate queue never saw
+     a form that had been submitted, only one that had been saved. */
   formDraftClear();
-  persist(); renderHist();
+  var toApp   = (typeof admGoes === 'function') ? admGoes('form', 'app')   : true;
+  var toEmail = (typeof admGoes === 'function') ? admGoes('form', 'email') : true;
+  if(toApp) formPush(d); else { DB.forms.unshift(d); persist(); }
+  if(DB.forms.length>60) DB.forms.length=60;
+  renderHist();
   if(typeof beep==='function') beep();
-  emailForm();
+  if(toEmail) emailData(d);
+  else toast('Sent to the receiving office');
+}
+/* on the officer's device when there is no signal, and to the team when
+   there is - the queue the office reads is the forms collection */
+function formPush(d){
+  DB.forms.unshift(d);
+  persist();
+  if(typeof formCloudPush === 'function') formCloudPush(d);
 }
 function emailForm(){
   var d=collect();

@@ -19,7 +19,11 @@ service cloud.firestore {
     function role()      { return signedIn() && exists(/databases/$(database)/documents/officers/$(email()))
                              ? account().get('role', 'officer') : 'officer'; }
     function isOffice()  { return signedIn() && role() == 'office'; }
-    function isOfficer() { return signedIn() && role() != 'office'; }
+    // An admin sets how the app behaves - where completed work goes, the
+    // addresses, the site. They are not an officer: they do not walk a yard or
+    // file a check, so nothing that records work is theirs to write.
+    function isAdmin()   { return signedIn() && role() == 'admin'; }
+    function isOfficer() { return signedIn() && role() != 'office' && role() != 'admin'; }
 
     // Delivery schedule: the receiving office publishes it, officers read it.
     match /orders/{id} {
@@ -93,10 +97,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Shared settings: office email, mailer URL, CC list.
+    // How the app behaves: the addresses, where each kind of completed work is
+    // delivered, the site, the length of the gate queue. The admin panel is a
+    // door in the browser and anyone can read what it checks, so this rule is
+    // what actually decides who may change any of it.
     match /settings/{id} {
       allow read:  if signedIn();
-      allow write: if isOffice();
+      allow write: if isAdmin() || isOffice();
     }
 
     match /{document=**} { allow read, write: if false; }
