@@ -2048,8 +2048,22 @@ function logStartRow(k, v){
   var el = document.querySelector('#logrows tr[data-row="'+r.id+'"] input[data-k="'+k+'"]');
   if(el){ el.focus(); try{ el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
 }
+/* Every truck signed in today belongs on today's sheet. The row used to be
+   written only when the form was emailed, so forms already on file left no
+   trace of themselves at all - this puts them where they should have been.
+   Adding is idempotent: a row is matched on the day, the order and the time
+   in, so a form that is already on the sheet is not added twice. */
+function logBackfill(){
+  var t = isoToday();
+  (DB.forms || []).forEach(function(f){
+    if(!f || !f.po) return;
+    if((isoDate(f.datein) || isoToday()) !== t) return;   /* today's gate, not last week's */
+    logAdd(f);
+  });
+}
 function renderLog(){
   suggestSync();
+  logBackfill();
   var rows = logToday();
   $('log_loc').textContent   = getLocation();
   $('log_shift').textContent = currentShift();

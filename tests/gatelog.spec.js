@@ -79,3 +79,56 @@ test('the log shows it on the officer’s sheet', async ({ page }) => {
   await expect(page.locator('#sec-log')).toContainText('J & L');
   await expect(page.locator('#sec-log')).toContainText('LR7524');
 });
+
+/* Forms filed before the sheet was wired left no trace of themselves. They are
+   still on file, so the sheet can be built from them rather than asking an
+   officer to sign the same trucks in twice. */
+const FORM = (po, over) => Object.assign({
+  po: po, carrier:'J & L', trailer:'LR7524', tractor:'880', timein:'0930',
+  datein: '', ts: new Date().toISOString() }, over || {});
+
+test('this morning’s forms appear on today’s sheet', async ({ page }) => {
+  await officer(page);
+  await page.evaluate((fs) => {
+    DB.forms = fs.map(f => Object.assign({}, f, { datein: todayStr() }));
+    DB.logs = []; logPersist();
+    go('log');
+  }, [FORM('8054600'), FORM('8054601', { carrier:'GENEVA', timein:'1030' })]);
+  await page.waitForTimeout(300);
+  const rows = await page.evaluate(() => DB.logs.map(r => r.po).sort());
+  expect(rows, 'the forms on file were not put on the sheet').toEqual(['8054600','8054601']);
+  await expect(page.locator('#sec-log')).toContainText('GENEVA');
+});
+
+test('and are not added twice when the sheet is opened again', async ({ page }) => {
+  await officer(page);
+  await page.evaluate((f) => {
+    DB.forms = [Object.assign({}, f, { datein: todayStr() })];
+    DB.logs = []; logPersist(); go('log');
+  }, FORM('8054602'));
+  await page.waitForTimeout(200);
+  await page.evaluate(() => { go('home'); go('log'); });
+  await page.waitForTimeout(200);
+  expect((await page.evaluate(() => DB.logs.filter(r => r.po === '8054602'))).length).toBe(1);
+});
+
+test('yesterday’s forms are left where they belong', async ({ page }) => {
+  await officer(page);
+  await page.evaluate((f) => {
+    DB.forms = [Object.assign({}, f, { datein: '8/1/26' })];
+    DB.logs = []; logPersist(); go('log');
+  }, FORM('8054603'));
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => DB.logs.length)).toBe(0);
+});
+
+test('a backfilled row goes to the team as well', async ({ page }) => {
+  await officer(page);
+  await page.evaluate((f) => {
+    DB.forms = [Object.assign({}, f, { datein: todayStr() })];
+    DB.logs = []; logPersist(); go('log');
+  }, FORM('8054604'));
+  await page.waitForTimeout(300);
+  expect(JSON.stringify(await page.evaluate(() => window.__fb.written || [])))
+    .toContain('8054604');
+});
