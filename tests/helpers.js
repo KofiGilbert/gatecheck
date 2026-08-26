@@ -41,7 +41,10 @@ const FB_STUB = (opts) => {
         set(){ return Promise.resolve(); },
         update(data){ (window.__fb.updated = window.__fb.updated || []).push({ id, data });
           return Promise.resolve(); },
-        delete(){ return Promise.resolve(); },
+        /* recorded the same way a batched delete is, so a test can tell
+           whether the app really took something off for the team */
+        delete(){ (window.__fb.deleted = window.__fb.deleted || []).push(id);
+          return Promise.resolve(); },
       }; },
     };
     return chain;

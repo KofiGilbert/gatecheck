@@ -461,7 +461,8 @@ function ycRowHTML(r,i){
     +'<td'+m('set')+'><input value="'+esc(r.set)+'" oninput="ycSet('+i+',\'set\',this.value,true)" onblur="ycBlurSet('+i+',this)"></td>'
     + (off
         ? ycCell(YC_DASH) + ycCell(YC_DASH) + ycCell(YC_DASH) + ycCell(YC_DASH)
-        : '<td'+m('temp')+'><input inputmode="decimal" autocomplete="off" value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)"></td>'
+        : '<td'+m('temp')+' style="position:relative"><input inputmode="decimal" autocomplete="off" value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)">'
+          + ycTempKeys('ycRowTempKey.bind(null,'+i+')') + '</td>'
           +'<td'+m('fuel')+'>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
           +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
           +'<td'+(ycDupDoors()[String(r.door||'').trim()] ? ' class="bad"' : '')
@@ -498,9 +499,54 @@ function ycBlurSet(i, el){
      It waits until the blur is over. */
   if(ycIsOff(r)) setTimeout(renderYard, 0);
 }
+/* Under inputmode="decimal" an Android keyboard offers no minus at all, and
+   Samsung's drops the decimal point as well, so an officer on a phone could
+   not write -4.0 - which is nearly every reading in a frozen yard. The two
+   characters the keyboard will not give are put on the page instead, next to
+   the box, so no keyboard has to be talked into anything. */
+function ycKeyHold(e){ if(e && e.preventDefault) e.preventDefault(); return false; }
+function ycTempKeys(fn){
+  return '<div class="tkeys">'
+    + '<button type="button" tabindex="-1" aria-label="minus"'
+    +   ' onmousedown="return ycKeyHold(event)" ontouchstart="return ycKeyHold(event)"'
+    +   ' onclick="' + fn + '(\'-\')">−</button>'
+    + '<button type="button" tabindex="-1" aria-label="decimal point"'
+    +   ' onmousedown="return ycKeyHold(event)" ontouchstart="return ycKeyHold(event)"'
+    +   ' onclick="' + fn + '(\'.\')">.</button>'
+    + '</div>';
+}
+/* the minus turns the reading negative or positive again; the point goes in
+   where the officer left the cursor */
+function ycTempApply(el, ch){
+  if(!el) return null;
+  var v = String(el.value || '');
+  if(ch === '-'){
+    v = (v.charAt(0) === '-') ? v.slice(1) : '-' + v;
+  } else {
+    if(v.indexOf('.') >= 0) return v;
+    var at = el.selectionStart;
+    if(at == null || at < 0 || at > v.length) at = v.length;
+    v = v.slice(0, at) + '.' + v.slice(at);
+  }
+  el.value = v;
+  try{ el.focus(); }catch(e){}
+  return v;
+}
+function ycRowTempKey(i, ch){
+  var td = $('ycr' + i); if(!td) return;
+  var el = td.querySelector('input[inputmode="decimal"]'); if(!el) return;
+  var v = ycTempApply(el, ch);
+  if(v != null) ycSet(i, 'temp', v, true);
+}
+function ycmTempKey(ch){
+  var el = $('ycm_temp'); if(!el) return;
+  var v = ycTempApply(el, ch);
+  if(v != null && typeof ycmSet === 'function') ycmSet('temp', v);
+}
 function ycBlurTemp(i, el){
   var r = YC.rows[i]; if(!r || !el) return;
-  var v = String(el.value || '').trim();
+  /* some keyboards give a comma where this sheet wants a point */
+  var v = String(el.value || '').trim().replace(',', '.');
   if(/^-?\d+(\.\d+)?$/.test(v)) v = parseFloat(v).toFixed(1);   /* the sheet reads to a tenth */
   else v = v.toUpperCase();
   if(v !== String(r.temp || '')){ ycSet(i, 'temp', v, true); el.value = v; }
@@ -1642,6 +1688,32 @@ function blockStatus(){
   st.textContent = rec
     ? 'Already released at '+ycHHMM(rec.loadedAt)+' with '+ycSlotTrailers(rec)+' trailers. Releasing again replaces it.'
     : '';
+  /* nothing to take off the board until something has been put on it */
+  var un = $('bk_unrelease'); if(un) un.hidden = !rec;
+}
+/* The wrong list can go out, and until now there was no way back: releasing
+   again replaced it, but a check released by mistake stayed on the board with
+   an officer expected to walk it. This puts the slot back to not loaded. */
+function blockUnrelease(){
+  var sel = $('bk_slot'); if(!sel) return;
+  var slot = sel.value, rec = ycSlotRecord(slot);
+  if(!rec){ toast('Nothing released for that check'); return; }
+  if(ycSlotCheck(slot)){
+    toast('That check has been completed. It stays on the record.');
+    return;
+  }
+  if(!confirm('Take the ' + ycSlotLabel(slot) + ' yard check off the board?\n\n'
+      + ycSlotTrailers(rec) + ' trailers were released at ' + ycHHMM(rec.loadedAt)
+      + '.\n\nThe officer will no longer be asked to walk it.')) return;
+  var date = rec.date;
+  DB.yardslots = (DB.yardslots||[]).filter(function(r){
+    return !(r && r.date === date && r.slot === slot); });
+  ycSlotsPersist();
+  if(window.blockCloudDelete) blockCloudDelete(rec.id);
+  toast('Taken off the board');
+  go('block');
+  if(typeof officeStat === 'function') officeStat();
+  if(typeof blockBadge === 'function') blockBadge();
 }
 function blockParse(text){
   var out=[], seen={};
@@ -1965,7 +2037,8 @@ function ycModalRender(){
           : box('Temp', '<input id="ycm_temp" value="'+esc(r.temp||'')+'" placeholder="-9.1"'
               /* a temperature is always figures, so the figures come up first */
               + ' inputmode="decimal" autocomplete="off"'
-              + ' oninput="ycmSet(\'temp\',this.value)">')
+              + ' oninput="ycmSet(\'temp\',this.value)">'
+              + ycTempKeys('ycmTempKey'))
             + box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
             + box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
             + box('Door #', ycmSel('door', YC_DOORS, r.door,

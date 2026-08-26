@@ -130,6 +130,27 @@
   .tile em{font-style:normal;font-size:clamp(12.5px,1.8vmin,17px);font-weight:600;color:var(--mut)}
   .tile:active{background:var(--press)}
   .tile:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+  /* The two characters an Android keyboard will not give: no minus at all
+     under inputmode="decimal", and on Samsung no decimal point either. They
+     sit beside the box, out of the way until it is being filled in. */
+  /* A class that sets display beats the hidden attribute, which is a browser
+     default. A button marked hidden was showing because .btn said display. */
+  [hidden]{display:none !important}
+  .tkeys{display:inline-flex;gap:4px}
+  .tkeys button{min-width:34px;height:34px;border-radius:8px;
+    border:1px solid var(--line);background:var(--card);color:var(--ink);
+    font-family:inherit;font-size:17px;font-weight:800;line-height:1;padding:0;
+    -webkit-tap-highlight-color:transparent}
+  .tkeys button:active{background:var(--press)}
+  /* on the sheet they stay out of the grid until the box is being used */
+  .yct td .tkeys{position:absolute;right:3px;top:50%;transform:translateY(-50%);
+    opacity:0;pointer-events:none;transition:opacity .12s}
+  .yct td:focus-within .tkeys{opacity:1;pointer-events:auto}
+  .yct td .tkeys button{min-width:28px;height:28px;font-size:15px}
+  /* On a phone, where the keyboard is the problem, they are always there, and
+     they sit under the box they belong to at a size a thumb can hit. */
+  .ycmbox .tkeys{display:flex;width:100%;gap:6px;margin-top:8px}
+  .ycmbox .tkeys button{flex:1;height:44px;font-size:20px}
   .homestat{flex:0 0 auto;text-align:center;font-size:12.5px;color:var(--mut);line-height:1.5}
   /* wide and short (landscape iPad, desktop): three across, two down */
   @media (min-width:860px) and (min-aspect-ratio:1/1){
@@ -1833,6 +1854,7 @@
     <div class="hint">One trailer per line: <b>trailer number, product</b>. A comma is safest, so a trailer number with a space in it is not read as a product. Anything loaded above lands here first, so it can be checked before it goes.</div>
     <div id="bk_status" class="hint" style="text-align:center;font-size:14px"></div>
     <button class="btn" onclick="blockRelease()">&#128640; Release to the yard</button>
+    <button class="btn red" id="bk_unrelease" hidden onclick="blockUnrelease()">&#128465; Take this one off the board</button>
   </div>
   
 </section>

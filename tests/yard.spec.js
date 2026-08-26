@@ -253,7 +253,11 @@ test('every state has its own colour, and white type on it', async ({ page }) =>
       { date:ycSlotDate(sh[1]), time:sh[1], name:'B', ts:new Date(N-4*3600e3).toISOString(),
         rows:[{escalate:['TEMP']},{escalate:[]}] },
     ];
-    const live = sh.find(x => !ycSlotWindowClosed(x)) || sh[5];
+    /* a slot no completed check is sitting on, chosen outright: picking the
+       first still-open slot made this depend on the hour it was run, and once
+       the shift turned over it landed on a completed check and the states
+       collapsed into each other */
+    const live = sh[3];
     DB.yardslots = [{ date:ycSlotDate(live), slot:live, loadedAt:new Date().toISOString(), count:9 }];
     renderYardSlots();
     const out = {};

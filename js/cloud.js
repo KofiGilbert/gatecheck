@@ -247,6 +247,12 @@ function setRole(role){
 function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
 
 /* ---- receiving office: releasing a trailer block ---- */
+/* taking a released check back off the board, for the whole team */
+function blockCloudDelete(id){
+  if(!CLOUD.ready || !id) return;
+  CLOUD.db.collection('yardslots').doc(id).delete()
+    .catch(function(e){ toast('Could not take it off: '+e.message); });
+}
 function blockCloudSave(entry){
   if(!CLOUD.ready || !entry || !entry.id) return;
   CLOUD.db.collection('yardslots').doc(entry.id).set(entry)
