@@ -27,14 +27,53 @@ async function fillForm(page) {
 const sentToTeam = (page) => page.evaluate(
   () => (window.__fb.added || []).filter(a => a.name === 'forms').length);
 
-test('an officer cannot open it, whatever they type', async ({ page }) => {
+/* The app knows which of the three an address is the moment it signs in. The
+   panel is the admin's, the way the yard is the officer's and the schedule is
+   the office's - it does not appear in anyone else's menu, and typing the
+   address does not get them there. */
+test('an officer never sees it, and cannot reach it by address', async ({ page }) => {
   await open(page, 'officer');
+  await page.evaluate(() => openMenu());
+  await expect(page.locator('#um_admin')).toBeHidden();
   await page.evaluate(() => go('admin'));
-  await expect(page.locator('#adm_lock')).toBeVisible();
-  await expect(page.locator('#adm_lock')).toContainText('Ask your admin');
-  await expect(page.locator('#adm_body')).toBeHidden();
+  await expect(page.locator('#sec-admin')).toBeHidden();
+  expect(await page.evaluate(() => location.hash)).toBe('#home');
   // and there is no password to find, because there is no password
   expect(await page.evaluate(() => typeof ADMIN_PASS)).toBe('undefined');
+});
+
+test('the receiving office never sees it either', async ({ page }) => {
+  await open(page, 'office');
+  await page.evaluate(() => openMenu());
+  await expect(page.locator('#um_admin')).toBeHidden();
+  await page.evaluate(() => go('admin'));
+  await expect(page.locator('#sec-admin')).toBeHidden();
+  expect(await page.evaluate(() => location.hash)).toBe('#office');
+});
+
+test('and only the admin has it in the menu', async ({ page }) => {
+  await open(page, 'admin');
+  await page.evaluate(() => { go('settings'); openMenu(); });
+  await expect(page.locator('#um_admin')).toBeVisible();
+});
+
+test('an admin signs in and lands on the panel, not on an officer’s tiles',
+  async ({ page }) => {
+  await open(page, 'admin');
+  expect(await page.evaluate(() => homeSection())).toBe('admin');
+  await page.evaluate(() => go(homeSection()));
+  await expect(page.locator('#sec-admin')).toBeVisible();
+  await expect(page.locator('#sec-home')).toBeHidden();
+  await expect(page.locator('#sec-office')).toBeHidden();
+});
+
+test('an admin is kept out of the yard and the receiving desk', async ({ page }) => {
+  await open(page, 'admin');
+  for (const sec of ['yard','form','log','dar','office','block','queue','stats']) {
+    await page.evaluate((x) => go(x), sec);
+    expect(await page.evaluate(() => (document.querySelector('section.on')||{}).id),
+      sec + ' was open to an admin').toBe('sec-admin');
+  }
 });
 
 test('the admin account opens it', async ({ page }) => {
@@ -44,12 +83,7 @@ test('the admin account opens it', async ({ page }) => {
   await expect(page.locator('#adm_body')).toContainText('Seal verification');
 });
 
-test('and so does the receiving office, so a site is never locked out',
-  async ({ page }) => {
-  await open(page, 'office');
-  await signIn(page);
-  await expect(page.locator('#adm_body')).toContainText('Where completed work goes');
-});
+
 
 test('a submitted form now reaches the office, not just an inbox', async ({ page }) => {
   await open(page, 'officer');
@@ -71,7 +105,7 @@ test('and the office sees the driver in the queue', async ({ page }) => {
 });
 
 test('the admin can turn the email off and keep the app', async ({ page }) => {
-  await open(page, 'office');
+  await open(page, 'admin');
   await signIn(page);
   await page.locator('.admrow').first()
     .locator('input[data-route="email"]').uncheck();
@@ -80,7 +114,7 @@ test('the admin can turn the email off and keep the app', async ({ page }) => {
 });
 
 test('and the other way round', async ({ page }) => {
-  await open(page, 'office');
+  await open(page, 'admin');
   await signIn(page);
   await page.locator('.admrow').first().locator('input[data-route="app"]').uncheck();
   expect(await page.evaluate(() => admGoes('form', 'app'))).toBe(false);
@@ -88,7 +122,7 @@ test('and the other way round', async ({ page }) => {
 });
 
 test('but a document cannot be left with nowhere to go', async ({ page }) => {
-  await open(page, 'office');
+  await open(page, 'admin');
   await signIn(page);
   await page.locator('.admrow').first().locator('input[data-route="email"]').uncheck();
   await page.waitForTimeout(200);
@@ -127,12 +161,16 @@ test('with the app off, it emails and does not fill the queue', async ({ page })
   expect(await page.evaluate(() => window.__mailed)).toBe(1);
 });
 
-test('the addresses live here now, not on the officer’s settings screen',
+test('the addresses have left both settings screens for the panel',
   async ({ page }) => {
-  await open(page, 'office');
-  await page.evaluate(() => go('settings'));
-  await expect(page.locator('#set_email')).toHaveCount(0);
-  await expect(page.locator('#set_manager')).toHaveCount(0);
+  for (const role of ['officer', 'office']) {
+    await open(page, role);
+    await page.evaluate(() => go('settings'));
+    await expect(page.locator('#set_email')).toHaveCount(0);
+    await expect(page.locator('#set_manager')).toHaveCount(0);
+    await expect(page.locator('#set_cc')).toHaveCount(0);
+  }
+  await open(page, 'admin');
   await signIn(page);
   await expect(page.locator('#adm_email')).toBeVisible();
   await expect(page.locator('#adm_manager')).toBeVisible();
@@ -141,7 +179,7 @@ test('the addresses live here now, not on the officer’s settings screen',
 });
 
 test('an address set here is set for the whole team', async ({ page }) => {
-  await open(page, 'office');
+  await open(page, 'admin');
   await signIn(page);
   await page.fill('#adm_email', 'receiving@martin-brower.com');
   await page.locator('#adm_email').blur();
@@ -155,13 +193,13 @@ test('the rules are what actually decide, not the screen', async ({ page }) => {
   const rules = require('fs').readFileSync(
     require('path').join(__dirname, '..', 'firestore.rules'), 'utf8');
   expect(rules).toContain("function isAdmin()");
-  expect(rules).toMatch(/match \/settings\/\{id\}[\s\S]*allow write: if isAdmin\(\) \|\| isOffice\(\);/);
+  expect(rules).toMatch(/match \/settings\/\{id\}[\s\S]*allow write: if isAdmin\(\);/);
   // an admin runs the app, they do not walk a yard
   expect(rules).toContain("role() != 'office' && role() != 'admin'");
 });
 
 test('the queue window is the admin’s to set', async ({ page }) => {
-  await open(page, 'office');
+  await open(page, 'admin');
   await signIn(page);
   await page.selectOption('#adm_qhours', '4');
   expect(await page.evaluate(() => admSettings().queueHours)).toBe(4);

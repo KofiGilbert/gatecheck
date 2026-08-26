@@ -150,11 +150,29 @@ var SECTION_TITLES = {
    enforcement is in the Firestore rules, not here. */
 var OFFICE_ONLY  = ['office','block','stats','queue'];
 var OFFICER_ONLY = ['yard','ycgrid','yardsheet','log','dar','form','hist','search'];
+/* An admin runs the app; they do not work a gate or a receiving desk. Theirs
+   is the panel and their own settings, and nothing else - so an admin never
+   sees an officer's tiles or the office's, and nobody else sees the panel. */
+var ADMIN_ONLY   = ['admin'];
+var ADMIN_MAY    = ['admin','settings'];
+function isAdmin(){ return ((window.CLOUD && CLOUD.role) || '') === 'admin'; }
 function isOffice(){ return (window.CLOUD && CLOUD.role) === 'office'; }
-function homeSection(){ return isOffice() ? 'office' : 'home'; }
+function homeSection(){
+  return isAdmin() ? 'admin' : isOffice() ? 'office' : 'home';
+}
+/* the one place that says whether this account may be on this screen */
+function roleBlocked(sec){
+  if(isAdmin()) return ADMIN_MAY.indexOf(sec) < 0;
+  if(ADMIN_ONLY.indexOf(sec) >= 0) return true;
+  if(sec === 'home')   return isOffice();
+  if(sec === 'office') return !isOffice();
+  return isOffice() ? OFFICER_ONLY.indexOf(sec) >= 0
+                    : OFFICE_ONLY.indexOf(sec) >= 0;
+}
 function applyRole(){
   var off = isOffice();
   document.body.classList.toggle('role-office', off);
+  document.body.classList.toggle('role-admin', isAdmin());
   /* The role starts as officer and is corrected once the account document
      arrives, so the bell has to be recounted: the office was inheriting a
      count of yard checks that were never theirs to do. */
@@ -166,9 +184,7 @@ function applyRole(){
   var cur = r.sec, sub = r.sub;
   var shown = document.querySelector('section.on');
   var shownId = shown ? shown.id.replace('sec-','') : 'home';
-  var blocked = off ? OFFICER_ONLY.indexOf(cur)>=0 : OFFICE_ONLY.indexOf(cur)>=0;
-  if(cur==='home' && off) blocked = true;
-  if(cur==='office' && !off) blocked = true;
+  var blocked = roleBlocked(cur);
   /* the visible screen can lag the recorded one on a deep link */
   if(!blocked && shownId !== cur) { go(cur, true, sub); return; }
   if(blocked) go(homeSection());
@@ -242,6 +258,9 @@ function go(name, fromHistory, sub, replace){
   /* a role never lands on the other role's screens */
   if(isOffice() && OFFICER_ONLY.indexOf(name)>=0 && name!=='sched') name='office';
   if(!isOffice() && OFFICE_ONLY.indexOf(name)>=0) name='home';
+  /* the panel is the admin's alone, in both directions */
+  if(!isAdmin() && ADMIN_ONLY.indexOf(name)>=0) name = homeSection();
+  if(isAdmin() && ADMIN_MAY.indexOf(name) < 0) name = 'admin';
   /* a redirected screen cannot keep the other screen's sub-state */
   if(name !== asked) sub = '';
   /* an officer's schedule IS today's sheet, so go straight to it */
@@ -372,6 +391,9 @@ function openMenu(e){
   /* no point offering the screen the officer is already looking at */
   var home=$('um_home');
   if(home) home.hidden = (curRoute().sec === homeSection());
+  /* the panel is only there for the account it belongs to */
+  var adm=$('um_admin');
+  if(adm) adm.hidden = !isAdmin() || curRoute().sec === 'admin';
   d.hidden=false;
   if(b) b.setAttribute('aria-expanded','true');
   var first=d.querySelector('.ditem:not([hidden])'); if(first) first.focus();

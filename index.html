@@ -1716,7 +1716,7 @@
       <button class="ditem" id="um_home" onclick="menuGo('home')"><span aria-hidden="true">&#127968;</span>Home</button>
       <button class="ditem" onclick="menuGo('hist')"><span aria-hidden="true">&#128193;</span>Saved forms</button>
       <button class="ditem" onclick="menuGo('settings')"><span aria-hidden="true">&#9881;&#65039;</span>Settings</button>
-      <button class="ditem" onclick="menuGo('admin')"><span aria-hidden="true">&#128274;</span>Admin</button>
+      <button class="ditem" id="um_admin" hidden onclick="menuGo('admin')"><span aria-hidden="true">&#128274;</span>Admin</button>
       <div class="umsep"></div>
       <button class="ditem ddanger" onclick="closeMenu();doSignOut()"><span aria-hidden="true">&#9099;</span>Sign out</button>
       <div class="umfoot">Checkpoint v1.0</div>
@@ -2108,13 +2108,6 @@
 
 <!-- ============ ADMIN ============ -->
 <section id="sec-admin">
-  <div class="card" id="adm_lock">
-    <h2>Admin</h2>
-    <div class="hint">This sets how Checkpoint behaves for everyone: where completed
-      work is delivered, the addresses it goes to, and the site. It is open to the
-      admin account and to the receiving office.</div>
-    <div class="warn">Signed in as an officer. Ask your admin to make these changes.</div>
-  </div>
   <div id="adm_body" hidden></div>
 </section>
 

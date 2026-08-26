@@ -10,12 +10,10 @@
    rule on /settings/app in firestore.rules is the real boundary, and this
    screen only shows what that rule will allow. */
 
-/* the admin sets how the app behaves; the receiving office may too, so a site
-   is never locked out of its own settings */
-function adminMay(){
-  var r = (window.CLOUD && CLOUD.role) || '';
-  return r === 'admin' || (typeof isOffice === 'function' && isOffice());
-}
+/* the panel belongs to the admin account and to nobody else. The app knows
+   which of the three an address is the moment it signs in, the same way it
+   knows an officer from the receiving office. */
+function adminMay(){ return typeof isAdmin === 'function' && isAdmin(); }
 
 /* The delivery switches. Each answers one question: which document, and by
    which route. Named for the document an officer would recognise, not for a

@@ -103,7 +103,7 @@ service cloud.firestore {
     // what actually decides who may change any of it.
     match /settings/{id} {
       allow read:  if signedIn();
-      allow write: if isAdmin() || isOffice();
+      allow write: if isAdmin();
     }
 
     match /{document=**} { allow read, write: if false; }
