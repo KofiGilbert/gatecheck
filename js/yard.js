@@ -462,7 +462,7 @@ function ycRowHTML(r,i){
     + (off
         ? ycCell(YC_DASH) + ycCell(YC_DASH) + ycCell(YC_DASH) + ycCell(YC_DASH)
         : '<td'+m('temp')+' style="position:relative"><input inputmode="decimal" autocomplete="off" value="'+esc(r.temp)+'" oninput="ycSet('+i+',\'temp\',this.value,true)" onblur="ycBlurTemp('+i+',this)">'
-          + ycTempKeys('ycRowTempKey.bind(null,'+i+')') + '</td>'
+          + ycTempKeys('row', i) + '</td>'
           +'<td'+m('fuel')+'>'+ycSelHTML(i,'fuel',YC_FUELS,r.fuel)+'</td>'
           +'<td>'+ycSelHTML(i,'intact',['Y','N'],r.intact)+'</td>'
           +'<td'+(ycDupDoors()[String(r.door||'').trim()] ? ' class="bad"' : '')
@@ -504,16 +504,51 @@ function ycBlurSet(i, el){
    not write -4.0 - which is nearly every reading in a frozen yard. The two
    characters the keyboard will not give are put on the page instead, next to
    the box, so no keyboard has to be talked into anything. */
+/* A mouse press is stopped so the box keeps the cursor. A finger is not:
+   stopping the touch cancels the tap itself, and the key did nothing at all on
+   a phone - which is every phone this was written for. The tap is handled when
+   the finger lifts, and the click the browser would invent afterwards is
+   dropped so the key does not fire twice. */
+var YC_KEY_AT = 0;
 function ycKeyHold(e){ if(e && e.preventDefault) e.preventDefault(); return false; }
-function ycTempKeys(fn){
-  return '<div class="tkeys">'
-    + '<button type="button" tabindex="-1" aria-label="minus"'
-    +   ' onmousedown="return ycKeyHold(event)" ontouchstart="return ycKeyHold(event)"'
-    +   ' onclick="' + fn + '(\'-\')">−</button>'
-    + '<button type="button" tabindex="-1" aria-label="decimal point"'
-    +   ' onmousedown="return ycKeyHold(event)" ontouchstart="return ycKeyHold(event)"'
-    +   ' onclick="' + fn + '(\'.\')">.</button>'
-    + '</div>';
+/* One press, one action.
+
+   A phone follows a finger tap with a click of its own a moment later. Handling
+   the tap and letting that click through fired the key twice, and twice on the
+   minus is a toggle turned over and back - so it looked like nothing had
+   happened at all, sometimes. Both routes come here, and a second arrival
+   within a moment of the first is the phone's echo, not the officer. */
+function ycKeyPress(e, el){
+  if(e && e.preventDefault) e.preventDefault();
+  if(!el) return false;
+  var t = (e && e.type) || '', now = Date.now();
+  /* One press, one action.
+
+     A phone can deliver the same press more than once: a second pointerup a
+     few dozen milliseconds behind the first, and again as a click it invents
+     afterwards. Two of those on the minus is a toggle turned over and back,
+     which is why it worked sometimes and did nothing other times. Anything
+     arriving on the heels of a press already dealt with is that echo, not the
+     officer - nobody presses the same key twice in a fifth of a second. */
+  if(now - YC_KEY_AT < (t === 'click' ? 700 : 200)) return false;
+  YC_KEY_AT = now;
+  var ch = el.getAttribute('data-ch');
+  if(el.getAttribute('data-kind') === 'row') ycRowTempKey(+el.getAttribute('data-i'), ch);
+  else ycmTempKey(ch);
+  return false;
+}
+function ycTempKeys(kind, i){
+  var who = ' data-kind="' + kind + '"' + (i == null ? '' : ' data-i="' + i + '"');
+  function k(ch, label, face){
+    return '<button type="button" tabindex="-1" aria-label="' + label + '"'
+      + who + ' data-ch="' + ch + '"'
+      /* the press keeps the cursor in the box; the release does the work */
+      + ' onpointerdown="return ycKeyHold(event)"'
+      + ' onpointerup="return ycKeyPress(event, this)"'
+      + ' onclick="return ycKeyPress(event, this)"'
+      + '>' + face + '</button>';
+  }
+  return '<div class="tkeys">' + k('-', 'minus', '\u2212') + k('.', 'decimal point', '.') + '</div>';
 }
 /* the minus turns the reading negative or positive again; the point goes in
    where the officer left the cursor */
@@ -2038,7 +2073,7 @@ function ycModalRender(){
               /* a temperature is always figures, so the figures come up first */
               + ' inputmode="decimal" autocomplete="off"'
               + ' oninput="ycmSet(\'temp\',this.value)">'
-              + ycTempKeys('ycmTempKey'))
+              + ycTempKeys('card'))
             + box('Fuel', ycmSel('fuel', YC_FUELS, r.fuel))
             + box('Intact (Y/N)', ycmSel('intact', ['Y','N'], r.intact))
             + box('Door #', ycmSel('door', YC_DOORS, r.door,
