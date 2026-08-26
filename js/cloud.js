@@ -237,9 +237,14 @@ function doReset(){
 }
 /* ---- role: officer on the gate, or the receiving office ---- */
 function setRole(role){
-  /* three roles now: the office runs the yard, an officer walks it, an admin
-     sets how the app behaves. Anything unrecognised is an officer, which is
-     the role that can do the least. */
+  /* Three roles: the office runs the yard, an officer walks it, an admin sets
+     how the app behaves. Anything unrecognised is an officer, which is the
+     role that can do the least.
+
+     Trimmed and lowered first. A role typed into the Firebase console as
+     "admin " - with the space that comes free with a double-tap of the space
+     bar - is the same word, and spent an evening looking like a broken app. */
+  role = String(role == null ? '' : role).trim().toLowerCase();
   role = (role === 'office' || role === 'admin') ? role : 'officer';
   CLOUD.role = role;
   var em = (CLOUD.user && CLOUD.user.email) || '';

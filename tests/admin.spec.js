@@ -205,3 +205,34 @@ test('the queue window is the admin’s to set', async ({ page }) => {
   expect(await page.evaluate(() => admSettings().queueHours)).toBe(4);
   expect(await page.evaluate(() => qWindowMs())).toBe(4 * 3600e3);
 });
+
+/* A role typed into the Firebase console as "admin " - with the space that
+   comes free with a double-tap of the space bar - is the same word. It is not
+   a different role, and it must not quietly demote somebody to an officer. */
+for (const messy of ['admin ', ' admin', 'Admin', 'ADMIN ', '  admin  ']) {
+  test('a role written ' + JSON.stringify(messy) + ' is still an admin', async ({ page }) => {
+    await page.route('**/firebasejs/**', r => r.fulfill({contentType:'application/javascript', body:''}));
+    await page.addInitScript(H.FB_STUB, { user:{email:'admin@npgsecurity.com'}, role: messy });
+    await page.goto('/index.html');
+    await page.waitForFunction(() => window.CLOUD && CLOUD.user);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => CLOUD.role)).toBe('admin');
+    expect(await page.evaluate(() => homeSection())).toBe('admin');
+  });
+}
+test('and " office " is still the receiving office', async ({ page }) => {
+  await page.route('**/firebasejs/**', r => r.fulfill({contentType:'application/javascript', body:''}));
+  await page.addInitScript(H.FB_STUB, { user:{email:'o@m.com'}, role:' Office ' });
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.CLOUD && CLOUD.user);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => CLOUD.role)).toBe('office');
+});
+test('but a word that is not a role is still an officer', async ({ page }) => {
+  await page.route('**/firebasejs/**', r => r.fulfill({contentType:'application/javascript', body:''}));
+  await page.addInitScript(H.FB_STUB, { user:{email:'x@m.com'}, role:'superuser' });
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.CLOUD && CLOUD.user);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => CLOUD.role)).toBe('officer');
+});

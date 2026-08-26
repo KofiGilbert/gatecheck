@@ -16,8 +16,12 @@ service cloud.firestore {
     // .get('role', 'officer') rather than .role: an account document that exists
     // without a role field made this expression error, and an erroring rule is
     // a denied rule - which locked the officer out of their own gate log.
-    function role()      { return signedIn() && exists(/databases/$(database)/documents/officers/$(email()))
+    // Trimmed and lowered: a role typed into the console as "admin " is the
+    // same word, and a stray space must not quietly demote somebody. Anything
+    // that is not a string at all falls back to the role that can do least.
+    function roleRaw()   { return signedIn() && exists(/databases/$(database)/documents/officers/$(email()))
                              ? account().get('role', 'officer') : 'officer'; }
+    function role()      { return roleRaw() is string ? roleRaw().trim().lower() : 'officer'; }
     function isOffice()  { return signedIn() && role() == 'office'; }
     // An admin sets how the app behaves - where completed work goes, the
     // addresses, the site. They are not an officer: they do not walk a yard or
