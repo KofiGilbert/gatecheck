@@ -15,7 +15,8 @@
    follows the device.
 */
 
-var PREFS = { theme:'system', size:'normal', sound:true, awake:false, handocr:true };
+var PREFS = { theme:'system', size:'normal', sound:true, awake:false, handocr:true,
+              popup:false };
 
 function prefsLoad(){
   try{
@@ -28,6 +29,7 @@ function prefsLoad(){
         if(typeof p.sound === 'boolean') PREFS.sound = p.sound;
         if(typeof p.awake === 'boolean') PREFS.awake = p.awake;
         if(typeof p.handocr === 'boolean') PREFS.handocr = p.handocr;
+        if(typeof p.popup === 'boolean') PREFS.popup = p.popup;
       }
     }
   }catch(e){}
@@ -42,7 +44,25 @@ function prefsSet(k, v){
   PREFS[k] = v;
   prefsSave();
   if(k === 'awake') wakeApply();
-  if(k === 'sound' && v) beep();
+  /* The browser is asked here and nowhere else. Asking on load is what every
+     guide tells you not to do - browsers are moving to refuse a request that
+     is not answering a tap, and it trains people to hit Block on sight. This
+     is the tap. */
+  if(k === 'popup' && v && 'Notification' in window){
+    try{
+      Notification.requestPermission().then(function(res){
+        if(res !== 'granted'){
+          PREFS.popup = false;
+          try{ sset('gc_prefs', JSON.stringify(PREFS)); }catch(e){}
+          prefsRender();
+          toast(res === 'denied'
+            ? 'Pop-ups are blocked for this site. Turn them on in the browser\'s site settings.'
+            : 'Pop-ups were not allowed.');
+        }
+      });
+    }catch(e){}
+  }
+  if(k === 'sound' && v) beep('notify');
 }
 
 var SIZE_SCALE = { normal:1, large:1.12, larger:1.25 };
@@ -61,25 +81,42 @@ function prefsDark(){
   try{ return window.matchMedia('(prefers-color-scheme: dark)').matches; }catch(e){ return false; }
 }
 
-/* ---- a sound you do not have to look up for ---- */
+/* ---- a sound you do not have to look up for ----
+   Three of them, and they have to be told apart without thinking: a save is
+   one note, a refusal is a low one, and the bell is two rising notes so it is
+   never mistaken for a form having gone. Nothing here runs longer than a third
+   of a second, which keeps it clear of the three-second mark where WCAG asks
+   for a stop control - and the switch in Settings is the stop control anyway. */
 var _ac = null;
-function beep(ok){
+function beep(kind){
   if(!PREFS.sound) return;
   try{
     _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
+    /* a browser will not make a sound until the person has touched the page;
+       the first tap of the session is what wakes this up */
     if(_ac.state === 'suspended') _ac.resume();
-    var o = _ac.createOscillator(), g = _ac.createGain();
-    o.type = 'sine';
-    o.frequency.value = (ok === false) ? 320 : 880;
-    g.gain.setValueAtTime(0.0001, _ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.16, _ac.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, _ac.currentTime + 0.18);
-    o.connect(g); g.connect(_ac.destination);
-    o.start(); o.stop(_ac.currentTime + 0.2);
+    var notes = kind === 'notify' ? [[660, 0], [990, 0.13]]
+              : kind === false    ? [[320, 0]]
+                                  : [[880, 0]];
+    notes.forEach(function(n){ tone(n[0], n[1]); });
   }catch(e){}
   /* a phone that can buzz, buzzes too; an iPad simply will not, and that is
      fine - the sound is the part that works everywhere */
-  try{ if(navigator.vibrate) navigator.vibrate(ok === false ? [60,40,60] : 25); }catch(e){}
+  try{
+    if(navigator.vibrate) navigator.vibrate(
+      kind === false ? [60,40,60] : kind === 'notify' ? [30,60,30] : 25);
+  }catch(e){}
+}
+function tone(hz, at){
+  var t = _ac.currentTime + at;
+  var o = _ac.createOscillator(), g = _ac.createGain();
+  o.type = 'sine';
+  o.frequency.value = hz;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  o.connect(g); g.connect(_ac.destination);
+  o.start(t); o.stop(t + 0.2);
 }
 
 /* ---- the screen stays on while the officer is working ---- */
@@ -168,14 +205,21 @@ function prefsRender(){
     +   '<span>Bigger type for reading at arm’s length, outdoors, in gloves.</span></div>'
     +   prefsSeg('size', [['normal','Normal'], ['large','Large'], ['larger','Larger']])
     + '</div>'
-    + prefsSwitch('sound', 'Sound on save',
-        'A short tone when a form goes, so you know without looking back.')
+    + prefsSwitch('sound', 'Sounds',
+        'A short tone when a form goes, and two notes when the bell has '
+        + 'something new. Off silences both.')
     + (canWake
         ? prefsSwitch('awake', 'Keep the screen awake',
             'While Checkpoint is open. Uses more battery.')
         : '<div class="prow"><div class="ptext"><b>Keep the screen awake</b>'
           + '<span>This browser cannot hold the screen on. Open Checkpoint from '
           + 'the home screen, or set the screen timeout on the device.</span></div></div>')
+    + (('Notification' in window)
+        ? prefsSwitch('popup', 'Pop-up alerts',
+            'When Checkpoint is in another tab, new items come up as a pop-up '
+            + 'from the system and fade on their own. Nothing pops up over a '
+            + 'screen you are already looking at.')
+        : '')
     + prefsSwitch('handocr', 'Read handwriting on photos',
         'A reader trained on handwriting, downloaded once. Off means the '
         + 'print reader only.')

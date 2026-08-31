@@ -14,12 +14,16 @@ async function office(page, slots) {
 const REL = (slot) => ({ id: 'y_' + slot, slot: slot,
   loadedAt: new Date().toISOString(), loadedBy: 'office@m.com',
   trailers: [{trailer:'LR7524', product:'FRIES'}, {trailer:'R25106', product:'FRIES'}] });
-/* the app works in the local day, not UTC */
-const today = (page) => page.evaluate(() => ycTodayISO());
+/* The calendar day a slot belongs to, asked of the app rather than assumed.
+   This was ycTodayISO(), which is a different answer after midnight: the app
+   puts 18/20/22 on the previous day once the clock passes midnight, so a
+   record dated "today" was never found and three tests failed between 00:00
+   and 06:00 for no reason but the hour. */
+const dayOf = (page, slot) => page.evaluate((s) => ycSlotDate(s), slot);
 
 test('a released check can be taken off the board', async ({ page }) => {
   await office(page, []);
-  const day = await today(page);
+  const day = await dayOf(page, '2000');
   await office(page, [Object.assign(REL('2000'), { date: day })]);
   await page.evaluate(() => go('block', false, '2000'));
   await page.waitForTimeout(250);
@@ -40,7 +44,7 @@ test('there is nothing to take off a slot that was never loaded', async ({ page 
 
 test('a completed check stays on the record', async ({ page }) => {
   await office(page, []);
-  const day = await today(page);
+  const day = await dayOf(page, '2000');
   await office(page, [Object.assign(REL('2000'), { date: day })]);
   await page.evaluate((d) => {
     DB.yardchecks = [{ date:d, time:'2000', name:'Kobe', ts:new Date().toISOString(),
@@ -56,7 +60,7 @@ test('a completed check stays on the record', async ({ page }) => {
 
 test('and the officer is asked before anything goes', async ({ page }) => {
   await office(page, []);
-  const day = await today(page);
+  const day = await dayOf(page, '2000');
   await office(page, [Object.assign(REL('2000'), { date: day })]);
   await page.evaluate(() => go('block', false, '2000'));
   await page.waitForTimeout(250);

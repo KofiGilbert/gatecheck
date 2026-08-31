@@ -120,11 +120,27 @@ function ycTodayISO(){
   var d=new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+/* Six entries, five colours: Up next, Awaiting list and Not recorded are one
+   grey now and say so on the tile itself, so listing them separately would put
+   three identical chips in the key. */
 var YC_LEGEND = [
   ['done','Completed'], ['esc','Escalations'], ['ready','Ready to start'],
-  ['over','Overdue'], ['due','Due this hour'], ['next','Up next'],
-  ['wait','Awaiting list'], ['past','Not recorded']
+  ['over','Overdue'], ['due','Due this hour'], ['wait','Not loaded yet']
 ];
+/* ---- which single tile is allowed to move ----
+   Most urgent first. Overdue outranks a running clock, a running clock
+   outranks an escalation there is no longer any hurry about, and a missed
+   hour never moves at all - it stays red, because the day's record has a hole
+   in it, but there is nothing left to run towards. Returns an index into the
+   list of states, or -1. */
+var YC_ALARM_ORDER = ['over','ready','esc'];
+function ycAlarmPick(classes){
+  for(var i=0;i<YC_ALARM_ORDER.length;i++){
+    var j = classes.indexOf(YC_ALARM_ORDER[i]);
+    if(j >= 0) return j;
+  }
+  return -1;
+}
 var YC_WINDOW_MIN = 60;   /* one hour to complete, from the moment the office loads it */
 function ycSlotRecord(slot){
   var t=ycSlotDate(slot);
@@ -247,6 +263,38 @@ function bkFresh(){
   }).slice(0, 12);
 }
 function bkFreshCount(){ return bkFresh().length; }
+/* ---- seen, which is not the same as read ----
+   Opening the panel is "seen": the number goes to nought and every item stays
+   in the list, quieter, until it is dealt with. Tapping one is "read": it
+   leaves. Two stores because they answer two different questions - do I still
+   need telling, and have I handled it. */
+function notifAcked(){
+  try{ var v = JSON.parse(sget('gc_notifack') || '[]'); return Array.isArray(v) ? v : []; }
+  catch(e){ return []; }
+}
+function notifAckKeys(keys){
+  if(!keys || !keys.length) return;
+  var a = notifAcked(), added = false;
+  keys.forEach(function(k){ if(a.indexOf(k) < 0){ a.push(k); added = true; } });
+  if(added){ try{ sset('gc_notifack', JSON.stringify(a.slice(-200))); }catch(e){} }
+}
+function notifIsAcked(k){ return notifAcked().indexOf(k) >= 0; }
+/* every piece of news the bell is currently carrying for whoever is signed in */
+function notifNewsKeys(){
+  if(typeof isOffice === 'function' && isOffice())
+    return bkFresh().map(function(c){ return 'chk_' + c.date + '_' + c.time; });
+  return notifSched().map(function(n){ return 'note_' + n.date; });
+}
+function notifUnseen(){
+  return notifNewsKeys().filter(function(k){ return !notifIsAcked(k); }).length;
+}
+/* whether the bell has anything to show at all - news or work. The bell stays
+   reachable while there is work listed under it, even with nothing unread. */
+function notifHasItems(){
+  if(typeof isOffice === 'function' && isOffice())
+    return blockDue().length + bkFresh().length > 0;
+  return ycWaiting().length + notifSched().length > 0;
+}
 function notifCheckGo(date, slot){
   notifClose();
   bkMarkSeen(date + '_' + slot);
@@ -261,11 +309,14 @@ function ycActionable(){
 function renderYardSlots(){
   var d=$('ycslotdate'); if(d) d.textContent = ycShiftLabel();
   var host=$('ycslots'); if(!host) return;
-  host.innerHTML = ycShiftSlots().map(function(slot){
-    var st = ycSlotStatus(slot);
+  var slots = ycShiftSlots();
+  var sts = slots.map(ycSlotStatus);
+  var alarm = ycAlarmPick(sts.map(function(s){ return s.cls; }));
+  host.innerHTML = slots.map(function(slot, i){
+    var st = sts[i];
     var hh = slot.slice(0,2);
     var aria = hh+':00 \u2014 '+st.top+', '+st.detail;
-    return '<button class="slot '+st.cls+'" aria-label="'+esc(aria)+'"'
+    return '<button class="slot '+st.cls+(i===alarm?' alarm':'')+'" aria-label="'+esc(aria)+'"'
       + ' title="'+esc(hh+':00 \u2014 '+st.detail)+'"'
       + ' onclick="ycOpenSlot(\''+slot+'\')">'
       + '<span class="top">'+esc(st.top)+'</span>'
@@ -302,25 +353,68 @@ function ycNotifyReady(){
   ycUpdateBadge();
 }
 var _ycBellWas = 0;
+/* ---- the pop-up, for when Checkpoint is in another tab ----
+   Only when the page is actually hidden: the Page Visibility API is what tells
+   us, and raising a pop-up over a screen somebody is already looking at is
+   noise - the bell and the two notes have that covered. Drawn through the
+   service worker where there is one, because that is the path that works on a
+   phone; the plain constructor is the fallback. */
+function notifPopup(n){
+  if(!PREFS || !PREFS.popup) return;
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  if(document.visibilityState !== 'hidden') return;
+  var office = (typeof isOffice === 'function' && isOffice());
+  var body = office
+    ? (n === 1 ? 'A yard check has been filed.' : n + ' yard checks have been filed.')
+    : (n === 1 ? 'A trailer list has been released.'
+               : n + ' things are waiting on the yard board.');
+  var opts = { body: body, tag: 'gatecheck-bell', renotify: true,
+               icon: 'assets/icon.svg', badge: 'assets/icon.svg',
+               data: { url: office ? '#block' : '#yard' } };
+  try{
+    if(navigator.serviceWorker && navigator.serviceWorker.ready){
+      navigator.serviceWorker.ready.then(function(reg){
+        reg.showNotification('Checkpoint', opts);
+      }).catch(function(){});
+      return;
+    }
+  }catch(e){}
+  /* one tag, so a second one replaces the first rather than stacking up */
+  try{
+    var w = new Notification('Checkpoint', opts);
+    w.onclick = function(){ window.focus(); this.close(); };
+  }catch(e){}
+}
 function ycUpdateBadge(){
   var bell=$('notif'); if(!bell) return;
-  var office = (typeof isOffice==='function' && isOffice());
-  /* the officer is told what is due; the office is told what has been filed */
-  var n = office ? (blockDue().length + bkFreshCount()) : ycActionable();
-  /* a schedule the office has replaced counts too: it is the same bell */
-  if(!office) n += (typeof DB !== 'undefined' && DB.notes) ? DB.notes.length : 0;
+  /* The number counts news and nothing else.
+
+     It used to add the work still to do - slots wanting a trailer list, checks
+     ready or overdue - to the things not yet read, and a count that means two
+     things at once cannot be cleared by any one action: reading about a slot
+     does not release its list. So it sat at eleven whatever you did.
+
+     The work has a louder home than a bell in any case. An unreleased slot is
+     a purple Load this one tile on the Trailer blocks board and a late one is
+     red and pulsing; it is still listed under the bell, it is simply not a
+     number any more. */
+  var n = notifUnseen();
+  var any = n > 0 || notifHasItems();
   var dot=$('notifn');
   if(dot){ dot.textContent = n ? String(n) : ''; dot.hidden = !n; }
-  bell.hidden = !n;
-  if(!n) notifClose();
+  bell.hidden = !any;
+  if(!any) notifClose();
   var p = $('notifpanel'); if(p && !p.hidden) notifRender();
   bell.setAttribute('aria-label',
-    n===1 ? 'One notification' : n+' notifications');
+    n === 0 ? 'Notifications' : n===1 ? 'One unread notification'
+                                      : n+' unread notifications');
   /* it only rings when the number goes up: a standing count is not news */
   if(n > _ycBellWas){
     bell.classList.remove('ring');
     void bell.offsetWidth;
     bell.classList.add('ring');
+    if(typeof beep === 'function') beep('notify');
+    notifPopup(n);
   }
   _ycBellWas = n;
 }
@@ -330,6 +424,12 @@ function ycStartTicking(){
   ycStopTicking();
   _ycTick=setInterval(function(){
     var sec=$('sec-yard');
+    /* The office board has states that turn on the clock now - Released
+       becomes Overdue on its own - so it has to be redrawn while somebody is
+       watching it, the same way the officer's board already was. Without this
+       the office would only ever learn a check was late by refreshing. */
+    var blk=$('sec-block');
+    if(blk && blk.classList.contains('on') && typeof blockRender==='function') blockRender();
     if(sec && sec.classList.contains('on')) renderYardSlots(); else ycUpdateBadge();
   }, 30000);
 }
@@ -1614,34 +1714,68 @@ function blockSlotState(slot){
 /* The office reads the same playing cards the officer does: same shape, same
    palette, same words on top. Only the states differ, because loading a check
    is a different job from working one. */
-function blockTile(slot){
+function blockTileState(slot){
   var chk = ycSlotCheck(slot), rec = ycSlotRecord(slot);
   var next = slot === blockNext();
   var n = rec ? ycSlotTrailers(rec) : 0;
   var st;
   if(chk){
     var escN = (chk.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
-    /* Amber is the escalation colour, so a tile that says Completed in amber
-       is telling two different stories. The word follows the colour. */
+    /* A check with escalations is still a finished check, so it stays on the
+       green of Completed and the band under it turns dark red. It used to go
+       amber all over, which said "completed" in the colour that now means the
+       clock is running - two stories on one tile. */
     st = escN
-      ? { cls:'esc', top:'Escalations', arrow:'\u26a0',
+      ? { cls:'esc', top:'Completed', arrow:'\u26a0',
+          /* "13 of 24" and not "13 escalated": twelve characters clipped in
+             the band on a phone at the largest text size, and this says more */
           kpi: escN+' of '+(chk.rows||[]).length,
           detail:'Filed, with '+escN+' escalation'+(escN===1?'':'s') }
       : { cls:'done', top:'Completed', arrow:'\u2713',
           kpi:(chk.rows||[]).length+' checked',
           detail:'The officer has filed this check' };
   } else if(rec){
-    st = { cls:'ready', top:'Released', arrow:'\u2192', kpi:n+' trailer'+(n===1?'':'s'),
-           detail:'Released at '+ycHHMM(rec.loadedAt)+', waiting on the officer' };
+    /* The office had no way of seeing that the officer was late: a list
+       released at 06:00 and never walked still read "Released" at ten at
+       night. The hour is the one already on the officer's own board -
+       YC_WINDOW_MIN from the moment the list went out, not from the hour
+       printed on the tile - so the two screens cannot disagree about what
+       late means. */
+    var left = ycMinsLeft(rec);
+    st = left > 0
+      ? { cls:'ready', top:'Released', arrow:'\u2192', kpi:n+' trailer'+(n===1?'':'s'),
+          detail:'Released at '+ycHHMM(rec.loadedAt)+', '+left+' min left' }
+      /* "+40 min" and not "40 min late": the word Overdue is already on top of
+         the tile, and the band has one line of a narrow card to say it in */
+      : { cls:'over', top:'Overdue', arrow:'!', kpi:'+'+(-left)+' min',
+          detail:'Released at '+ycHHMM(rec.loadedAt)+' and still not filed' };
   } else if(next){
     st = { cls:'due', top:'Load this one', arrow:'\u2191', kpi:'Add list',
            detail:'This is the next check to release' };
+  } else if(ycSlotWindowClosed(slot) && ycShiftSlots().indexOf(slot) >= 0){
+    /* and an hour the office let go by empty is not the same thing as an hour
+       that has not come round yet. Both were grey, both said "Not loaded" -
+       the office's own missed slot painted in the resting colour.
+
+       Only within the shift being worked, though. Every unloaded hour of the
+       last twenty-four turning red put a whole row of alarm on the board that
+       nobody could act on - three red tiles for 00, 02 and 04 sitting there
+       all afternoon - and a board that is permanently part red is a board
+       where red has stopped meaning anything. A shift that has handed over
+       goes quiet; the hours it missed are still in the day's figures. */
+    st = { cls:'miss', top:'Missed', arrow:'\u2014', kpi:'no list',
+           detail:'The hour went by with no trailer list' };
   } else {
-    st = { cls:'past', top:'Not loaded', arrow:'\u2014', kpi:'\u2014',
+    st = { cls:'past', top:'Not loaded yet', arrow:'\u2014', kpi:'\u2014',
            detail:'No trailer list released' };
   }
+  st.glow = next;
+  return st;
+}
+function blockTile(slot, isAlarm){
+  var st = blockTileState(slot);
   var hh = slot.slice(0,2);
-  return '<button class="slot '+st.cls+(next?' glow':'')+'"'
+  return '<button class="slot '+st.cls+(st.glow?' glow':'')+(isAlarm?' alarm':'')+'"'
     + ' aria-label="'+esc(hh+':00 \u2014 '+st.top+', '+st.detail)+'"'
     + ' title="'+esc(hh+':00 \u2014 '+st.detail)+'"'
     + ' onclick="blockPick(\''+slot+'\')">'
@@ -1653,11 +1787,17 @@ function blockTile(slot){
 }
 function blockRender(){
   var am = $('bk_am'), pm = $('bk_pm');
-  if(am) am.innerHTML = YC_SHIFT_AM.map(blockTile).join('');
-  if(pm) pm.innerHTML = YC_SHIFT_PM.map(blockTile).join('');
+  /* the two shifts are one board, so the one tile allowed to move is picked
+     across both of them and not once per row */
+  var all = YC_SHIFT_AM.concat(YC_SHIFT_PM);
+  var alarm = all[ycAlarmPick(all.map(function(s){ return blockTileState(s).cls; }))];
+  var draw = function(slot){ return blockTile(slot, slot === alarm); };
+  if(am) am.innerHTML = YC_SHIFT_AM.map(draw).join('');
+  if(pm) pm.innerHTML = YC_SHIFT_PM.map(draw).join('');
   var key = $('bk_key');
   if(key) key.innerHTML = [['due','Load this one'], ['ready','Released'],
-      ['done','Completed'], ['esc','Escalations'], ['past','Not loaded']]
+      ['done','Completed'], ['esc','Escalations'], ['over','Overdue'],
+      ['miss','Missed'], ['past','Not loaded yet']]
     .map(function(k){ return '<span class="lg '+k[0]+'"><i></i>'+k[1]+'</span>'; }).join('');
 
   var sel=$('bk_slot');
@@ -2250,7 +2390,9 @@ function notifRender(){
   if(notes.length){
     html += '<div class="nphd">Schedule</div>'
       + notes.map(function(n){
-          return '<button type="button" class="npitem" onclick="notifSchedGo(\''+esc(n.date)+'\')">'
+          return '<button type="button" class="npitem'
+            + (notifIsAcked('note_'+n.date) ? ' seen':'')+'"'
+            + ' onclick="notifSchedGo(\''+esc(n.date)+'\')">'
             + '<span class="npslot">'+esc(String(n.date).slice(8,10))+'</span>'
             + '<span class="nptxt"><b>Schedule updated</b>'
             + '<span>Receiving office \u00b7 '+esc(schedNoteText(n))+'</span></span></button>';
@@ -2284,7 +2426,8 @@ function notifRenderOffice(p){
     + (list.length
         ? list.map(function(c){
             var escN = (c.rows||[]).filter(function(r){ return r.escalate && r.escalate.length; }).length;
-            return '<button type="button" class="npitem'+(escN?' over':'')+'"'
+            return '<button type="button" class="npitem'+(escN?' over':'')
+              + (notifIsAcked('chk_'+c.date+'_'+c.time) ? ' seen':'')+'"'
               + ' onclick="notifCheckGo(\''+esc(c.date)+'\',\''+esc(c.time)+'\')">'
               + '<span class="npslot">'+esc(String(c.time).slice(0,2))+'</span>'
               + '<span class="nptxt"><b>Yard check completed</b>'
@@ -2307,9 +2450,15 @@ function notifToggle(e){
   if(e) e.stopPropagation();
   var p = $('notifpanel'), b = $('notif'); if(!p) return;
   var open = p.hidden;
-  if(open) notifRender();
+  if(open){
+    /* opening is seen: the number goes now, the items stay until they are
+       dealt with */
+    notifAckKeys(notifNewsKeys());
+    notifRender();
+  }
   p.hidden = !open;
   if(b) b.setAttribute('aria-expanded', String(open));
+  if(open && typeof ycUpdateBadge === 'function') ycUpdateBadge();
 }
 function notifClose(){
   var p = $('notifpanel'), b = $('notif');

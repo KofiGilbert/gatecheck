@@ -108,8 +108,26 @@ function schedNoteRead(date){
 
 /* ======================= helpers ======================= */
 function $(id){ return document.getElementById(id); }
-function toast(m){ var t=$('toast'); t.textContent=m; t.classList.add('show');
-  clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove('show');},2600); }
+/* A toast can carry a way out of what it just announced. The escape hatch
+   belongs at the moment of the action, not filed away behind it - the office
+   marked a driver served and then had to go and find them in the done pile to
+   undo it. With an action it stays up longer, because it is now something to
+   read and decide about rather than something to notice. */
+function toast(m, action, fn){
+  var t=$('toast');
+  t.innerHTML=''; t.appendChild(document.createTextNode(m));
+  var has = !!(action && typeof fn === 'function');
+  if(has){
+    var b=document.createElement('button');
+    b.type='button'; b.className='tundo'; b.textContent=action;
+    b.onclick=function(){ t.classList.remove('show'); clearTimeout(t._h); fn(); };
+    t.appendChild(b);
+  }
+  t.classList.toggle('act', has);
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h=setTimeout(function(){t.classList.remove('show');}, has ? 6500 : 2600);
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 /* Two date forms, on purpose, and they must not be mixed up:
@@ -155,8 +173,20 @@ var OFFICER_ONLY = ['yard','ycgrid','yardsheet','log','dar','form','hist','searc
    sees an officer's tiles or the office's, and nobody else sees the panel. */
 var ADMIN_ONLY   = ['admin'];
 var ADMIN_MAY    = ['admin','settings'];
-function isAdmin(){ return ((window.CLOUD && CLOUD.role) || '') === 'admin'; }
-function isOffice(){ return (window.CLOUD && CLOUD.role) === 'office'; }
+/* Firebase restores the signed-in session over the network, which takes a few
+   hundred milliseconds. Until it lands there is no role, and every screen the
+   office refreshes on redirects to the officer's home for exactly that long -
+   the flash of the wrong app. The role this device saw last is the answer
+   almost every time, so boot on it and let the account document confirm or
+   correct it. Only before the account is known: once CLOUD.user exists, the
+   account is the only thing that says what this person may do. */
+function bootRole(){
+  var r = (window.CLOUD && CLOUD.role) || '';
+  if(!r && !(window.CLOUD && CLOUD.user)) r = sget('gc_lastrole') || '';
+  return r;
+}
+function isAdmin(){ return bootRole() === 'admin'; }
+function isOffice(){ return bootRole() === 'office'; }
 function homeSection(){
   return isAdmin() ? 'admin' : isOffice() ? 'office' : 'home';
 }
@@ -169,10 +199,28 @@ function roleBlocked(sec){
   return isOffice() ? OFFICER_ONLY.indexOf(sec) >= 0
                     : OFFICE_ONLY.indexOf(sec) >= 0;
 }
-function applyRole(){
-  var off = isOffice();
-  document.body.classList.toggle('role-office', off);
+/* Never conditionally: an officer signing in on an office device would keep a
+   home screen that is there but cannot be seen. */
+function bootUnhide(){
+  var c = document.documentElement;
+  c.classList.remove('boot-office');
+  c.classList.remove('boot-admin');
+}
+/* The two classes the layout hangs off: the office works at a desk on a
+   spreadsheet and gets a wider main than an officer does. They follow
+   bootRole(), so they are right on the first frame rather than waiting for the
+   account document to arrive - the four office tiles were drawing 144px wide
+   inside a 640px main and snapping to 334px inside 1600px a third of a second
+   later, every single refresh. Routing already boots on the remembered role;
+   this is the same answer applied to the layout. */
+function applyRoleClasses(){
+  document.body.classList.toggle('role-office', isOffice());
   document.body.classList.toggle('role-admin', isAdmin());
+}
+function applyRole(){
+  bootUnhide();
+  applyRoleClasses();
+  var off = isOffice();
   /* The role starts as officer and is corrected once the account document
      arrives, so the bell has to be recounted: the office was inheriting a
      count of yard checks that were never theirs to do. */
@@ -233,7 +281,7 @@ function routeResync(){
     dayViewSync(r.sub);
   }
   if(r.sec==='yard'){ call('renderYardSlots'); call('renderYardHist'); call('ycStartTicking'); }
-  if(r.sec==='block'){ call('blockRender'); call('blockViewSync', r.sub); }
+  if(r.sec==='block'){ call('blockRender'); call('blockViewSync', r.sub); call('ycStartTicking'); }
   if(r.sec==='stats') call('renderStats');
   if(r.sec==='queue'){ call('renderQueue'); call('queueViewSync', r.sub); }
   if(r.sec==='block') call('blockBadge');
@@ -355,6 +403,9 @@ function go(name, fromHistory, sub, replace){
   if(name==='admin') call('adminGate');
   if(name!=='yardsheet' && name!=='ycgrid') call('ycExitView');
   if(name==='yard'){ call('renderYardSlots'); call('renderYardHist'); call('ycStartTicking'); }
+  /* the office board turns Released into Overdue on the clock now, so it needs
+     the same ticking the officer's board has always had */
+  else if(name==='block') call('ycStartTicking');
   else if(name!=='yardsheet' && name!=='ycgrid') call('ycStopTicking');
   if(name==='ycgrid'){
     if(sub) call('ycRestoreSlot', sub);
@@ -443,6 +494,8 @@ window.addEventListener('popstate', function(e){
   go(st.sec || 'home', true, st.sub || '');
 });
 (function(){
+  /* before anything is drawn, not after the network answers */
+  applyRoleClasses();
   var r = parseRoute(location.hash);
   var start = SECTIONS.indexOf(r.sec)>=0 ? r.sec : 'home';
   var sub = (start === r.sec) ? r.sub : '';
@@ -452,6 +505,9 @@ window.addEventListener('popstate', function(e){
        filled in below. applyRole() corrects the choice when the role arrives. */
     go(start, true, sub);
   }catch(e){}
+  /* the pre-paint guard has done its job the moment we have routed, and it
+     comes off whichever screen we landed on */
+  bootUnhide();
   window.addEventListener('DOMContentLoaded', function(){ routeResync(); });
 })();
 document.addEventListener('keydown', function(e){

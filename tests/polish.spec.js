@@ -6,12 +6,19 @@ const H = require('./helpers.js');
 
 const asOffice = (page) => H.gotoApp(page, { user:{email:'office@martinbrower.com'}, role:'office' });
 
-/* an order two hours past its slot with nobody on site is a no-show, which is
-   what paints the alert tile */
+/* An order two hours past its slot with nobody on site is a no-show, which is
+   what paints the alert tile.
+
+   The clock is pinned at two in the afternoon for these three. The appointment
+   was hard-coded to 0030 and a load is not called a no-show until two hours
+   past due - so run the suite between midnight and 02:30 and no time of day
+   qualified at all, no alert tile was drawn, and all three failed for no
+   reason but the hour it happened to be. */
+const NOON_ISH = () => { const d = new Date(); d.setHours(14, 0, 0, 0); return d; };
 function noShows(n) {
   const rows = [];
   for (let i = 0; i < n; i++) rows.push({
-    date: 'TODAY', zone:'D', detail:'LIVE', time:'0030', in_yard:'N',
+    date: 'TODAY', zone:'D', detail:'LIVE', time:'0930', in_yard:'N',
     order: '804000' + (10 + i), vendor:'COCA-COLA', carrier:'CH ROBINSON',
     cases: 900, pallets: 14,
   });
@@ -19,6 +26,7 @@ function noShows(n) {
 }
 
 async function onStats(page, dark) {
+  await page.clock.setFixedTime(NOON_ISH());
   await asOffice(page);
   await page.evaluate(({ rows, dark }) => {
     if (dark) { PREFS.theme = 'dark'; prefsSave(); }

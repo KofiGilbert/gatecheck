@@ -181,7 +181,7 @@ async function board(page, escalate) {
     ycPersistAll(); go('block'); blockRender();
   }, escalate);
   return page.locator('#bk_am .slot, #bk_pm .slot')
-    .filter({ hasText: /Completed|Escalations/ }).first();
+    .filter({ hasText: /Completed/ }).first();
 }
 
 test('a clean check is green and says Completed', async ({ page }) => {
@@ -191,13 +191,19 @@ test('a clean check is green and says Completed', async ({ page }) => {
   await expect(tile.locator('.kpi')).toHaveText('2 checked');
 });
 
-test('a check with escalations is amber and says so, not Completed', async ({ page }) => {
+test('a check with escalations stays green and counts them in the band', async ({ page }) => {
   const tile = await board(page, true);
   await expect(tile).toHaveClass(/esc/);
-  // amber is the escalation colour; a tile reading Completed in amber told
-  // two different stories at once
-  await expect(tile.locator('.top')).toHaveText('Escalations');
+  // it is still a finished check, so it keeps the green of Completed; the band
+  // underneath turns dark red and carries the warning. Red ON green measures
+  // 1.05:1 and is invisible to everyone, which is why the band moved and not
+  // the glyph's colour.
+  await expect(tile.locator('.top')).toHaveText('Completed');
   await expect(tile.locator('.kpi')).toHaveText('1 of 2');
+  const fill = await tile.evaluate(el => getComputedStyle(el).backgroundColor);
+  const band = await tile.locator('.band').evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(fill).toBe('rgb(30, 123, 79)');
+  expect(band).toBe('rgb(61, 17, 19)');
 });
 
 /* ---- a temperature is figures ---- */

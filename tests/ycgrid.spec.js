@@ -284,9 +284,9 @@ test('a completed check opens for the office, on the slot they loaded', async ({
     ycSlotsPersist(); ycPersistAll(); go('block');
     return slot;
   });
-  // this fixture has an escalation on it, so the tile says so rather than
-  // reading Completed in the escalation colour
-  const tile = page.locator('#bkboard .slot').filter({ hasText: 'Escalations' }).first();
+  // this fixture has an escalation on it: the tile stays on the green of a
+  // finished check and the band under it carries the count
+  const tile = page.locator('#bkboard .slot.esc').first();
   await expect(tile).toBeVisible();
   await tile.click();
   const view = page.locator('#bkview');

@@ -93,3 +93,21 @@ self.addEventListener('fetch', function(e){
      and a slow network is given three seconds before falling back. */
   e.respondWith(swFresh(e.request));
 });
+
+/* Clicking a pop-up has to land on the app, and on the part of it the pop-up
+   was about - a tab already open is focused rather than a second one opened. */
+self.addEventListener('notificationclick', function(e){
+  e.notification.close();
+  var hash = (e.notification.data && e.notification.data.url) || '';
+  e.waitUntil(self.clients.matchAll({ type:'window', includeUncontrolled:true })
+    .then(function(list){
+      for(var i=0;i<list.length;i++){
+        var c = list[i];
+        if(c.url.indexOf(self.registration.scope) === 0){
+          if(hash && 'navigate' in c) c.navigate(c.url.split('#')[0] + hash).catch(function(){});
+          return c.focus();
+        }
+      }
+      if(self.clients.openWindow) return self.clients.openWindow('./' + hash);
+    }));
+});

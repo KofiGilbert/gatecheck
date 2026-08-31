@@ -54,12 +54,14 @@ service cloud.firestore {
     match /forms/{id} {
       allow read:   if signedIn();
       allow create: if isOfficer();
-      // The office works the gate queue off these: marking a truck served (or
-      // un-marking a slip) touches the serve fields and nothing the officer
-      // recorded. The form itself stays exactly as it was filed.
+      // The office works the gate queue off these: calling a driver to the
+      // window, then marking them served (or un-marking a slip) touches the
+      // queue fields and nothing the officer recorded. The form itself stays
+      // exactly as it was filed.
       allow update: if isOffice()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['served', 'servedAt', 'servedBy']);
+             .hasOnly(['served', 'servedAt', 'servedBy',
+                       'calledAt', 'calledBy']);
       allow delete: if isOffice();
     }
 

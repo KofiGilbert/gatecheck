@@ -121,7 +121,10 @@ const asOfficer = (page) => H.gotoApp(page, { user:{email:'kofi@martinbrower.com
 const swatches = (page, sel) => page.evaluate((s) =>
   [...document.querySelectorAll(s + ' .lg')].map(l => ({
     label: l.textContent.trim(),
-    colour: getComputedStyle(l.querySelector('i')).backgroundColor,
+    /* body over band: the swatch is a two-stop gradient now, because two
+       states can share a fill and differ only in the bar underneath, so the
+       thing that identifies a swatch is the whole image, not one colour */
+    colour: getComputedStyle(l.querySelector('i')).backgroundImage,
   })), sel);
 
 test('every colour in the officer’s key is its own colour', async ({ page }) => {
@@ -129,8 +132,9 @@ test('every colour in the officer’s key is its own colour', async ({ page }) =
   await page.evaluate(() => go('yard'));
   const sw = await swatches(page, '#yclegend');
   expect(sw.length).toBeGreaterThan(4);
-  expect(new Set(sw.map(x => x.colour)).size, 'two keys sharing a colour explain nothing')
+  expect(new Set(sw.map(x => x.colour)).size, 'two keys looking identical explain nothing')
     .toBe(sw.length);
+  for (const x of sw) expect(x.colour, `${x.label} swatch must be painted`).not.toBe('none');
 });
 
 test('and every colour in the office’s key, which was all grey', async ({ page }) => {

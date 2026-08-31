@@ -264,14 +264,22 @@ test('every state has its own colour, and white type on it', async ({ page }) =>
     document.querySelectorAll('#ycslots .slot').forEach(el => {
       const cs = getComputedStyle(el);
       const cls = [...el.classList].find(c => c !== 'slot');
-      if (cls && !out[cls]) out[cls] = { bg: cs.backgroundColor, fg: cs.color };
+      if (cls && !out[cls]) out[cls] = { bg: cs.backgroundColor, fg: cs.color,
+        band: getComputedStyle(el.querySelector('.band')).backgroundColor };
     });
     return out;
   });
   const states = Object.keys(seen);
   expect(states.length, 'expected several distinct states on the board').toBeGreaterThanOrEqual(4);
-  const colours = states.map(k => seen[k].bg);
-  expect(new Set(colours).size, 'every state must have its own fill').toBe(colours.length);
+  /* Not one fill per state any more, deliberately. Eight hues cannot be told
+     apart by a red-green-deficient eye - the best any eight-colour set manages
+     is a perceptual distance of about 10, which is "different if you hold them
+     side by side". So a state is a fill AND the band under it, and the three
+     quiet states share both and are told apart by the word on the tile. */
+  const ids = states.map(k => seen[k].bg + ' over ' + seen[k].band);
+  const quiet = ['next', 'wait', 'past'].filter(k => states.includes(k));
+  expect(new Set(ids).size, 'every state must be its own fill-and-band, bar the quiet ones')
+    .toBe(new Set(states.filter(k => !quiet.includes(k))).size + (quiet.length ? 1 : 0));
   for (const k of states) {
     expect(seen[k].fg, `${k} type should be white on colour`).toBe('rgb(255, 255, 255)');
     expect(seen[k].bg, `${k} must be filled, not transparent`).not.toContain('rgba(0, 0, 0, 0)');
@@ -372,10 +380,14 @@ test('a waiting yard check is announced in the header, not on the tile', async (
     ycUpdateBadge();
   });
   const bell = page.locator('#notif');
+  // The bell still announces it - it is reachable and the checks are listed
+  // under it - but the NUMBER counts news, not work. Two released checks are
+  // two jobs, and no amount of reading about them walks the yard, which is why
+  // the badge could never be cleared while they were in it. They are on the
+  // yard board instead, ready and overdue, in amber and red.
   await expect(bell).toBeVisible();
-  await expect(page.locator('#notifn')).toHaveText('2');
-  // the bell now carries schedule news too, so it counts notifications
-  await expect(bell).toHaveAttribute('aria-label', /2 notifications/);
+  await expect(page.locator('#notifn')).toBeHidden();
+  await expect(bell).toHaveAttribute('aria-label', /Notifications/);
   // the count is off the tile
   await expect(page.locator('#sec-home .tile', { hasText: 'Yard Check' })).not.toContainText('2');
   await expect(page.locator('#yardbadge')).toHaveCount(0);
@@ -477,7 +489,14 @@ test('a clean completed check reads differently from one that escalated', async 
   const cards = page.locator('#ycslots .slot');
   const a = await cards.nth(0).evaluate(el => getComputedStyle(el).backgroundColor);
   const b = await cards.nth(1).evaluate(el => getComputedStyle(el).backgroundColor);
-  expect(b, 'an escalated check must not look like a clean one').not.toBe(a);
+  expect(b, 'a check with escalations is still a finished check').toBe(a);
+  /* red ON green measures 1.05:1 and is invisible to everybody, so the alarm
+     went into the band, which drops far enough in brightness to be seen
+     without any colour at all */
+  const bandA = await cards.nth(0).locator('.band').evaluate(el => getComputedStyle(el).backgroundColor);
+  const bandB = await cards.nth(1).locator('.band').evaluate(el => getComputedStyle(el).backgroundColor);
+  expect(bandB, 'an escalated check must not read like a clean one').not.toBe(bandA);
+  expect(bandB).toBe('rgb(61, 17, 19)');
 });
 
 /* ---- time awareness ---- */
@@ -521,17 +540,19 @@ test('the ready card breathes, and stops for reduced motion', async ({ page }) =
                       loadedAt: new Date().toISOString(), count: 12 }];
     renderYardSlots();
   });
-  const card = page.locator('#ycslots .slot.ready').first();
+  /* the pulse is no longer a property of being ready: it goes on the one most
+     urgent tile on the board, which with nothing overdue is this one */
+  const card = page.locator('#ycslots .slot.ready.alarm').first();
   await expect(card).toHaveCount(1);
   const anim = await card.evaluate(el => {
     const cs = getComputedStyle(el);
     return { name: cs.animationName, dur: parseFloat(cs.animationDuration) };
   });
-  expect(anim.name).toBe('ycBreathe');
+  expect(anim.name).toBe('ycAlarm');
   expect(1 / anim.dur, 'pulse frequency').toBeLessThan(1);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate(() => renderYardSlots());
-  const reduced = await page.locator('#ycslots .slot.ready').first()
+  const reduced = await page.locator('#ycslots .slot.ready.alarm').first()
     .evaluate(el => getComputedStyle(el).animationName);
   expect(reduced, 'motion must stop when the user asks for it').toBe('none');
 });
@@ -593,12 +614,15 @@ test('completed cards carry a real KPI, and empty states never invent one', asyn
 test('there is a key to the colour code', async ({ page }) => {
   await onYard(page);
   const keys = page.locator('#yclegend .lg');
-  await expect(keys).toHaveCount(8);
+  // six entries, five colours. Up next, Awaiting list and Not recorded are one
+  // grey and say which they are on the tile, so listing them separately would
+  // put three identical chips in the key.
+  await expect(keys).toHaveCount(6);
   for (const label of ['Completed','Escalations','Ready to start','Overdue',
-                       'Due this hour','Up next','Awaiting list','Not recorded'])
+                       'Due this hour','Not loaded yet'])
     await expect(page.locator('#yclegend .lg', { hasText: label })).toHaveCount(1);
   // each swatch matches the card fill it stands for
-  const swatch = await page.locator('#yclegend .ready i').evaluate(el => getComputedStyle(el).backgroundColor);
+  const swatch = await page.locator('#yclegend .ready i').evaluate(el => getComputedStyle(el).backgroundImage);
   await page.evaluate(() => {
     DB.yardslots = [{ date: ycTodayISO(), slot: YC_SLOTS[ycCurrentSlotIndex()],
                       loadedAt: new Date().toISOString(), count: 5 }];
@@ -606,7 +630,9 @@ test('there is a key to the colour code', async ({ page }) => {
   });
   const cardBg = await page.locator('#ycslots .slot.ready').first()
     .evaluate(el => getComputedStyle(el).backgroundColor);
-  expect(swatch).toBe(cardBg);
+  // the swatch is the tile in miniature - body over band - so the card's fill
+  // has to be the colour it starts with
+  expect(swatch).toContain(cardBg);
 });
 
 /* ---- fits the three devices ---- */

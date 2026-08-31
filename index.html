@@ -10,6 +10,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Checkpoint · Martin Brower</title>
+<!-- Before a single pixel: which app is this device? The markup starts on the
+     officer's home, and js/app.js - which is what knows better - loads at the
+     end of the body. Reading the last role here, ahead of the first paint, is
+     what keeps the receiving office from seeing the gate's six tiles every
+     time they refresh. The class is taken off again in app.js. -->
+<script>
+  (function(){
+    try{
+      var r = localStorage.getItem('gc_lastrole');
+      if(r === 'office' || r === 'admin')
+        document.documentElement.className += ' boot-' + r;
+    }catch(e){}
+  })();
+</script>
 <style>
   :root{
     /* Martin Brower brand palette, taken from martinbrower.com */
@@ -31,6 +45,9 @@
   --focusbg:#FFFDF0;
   --redsoft:#FBE9E7;
   --gold:#FFF2CC; --green:#4C6C1A; --red:#C0392B;
+  /* the gate queue's three row states, in the same code as the tile boards:
+     amber the clock is running, red somebody is needed, green finished */
+  --qwin:#B06000; --qwinink:#8A4B00; --qflag:#A4262C; --qdoneink:#1E7B4F;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -104,6 +121,14 @@
   #sec-home.on{display:flex;flex-direction:column;justify-content:center;gap:14px;
     min-height:calc(100dvh - var(--hdr-h, 62px));
     padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  /* The officer's home is the section that starts on in the markup, and the
+     page paints long before app.js is loaded to route away from it. On an
+     office or an admin device that is a flash of the wrong app on every
+     refresh, so it is held back until app.js has routed - and released
+     unconditionally there, or a device that changes hands would keep a hidden
+     home screen for good. */
+  html.boot-office #sec-home.on,
+  html.boot-admin  #sec-home.on{visibility:hidden}
   /* One square, one size, both apps. The officer's home sets it - six tiles
      that have to fit the window with the stat line under them - and the
      receiving office's four are that same square, on one line. The grid is
@@ -337,7 +362,12 @@
   /* One source for every state colour, read by the tile and by the key that
      explains it. Two copies is how the office's key came to be all grey: the
      tiles carried --c, the key looked for it and found nothing. */
-  .legend .lg i{background:var(--c,var(--bd))}
+  /* The key is a tile in miniature - body over band - because two states now
+     share a colour and differ only in the band under it. A key that showed
+     the body alone would put an identical green chip against Completed and
+     against Escalations. */
+  .legend .lg i{background:linear-gradient(to bottom,
+    var(--c,var(--bd)) 0 62%, var(--cd,var(--c,var(--bd))) 62% 100%)}
 
   @media (hover:hover){
     .slot:hover{transform:translateY(-5px);
@@ -347,25 +377,67 @@
   .slot:active{transform:translateY(-1px)}
   .slot:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
 
-  /* the colour code */
-  .slot.done,.lg.done{--c:#4C8A1E; --cd:#3A6B15}      /* completed, all clear   */
-  .slot.esc,.lg.esc {--c:#D9822B; --cd:#B0661C}      /* completed, escalations */
-  .slot.ready,.lg.ready{--c:#1F6FB2; --cd:#17568B}  /* ready to start         */
-  .slot.over,.lg.over{--c:#C2185B; --cd:#9A1148}      /* overdue                */
-  .slot.due,.lg.due {--c:#7E57C2; --cd:#63449B}      /* due this hour          */
-  .slot.next,.lg.next{--c:#5C6BC0; --cd:#47549B}      /* up next                */
-  .slot.wait,.lg.wait{--c:#5F6B78; --cd:#4B5661}      /* awaiting the list      */
-  .slot.past,.lg.past{--c:#6B6559; --cd:#565046}      /* window closed, nothing */
+  /* ---- the colour code ----
+     Five colours, both boards, and never colour on its own: every tile also
+     carries the state in a word on top and a glyph in the band, which is the
+     rule the whole thing rests on.
 
-  /* ready breathes: halo only, ~0.45Hz, far below the flash threshold */
-  @keyframes ycBreathe{
-    0%,100%{ box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 0 rgba(31,111,178,.55) }
-    50%    { box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 16px rgba(31,111,178,0) }
+     Eight colours was the mistake. Measured against a dichromat simulation of
+     the actual values, the best any eight-colour set manages is a perceptual
+     distance of ~10 for a red-green-deficient eye - that is not "different",
+     it is "different if you hold the two side by side". The old board was far
+     worse than its best: Load this one and Released sat at 2.7, and Completed
+     and Escalations at 3.7, which is to say they were the same colour for
+     roughly one man in twelve. So the three quiet states share one grey and
+     are told apart by their words, which costs nothing - there is nothing to
+     do on any of them.
+
+     Green means done. Amber means the clock is running. Red means somebody is
+     late. Purple means the office has not sent the list. Grey means nothing
+     is being asked of you yet. */
+  .slot.done,.lg.done  {--c:#1E7B4F; --cd:#17603D}  /* completed, all clear    */
+  .slot.esc,.lg.esc    {--c:#1E7B4F; --cd:#3D1113}  /* completed, escalations  */
+  .slot.ready,.lg.ready{--c:#B06000; --cd:#8A4B00}  /* released, hour running  */
+  .slot.over,.lg.over  {--c:#A4262C; --cd:#821D22}  /* the hour has gone       */
+  /* Missed is late as well, so it keeps the red; the closed-off band says the
+     hour is gone rather than running out, and keeps the two apart in the key */
+  .slot.miss,.lg.miss  {--c:#A4262C; --cd:#3D1113}  /* the hour went by empty  */
+  .slot.due,.lg.due    {--c:#7E57C2; --cd:#63449B}  /* the office must load it */
+  .slot.next,.lg.next  {--c:#5F6B78; --cd:#4A545E}  /* nothing to do yet       */
+  .slot.wait,.lg.wait  {--c:#5F6B78; --cd:#4A545E}
+  .slot.past,.lg.past  {--c:#5F6B78; --cd:#4A545E}
+
+  /* A completed check with escalations is still a completed check, so the tile
+     stays green and the band under it carries the alarm. The band is a very
+     dark red rather than a bright one on purpose: red on green measures
+     1.05:1, which is invisible to everyone, colour vision or not. At 3.11:1
+     against the tile this reads as red to most people and as a hard dark bar
+     to everybody else. */
+
+  /* ---- one tile moves, never two ----
+     A board where six things pulse is a board nobody looks at, which is the
+     alarm-fatigue lesson from ISA-18.2. renderYardSlots and blockRender put
+     .alarm on the single most urgent tile and no other. 2.2s is ~0.45Hz,
+     seven times under the three-flashes-a-second seizure threshold. */
+  @keyframes ycAlarm{
+    0%,100%{ box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 0 var(--ring) }
+    50%    { box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 16px transparent }
   }
-  .slot.ready{animation:ycBreathe 2.2s ease-in-out infinite}
+  /* the warning triangle has a pulse of its own, twice a cycle */
+  @keyframes ycBeat{
+    0%,70%,100%{ transform:scale(1) }
+    10%{ transform:scale(1.22) } 22%{ transform:scale(1) } 32%{ transform:scale(1.14) }
+  }
+  .slot.alarm{--ring:rgba(255,255,255,.5); animation:ycAlarm 2.2s ease-in-out infinite}
+  .slot.over.alarm,.slot.miss.alarm{--ring:rgba(164,38,44,.65)}
+  .slot.ready.alarm{--ring:rgba(176,96,0,.6)}
+  .slot.esc.alarm{--ring:rgba(61,17,19,.55)}
+  .slot.esc.alarm .arw{display:inline-block;transform-origin:center;
+    animation:ycBeat 2.2s ease-in-out infinite}
   @media (prefers-reduced-motion:reduce){
-    .slot.ready{animation:none;
-      box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 5px rgba(31,111,178,.45)}
+    .slot.alarm{animation:none;
+      box-shadow:0 4px 10px rgba(10,26,25,.14), 0 0 0 5px var(--ring)}
+    .slot.esc.alarm .arw{animation:none}
   }
 
   /* yard check: a facsimile of the printed F-US399-QS-36 sheet */
@@ -519,6 +591,21 @@
   .dayview .prnwrap,.dayview .dgwrap,.dayview .ycpaper{flex:1 1 auto;min-height:0;margin:0;
     border:0;border-radius:0;max-height:none;overflow:auto;
     -webkit-overflow-scrolling:touch}
+  /* ---- the filed sheet, fitted to the screen it is on ----
+     It is a fixed 1275x1650 drawing and it only ever answered to width: on a
+     1440x900 laptop that was 540px of empty space either side AND a third of
+     the form below the fold.
+
+     Only the width is set, so the ratio can never be wrong - height:auto does
+     the rest. The width is worked out from the height that is actually left
+     (the bar and the action strip come to ~170px), times 1275/1650, so the
+     sheet grows to fill a tall screen instead of stopping at 900. The 680px
+     floor is where the small print stops being readable: below that it goes
+     back to scrolling, the way any document does, rather than shrinking to a
+     stamp - a max-height instead of the floor squashed the drawing to 3:1 on
+     a landscape phone. */
+  .dayview .ycpaper img{display:block;margin:0 auto;height:auto;width:100%;
+    max-width:min(100%, max(680px, calc((100dvh - 170px) * 0.7727)))}
   .dayview table.prn,.dayview table.dg{width:100%}
   .dvnote{flex:0 0 auto;background:var(--gold);border:0;
     border-bottom:1px solid #E4CE86;border-radius:0;
@@ -739,7 +826,9 @@
     .donut circle{transition:none}
   }
   /* who took each half of a gate log row */
-  .logwho{display:block;font-size:8.5px;line-height:1.3;color:#6B7480;font-weight:600;
+  /* --mut, not a literal: a hard-coded grey cannot follow the theme, and this
+     one fell to 2.7:1 on the dark gate log */
+  .logwho{display:block;font-size:8.5px;line-height:1.3;color:var(--mut);font-weight:600;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
   /* a row the shift before left open, still owed a time out */
   table.logt tr.carried td{background:#FFF6DF}
@@ -898,20 +987,105 @@
      the same row the loaded-orders list wears; only the queue's own bits
      are styled here */
   #sec-queue{max-width:960px;margin:0 auto;padding:14px}
+  /* The queue reads the same code as the tile boards: green is the one to go
+     to next, amber is the clock running, red is somebody needed. */
   .dayacc.qnext{border-color:var(--blue2);box-shadow:0 0 0 1px var(--blue2)}
-  .dayacc.qflag{border-color:var(--cautionbd)}
-  .dayacc.qdone{opacity:.7}
+  .dayacc.qserving{border-color:var(--qwin);box-shadow:0 0 0 1px var(--qwin)}
+  .dayacc.qflag{border-color:var(--qflag);box-shadow:0 0 0 1px var(--qflag)}
+  /* Served rows were dimmed to 70%, which dims the type with them: the small
+     labels fell to 2.68:1 against the card, under the 4.5:1 an AA reading
+     needs. De-emphasis has to come from things that cost no contrast - a
+     dashed edge, no fill, a lighter name - and never from fading the words. */
+  .dayacc.qdone{background:none;border-style:dashed}
+  .dayacc.qdone .daybar,.dayacc.qdone .dbmain{background:none}
+  .dayacc.qdone .dbmain:hover{background:var(--hover)}
+  .dayacc.qdone .dbdate{font-weight:600;color:var(--mut)}
+  .dayacc.qdone .dbconf{color:var(--qdoneink);font-weight:700}
+  .dbconf.qwin{color:var(--qwinink);font-weight:700}
+  .qsep.qsepnow{color:var(--qwinink)}
+  /* the action strip on the opened form, where serving actually happens */
+  .qact{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:12px 14px;margin:0 0 12px;background:var(--card);
+    border:1px solid var(--line);border-radius:10px}
+  .qactnow{flex:1 1 auto;min-width:120px;font-size:13.5px;font-weight:600;color:var(--mut)}
+  /* On a phone the status text plus two buttons will not sit on one line, and
+     wrapping them left "Back to line" up on the right reading as the main
+     action while Mark served dropped underneath it. Below 520 the text takes
+     its own row and the buttons share the next one, so the primary keeps the
+     right-hand side where it belongs. */
+  @media (max-width:520px){
+    .qact{gap:8px}
+    .qactnow{flex:1 0 100%;min-width:0}
+    .qact .qserve{flex:1 1 0;min-width:0}
+  }
+  .qactnow.win{color:var(--qwinink)}
+  .qactnow.done{color:var(--qdoneink)}
+  .qact .qserve{margin:0}
+  .qserve.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+  .qserve.ghost:hover{background:var(--hover)}
   .qseal{font-style:normal;font-size:11px;font-weight:800;color:var(--redink);
     margin-left:8px;letter-spacing:.3px}
-  .qserve{flex:0 0 auto;align-self:center;margin:0 10px 0 8px;min-height:44px;
+  /* the buttons on a row - the only things on it that take a click */
+  .qserve{flex:0 0 auto;align-self:center;margin:0 0 0 8px;min-height:44px;
     min-width:76px;border:none;border-radius:10px;background:var(--blue);color:#fff;
     font-family:inherit;font-size:13.5px;font-weight:700;cursor:pointer;
     transition:background 130ms ease-out,transform 90ms ease-out}
+  .daybar > .qserve:last-child{margin-right:10px}
   .qserve:hover{background:#16232E}
   .qserve:active{transform:translateY(1px)}
   .qserve:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
   .qserve.undo{background:var(--sunk);color:var(--mut)}
   .qserve.undo:hover{background:var(--hover);color:var(--ink)}
+  /* a second, quieter button beside a primary one - Open next to Mark served */
+  .qserve.ghost{background:none;color:var(--ink);border:1px solid var(--bd);min-width:64px}
+  .qserve.ghost:hover{background:var(--hover)}
+  /* ---- nothing on a row is clickable except its buttons ----
+     The body was a control with its hit area stretched across the whole row,
+     so the only way to know what a click would do was to have been told. It is
+     text now: readable, selectable, and inert. Every target on a queue row is
+     a button you can see. */
+  .dbmain.qbody{position:relative;display:flex;align-items:center;gap:18px;
+    flex:1 1 auto;min-width:0;padding:12px 6px 12px 14px;text-align:left;
+    background:none;border:none;font-family:inherit}
+
+  /* ---- the place in the line, read as a place in a line ----
+     It used to be "#1 - NEXT - 15:31", three things run together in the
+     smallest grey type on the row, so you could not tell the list was numbered
+     at all, let alone who was next. A numeral in its own column with a rule
+     beside it is how a ticket queue has always shown it. */
+  .qpos{flex:0 0 auto;align-self:stretch;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;min-width:56px;
+    padding:10px 8px;border-right:1px solid var(--line)}
+  .qpos b{font-size:21px;font-weight:800;line-height:1;color:var(--mut);
+    font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .qpos i{font-style:normal;font-size:8.5px;font-weight:800;letter-spacing:.7px;
+    color:var(--mut)}
+  /* --greenink, not --blue2: --blue2 is never redefined for the dark theme, so
+     the numeral and its NEXT sat at 2.8:1 on the dark card */
+  .dayacc.qnext .qpos b,.dayacc.qnext .qpos i{color:var(--greenink)}
+  .qpos.win b,.qpos.win i{color:var(--qwinink)}
+  .qpos.win b{font-size:13px}
+  .qpos.done b,.qpos.done i{color:var(--qdoneink)}
+  .dayacc.qdone .qpos{border-right-color:var(--line)}
+  @media (max-width:560px){
+    .qpos{min-width:44px;padding:8px 5px}
+    .qpos b{font-size:18px}
+  }
+  /* Below the breakpoint where the figures already reflow inside the row, the
+     buttons stop fitting beside them and were landing on top of the numbers.
+     They take their own line, right-aligned, under the body they belong to. */
+  @media (max-width:760px){
+    #queuebody .daybar{flex-wrap:wrap}
+    /* wide enough to fill the line beside the numeral column, so the buttons
+       have nowhere to go but the next one - flex:1 1 0 let it shrink instead
+       and they stayed put, on top of the figures */
+    #queuebody .dbmain.qbody{flex:1 1 calc(100% - 60px)}
+    /* explicitly centred: align-self:auto inherits the bar's stretch, which
+       drew each button as a full-height slab */
+    #queuebody .daybar > .qserve{order:3;align-self:center;margin:0 0 12px 8px}
+    #queuebody .daybar > .qserve:first-of-type{margin-left:auto}
+    #queuebody .daybar > .qserve:last-child{margin-right:12px}
+  }
   .qsep{margin:20px 4px 10px;font-size:11px;font-weight:700;letter-spacing:.5px;
     text-transform:uppercase;color:var(--mut)}
   .qempty{display:flex;flex-direction:column;align-items:center;gap:6px;
@@ -1011,6 +1185,17 @@
   .npslot{flex:0 0 auto;width:44px;height:38px;border-radius:9px;display:grid;
     place-items:center;font-size:15px;font-weight:800;color:#fff;background:var(--blue2)}
   .npitem.over .npslot{background:var(--red)}
+  /* Seen, but not yet dealt with: quieter without being fainter. The filled
+     chip goes to an outline and the title drops a weight - none of which costs
+     any contrast. Dimming the whole row is what took the served queue rows to
+     2.68:1, and the words are the last thing that should fade. */
+  .npitem.seen .npslot{background:none;color:var(--mut);
+    box-shadow:inset 0 0 0 1px var(--bd)}
+  /* an escalation stays an escalation after you have seen it: the fill goes,
+     the red does not */
+  .npitem.seen.over .npslot{color:var(--redink);
+    box-shadow:inset 0 0 0 1.5px var(--redink)}
+  .npitem.seen .nptxt b{font-weight:600;color:var(--mut)}
   .nptxt{flex:1 1 auto;min-width:0}
   .nptxt b{display:block;font-size:13px;font-weight:700;color:var(--ink)}
   .nptxt span{display:block;font-size:11.5px;color:var(--mut);margin-top:1px}
@@ -1026,8 +1211,12 @@
   .bkkey{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px}
   .bkkey .lg{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;
     color:var(--mut)}
-  .bkkey .lg i{width:11px;height:11px;border-radius:3px;display:block;
-    background:var(--c,var(--bd))}
+  /* body over band, the tile in miniature - the office key has to show the
+     band too, because Completed and Escalations share a fill and differ only
+     in the bar underneath, as do Overdue and Missed */
+  .bkkey .lg i{width:11px;height:12px;border-radius:3px;display:block;
+    background:linear-gradient(to bottom,
+      var(--c,var(--bd)) 0 62%, var(--cd,var(--c,var(--bd))) 62% 100%)}
   .bkprint{margin-left:auto;font-family:inherit;font-size:12.5px;font-weight:700;
     padding:9px 18px;border-radius:9px;border:none;background:var(--lime);color:var(--blue);
     cursor:pointer}
@@ -1045,7 +1234,7 @@
      canvas is drawn at US Letter proportions, so capped to the page height it
      lands on exactly one sheet - uncapped, the browser pads it out over four. */
   @media print{
-    header,main,.dvbar,.toast,#drawer,#dayview,#anlist{display:none !important}
+    header,main,.dvbar,.toast,.qact,#drawer,#dayview,#anlist{display:none !important}
     #fqview[hidden]{display:none !important}
     #bkview[hidden]{display:none !important}
     body{background:#fff}
@@ -1362,6 +1551,7 @@
     --line:#25313C; --bd:#3C4A57; --gold:#3A3016; --sunk:#1D2831;
     --field:#1B2530; --press:#233040; --warn:#2A1A19; --hover:#212C38;
     --redink:#FF8A7A; --greenink:#A8DB4F; --amberink:#E8C260;
+    --qwin:#C97A1E; --qwinink:#E8C260; --qflag:#E4756F; --qdoneink:#6FCB9B;
     --caution:#2E2513; --cautionbd:#5C4A1E; --cautionink:#F0D48A;
     --focusbg:#243447;
     --redsoft:#3A1F1C;
@@ -1372,6 +1562,7 @@
       --line:#25313C; --bd:#3C4A57; --gold:#3A3016; --sunk:#1D2831;
       --field:#1B2530; --press:#233040; --warn:#2A1A19; --hover:#212C38;
       --redink:#FF8A7A; --greenink:#A8DB4F; --amberink:#E8C260;
+      --qwin:#C97A1E; --qwinink:#E8C260; --qflag:#E4756F; --qdoneink:#6FCB9B;
       --caution:#2E2513; --cautionbd:#5C4A1E; --cautionink:#F0D48A;
       --focusbg:#243447;
       --redsoft:#3A1F1C;
@@ -1430,6 +1621,14 @@
     padding:11px 20px;border-radius:99px;font-size:14px;opacity:0;transition:.3s;z-index:99;
     pointer-events:none;max-width:88%;text-align:center}
   .toast.show{opacity:.96}
+  /* a toast carrying an Undo has to be reachable, so that one takes taps */
+  .toast.act{display:flex;align-items:center;gap:14px;padding:9px 9px 9px 20px;
+    text-align:left;pointer-events:auto}
+  .toast .tundo{flex:0 0 auto;font-family:inherit;font-size:13px;font-weight:700;
+    color:#fff;background:none;border:1px solid rgba(255,255,255,.45);
+    border-radius:99px;padding:7px 15px;min-height:36px;cursor:pointer}
+  .toast .tundo:hover{background:rgba(255,255,255,.14)}
+  .toast .tundo:focus-visible{outline:3px solid var(--lime);outline-offset:2px}
   #preview img{width:100%;border:1px solid var(--line);border-radius:8px}
   .tinrow{display:flex;gap:8px}
   .tinrow input{flex:1;min-width:0}

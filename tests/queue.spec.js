@@ -36,7 +36,10 @@ test('the line stands in the order the drivers signed in', async ({ page }) => {
   expect(names.map(n => n.trim().split(' ')[0])).toEqual(['ROEHL', 'MARTEN', 'CH']);
   // the head of the line is pointed at
   await expect(page.locator('#queuebody .dayacc').first()).toHaveClass(/qnext/);
-  await expect(page.locator('#queuebody .dayacc').first()).toContainText('#1 · NEXT');
+  // the place in the line is a numeral in its own column now, not "#1 · NEXT"
+  // buried in the smallest grey type on the row
+  await expect(page.locator('#queuebody .dayacc').first().locator('.qpos b')).toHaveText('1');
+  await expect(page.locator('#queuebody .dayacc').first().locator('.qpos i')).toHaveText('NEXT');
 });
 
 test('a broken or missing seal is flagged on the row', async ({ page }) => {
@@ -48,33 +51,54 @@ test('a broken or missing seal is flagged on the row', async ({ page }) => {
 
 test('serving moves the driver to the done pile, and records who served it', async ({ page }) => {
   await onQueue(page, [F('a', 2, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
+  // two steps now: called to the window, then finished. The old single button
+  // said Serve and meant served, which is why pressing it was a surprise.
   await page.locator('#queuebody .dayacc').first().locator('.qserve').click();
+  await page.evaluate(() => queueViewClose());
+  await page.locator('.dayacc.qserving .qserve:not(.ghost)').click();
   await expect(page.locator('.dayacc:not(.qdone)')).toHaveCount(1);
   await expect(page.locator('.dayacc.qdone')).toContainText('ROEHL');
-  // only the serve fields go to the server: the form stays as it was filed
+  // only the queue fields go to the server: the form stays as it was filed
   const up = await page.evaluate(() => window.__fb.updated);
-  expect(up).toHaveLength(1);
-  expect(up[0].id).toBe('a');
-  expect(Object.keys(up[0].data).sort()).toEqual(['served', 'servedAt', 'servedBy']);
-  expect(up[0].data.servedBy).toBe('office@martinbrower.com');
+  expect(up).toHaveLength(2);
+  expect(up.every(u => u.id === 'a')).toBe(true);
+  expect(Object.keys(up[0].data).sort()).toEqual(['calledAt', 'calledBy']);
+  expect(Object.keys(up[1].data).sort()).toEqual(['served', 'servedAt', 'servedBy']);
+  expect(up[0].data.calledBy).toBe('office@martinbrower.com');
+  expect(up[1].data.servedBy).toBe('office@martinbrower.com');
 });
 
-test('the next driver steps up when the first is served', async ({ page }) => {
+test('the next driver steps up when the first is called', async ({ page }) => {
   await onQueue(page, [F('a', 2, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
   await page.locator('#queuebody .dayacc').first().locator('.qserve').click();
-  const head = page.locator('.dayacc:not(.qdone)').first();
+  await page.evaluate(() => queueViewClose());
+  // the head of the line is whoever is still waiting - the driver at the
+  // window has left it
+  const head = page.locator('.dayacc:not(.qdone):not(.qserving)').first();
   await expect(head).toHaveClass(/qnext/);
   await expect(head).toContainText('MARTEN');
-  await expect(head).toContainText('#1 · NEXT');
+  await expect(head.locator('.qpos b')).toHaveText('1');
+  await expect(head.locator('.qpos i')).toHaveText('NEXT');
+  await expect(page.locator('.dayacc.qserving')).toContainText('ROEHL');
 });
 
-test('a slip can be undone, and the driver rejoins the line in its old place', async ({ page }) => {
+test('a slip can be undone, and the driver goes back where the mistake was made', async ({ page }) => {
   await onQueue(page, [F('a', 3, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
-  await page.locator('#queuebody .dayacc').first().locator('.qserve').click();
+  await page.evaluate(() => { queueCall('a'); queueViewClose(); queueServe('a'); });
   await page.locator('.dayacc.qdone .qserve.undo').click();
+  await expect(page.locator('.dayacc.qdone')).toHaveCount(0);
+  // back to the window, mid-service, and not to the back of a line they had
+  // already left
+  await expect(page.locator('.dayacc.qserving')).toContainText('ROEHL');
+});
+
+test('and a driver at the window can be put back in the line', async ({ page }) => {
+  await onQueue(page, [F('a', 3, { carrier:'ROEHL' }), F('b', 1, { carrier:'MARTEN' })]);
+  await page.evaluate(() => queueCall('a'));
+  await page.locator('#fqview_body .qserve.ghost').click();
+  await expect(page.locator('.dayacc.qserving')).toHaveCount(0);
   const names = await page.locator('.dayacc:not(.qdone) .dbdate').allInnerTexts();
   expect(names[0]).toContain('ROEHL');
-  await expect(page.locator('.dayacc.qdone')).toHaveCount(0);
 });
 
 test('a slip older than a day is not still standing at the head of the line', async ({ page }) => {
@@ -88,9 +112,12 @@ test('an empty line says so, and says how it fills', async ({ page }) => {
   await expect(page.locator('.qempty')).toHaveText('Nobody waiting.');
 });
 
-test('tapping a driver opens their seal form, drawn as it was filed', async ({ page }) => {
+test('a driver\'s seal form opens from a button, drawn as it was filed', async ({ page }) => {
   await onQueue(page, [F('a', 1, { carrier:'ROEHL' })]);
+  // the row body is text now - nothing on a row takes a click but its buttons
   await page.locator('#queuebody .dbmain').first().click();
+  await expect(page.locator('#fqview')).toBeHidden();
+  await page.locator('#queuebody .qserve').first().click();
   await expect(page.locator('#fqview')).toBeVisible();
   await expect(page.locator('#fqview .ycpaper img')).toBeVisible();
   await expect(page.locator('#fqview_title')).toContainText('ROEHL');
@@ -107,7 +134,7 @@ test('a refresh keeps the office on the queue, form open and all', async ({ page
   await H.gotoApp(page, { user:{email:'office@martinbrower.com'}, role:'office',
     forms: [F('a', 1, { carrier:'ROEHL' })] });
   await page.evaluate(() => go('queue'));
-  await page.locator('#queuebody .dbmain').first().click();
+  await page.locator('#queuebody .qserve').first().click();
   await page.reload();
   await page.waitForFunction(() => window.CLOUD && CLOUD.role === 'office');
   await page.waitForTimeout(400);

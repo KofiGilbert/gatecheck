@@ -79,12 +79,13 @@ test('larger text makes everything larger, not just some of it', async ({ page }
 
 /* ---- sound ---- */
 
+/* the switch covers the bell as well as the save tone now, so it is "Sounds" */
 test('sound is on by default and can be turned off', async ({ page }) => {
   await onSettings(page);
-  const sw = page.locator('.pswitch[aria-label="Sound on save"]');
+  const sw = page.locator('.pswitch[aria-label="Sounds"]');
   await expect(sw).toHaveAttribute('aria-checked', 'true');
   await sw.click();
-  await expect(page.locator('.pswitch[aria-label="Sound on save"]'))
+  await expect(page.locator('.pswitch[aria-label="Sounds"]'))
     .toHaveAttribute('aria-checked', 'false');
   expect(await page.evaluate(() => PREFS.sound)).toBe(false);
   // and it stays off
