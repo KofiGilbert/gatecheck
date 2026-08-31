@@ -271,10 +271,13 @@ test('the buttons on a saved form say what they do', async ({ page }) => {
                   driver:'A', sealcond:'INTACT' }];
     go('hist');
   });
+  // four now: email, share, correct, delete - a filed form can be corrected
+  // without being edited or thrown away
   const btns = page.locator('#hist .hbtn');
-  await expect(btns).toHaveCount(3);
-  for (let i = 0; i < 3; i++)
+  await expect(btns).toHaveCount(4);
+  for (let i = 0; i < 4; i++)
     await expect(btns.nth(i)).toHaveAttribute('aria-label', /8055968/);
+  await expect(page.locator('#hist .hbtn[aria-label^="Correct"]')).toHaveCount(1);
 });
 
 /* ---- dark mode, everywhere, both roles ---- */

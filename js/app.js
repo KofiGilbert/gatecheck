@@ -1298,7 +1298,7 @@ function fillFromOrder(order,date){
   formDraftSave();
 }
 function resetForm(msg){
-  ['f_datein','f_timein','f_appt','f_po','f_trailer','f_tractor','f_carrier','f_vendor','f_initials',
+  ['f_datein','f_timein','f_appt','f_po','f_tractor','f_trailer','f_carrier','f_vendor','f_initials',
    'f_driver','f_sealtrailer','f_sealbol','f_reefset','f_reefact','f_verified']
    .forEach(function(id){ $(id).value=''; });
   $('f_photoid').checked=false; $('f_locked').checked=false;
@@ -1313,6 +1313,8 @@ function resetForm(msg){
   $('preview').innerHTML='';
   Object.keys(REQ_FIELDS||{}).forEach(function(id){ var e=$(id); if(e) e.classList.remove('miss'); });
   var sw=$('sealwarn'); if(sw){ sw.classList.remove('on'); sw.textContent=''; }
+  /* a new blank form is a new truck: it gets its own name */
+  FORM_ID = formIdNew(); FORM_SUPERSEDES = ''; FORM_REASON = ''; FORM_SENT = '';
   if(msg){ formDraftClear(); toast('New blank form'); }
 }
 
@@ -1333,7 +1335,7 @@ function checkSeal(){
 
 /* ---- required fields, marked as the officer goes ---- */
 var REQ_FIELDS = {
-  f_appt:'Appt Time', f_po:'PO Number', f_trailer:'Trailer Number', f_tractor:'Tractor Number',
+  f_appt:'Appt Time', f_po:'PO Number', f_tractor:'Tractor Number', f_trailer:'Trailer Number',
   f_carrier:'Carrier Name', f_initials:'Initials', f_driver:'Driver Name',
   f_reefset:'Refer Setting', f_reefact:'Refer Actual',
   f_sealtrailer:'Seal Number on Trailer', f_sealbol:'Seal Number on BOL', f_verified:'Verified by'
@@ -1371,7 +1373,7 @@ function formStepMarks(){
 })();
 
 /* ---- draft: a gate officer gets interrupted, the form must survive it ---- */
-var FORM_FIELDS = ['f_datein','f_timein','f_appt','f_po','f_trailer','f_tractor','f_carrier',
+var FORM_FIELDS = ['f_datein','f_timein','f_appt','f_po','f_tractor','f_trailer','f_carrier',
   'f_vendor','f_initials','f_driver','f_sealtrailer','f_sealbol','f_reefset','f_reefact','f_verified'];
 var _draftT=null;
 function formDraftSave(){
@@ -1382,6 +1384,7 @@ function formDraftSave(){
         photoid:$('f_photoid').checked, locked:$('f_locked').checked,
         pick:{sealtype:CH.sealtype, sealcond:CH.sealcond, fuel:CH.fuel},
         pomode:($('f_pomode')||{}).value||'po',
+        formId:formIdEnsure(), supersedes:FORM_SUPERSEDES, reason:FORM_REASON,
         src:$('formsrc').innerHTML,
         sig:(sigHas && sigCv)? sigCv.toDataURL('image/png') : '' };
       FORM_FIELDS.forEach(function(id){ if($(id)) d.v[id]=$(id).value; });
@@ -1399,6 +1402,10 @@ function formDraftRestore(){
     return ['f_datein','f_timein','f_verified'].indexOf(id)<0 && String(d.v[id]||'').trim();
   });
   if(!typed && !d.sig) return false;               // nothing worth restoring
+  /* the same form being carried on with, not a new one: a refresh mid-fill
+     must not turn into a second truck at the gate */
+  if(d.formId) FORM_ID = d.formId;
+  FORM_SUPERSEDES = d.supersedes || ''; FORM_REASON = d.reason || '';
   FORM_FIELDS.forEach(function(id){ if($(id) && d.v[id]!=null) $(id).value=d.v[id]; });
   $('f_photoid').checked=!!d.photoid; $('f_locked').checked=!!d.locked;
   if(d.pick){ setPick('sealtype',d.pick.sealtype); setPick('sealcond',d.pick.sealcond); setPick('fuel',d.pick.fuel); }
@@ -1455,8 +1462,38 @@ window.addEventListener('load', function(){
 });
 
 /* ======================= collect + render paper form ======================= */
+/* ---- one form, one name ----
+   A seal form had no identity at all: collect() built a timestamp and
+   formCloudPush handed it to .add(), which mints a fresh document every time.
+   So Submit pressed twice was two trucks as far as the office could tell -
+   four Dennis Johns on the morning of 31 August - and Firestore's offline
+   retry can do the same thing on its own, because every attempt asks for a
+   new auto-id.
+
+   The id is minted when the blank form is opened, not when it is sent, and it
+   rides in the draft so a refresh keeps it. Written with .doc(id).set(), five
+   presses of Submit write the same document five times: one row. This is the
+   idempotency key, the same answer Stripe gives to double charges. */
+var FORM_ID = '';
+function formIdNew(){
+  var r = '';
+  try{
+    var a = new Uint8Array(9); crypto.getRandomValues(a);
+    for(var i=0;i<a.length;i++) r += ('0'+a[i].toString(16)).slice(-2);
+  }catch(e){ r = String(Math.random()).slice(2) + String(Date.now()); }
+  return 'f_' + r;
+}
+function formIdEnsure(){ if(!FORM_ID) FORM_ID = formIdNew(); return FORM_ID; }
+/* A correction never edits the record it corrects. The filed form stays
+   exactly as it was filed - which is the whole point of a record somebody may
+   one day have to produce - and the correction is a new one that says which it
+   replaces. The queue shows the latest and hides what it superseded. */
+var FORM_SUPERSEDES = '', FORM_REASON = '';
 function collect(){
   return {
+    formId: formIdEnsure(),
+    supersedes: FORM_SUPERSEDES || '',
+    reason: FORM_REASON || '',
     ts:new Date().toISOString(),
     datein:$('f_datein').value, timein:$('f_timein').value, appt:$('f_appt').value,
     po:$('f_po').value, trailer:$('f_trailer').value, carrier:$('f_carrier').value,
@@ -1707,8 +1744,8 @@ function blankFields(){
   var d=collect(), m=[];
   if(!d.appt) m.push('Appt Time');
   if(!d.po) m.push('PO Number');
-  if(!d.trailer) m.push('Trailer Number');
   if(!d.tractor) m.push('Tractor Number');
+  if(!d.trailer) m.push('Trailer Number');
   if(!d.carrier) m.push('Carrier Name');
   if(!d.initials) m.push('Initials');
   if(!d.driver) m.push('Driver Name');
@@ -1782,9 +1819,47 @@ function emailData(d){
 }
 /* Sending and filing are one act. Two buttons meant a form could go to the
    office and never reach Saved, or the other way round. */
+/* A form that looks like one already sent - same PO, same trailer, within the
+   hour. The id stops an accidental second send of the SAME fill; it cannot
+   stop an officer starting a fresh blank form and typing the same truck in
+   again, which is the other way four Dennis Johns happen. A question, not a
+   block: two trailers really can share a PO. */
+function formLooksSent(d){
+  var hour = Date.now() - 3600e3;
+  return (DB.forms || []).filter(function(f){
+    if(!f || f.formId === d.formId) return false;
+    if(String(f.po||'') !== String(d.po||'')) return false;
+    if(String(f.trailer||'').toUpperCase() !== String(d.trailer||'').toUpperCase()) return false;
+    var t = Date.parse(f.ts || ''); return isFinite(t) && t >= hour;
+  })[0] || null;
+}
+var _pushing = false;
+/* The form that has already gone. Writing to .doc(id).set() a second time is
+   an UPDATE as far as the rules are concerned, and an officer may not update a
+   filed form - deliberately, because a record somebody may have to produce is
+   not something the person who wrote it should be able to rewrite. So the
+   second press is stopped here rather than sent and refused, which would have
+   shown a permissions error for the system working correctly. */
+var FORM_SENT = '';
 function pushForm(){
+  /* Submit could be pressed again while the first press was still going, and
+     the form stays filled in afterwards, so a second press sent the same truck
+     a second time. */
+  if(_pushing) return;
   var d = collect();
   if(!d.po){ toast('PO / Order number is empty'); return; }
+  if(FORM_SENT && FORM_SENT === d.formId){
+    alert('This form has already been sent to the receiving office.'
+      + '\n\nFor the next truck, use "Start a new blank form".'
+      + '\nTo fix something on this one, find it under Saved forms and press'
+      + ' the \u270e button - the office will see the correction, and the form'
+      + ' as it was filed stays on record.');
+    return;
+  }
+  var dup = formLooksSent(d);
+  if(dup && !confirm('PO ' + d.po + (d.trailer ? ', trailer ' + d.trailer : '')
+      + ' was already sent at ' + (dup.timein || nowHHMM()) + '.'
+      + '\n\nOK = send this one as well   \u00b7   Cancel = go back')) return;
   /* the last chance to notice: the officer is told exactly what is missing and
      has to say they meant it */
   var m = blankFields();
@@ -1810,6 +1885,19 @@ function pushForm(){
   if(typeof beep==='function') beep();
   if(toEmail) emailData(d);
   else toast('Sent to the receiving office');
+  /* Held just long enough to swallow a double tap. It does not need to be
+     longer: the form carries its own name now, so even a press that got
+     through would write the same document rather than stand a second truck in
+     the queue. A long lock would only get in the way of an officer with two
+     trucks at the gate. */
+  formBusy(true);
+  setTimeout(function(){ formBusy(false); }, 1200);
+}
+function formBusy(on){
+  _pushing = !!on;
+  var b = $('f_submit'); if(!b) return;
+  b.disabled = !!on;
+  b.textContent = on ? 'Sending\u2026' : 'Submit';
 }
 /* on the officer's device when there is no signal, and to the team when
    there is - the queue the office reads is the forms collection */
@@ -1817,6 +1905,7 @@ function formPush(d){
   DB.forms.unshift(d);
   persist();
   if(typeof formCloudPush === 'function') formCloudPush(d);
+  FORM_SENT = d.formId || '';
 }
 function emailForm(){
   var d=collect();
@@ -1839,6 +1928,39 @@ function getCcEmails(){ return (sget('gc_cc')||'').trim(); }
 /* Saved forms read as a diary: newest day first, each day headed, and the
    time down the left so a run of forms scans as a sequence rather than a
    wall of repeated dates. */
+/* ---- correcting a filed form ----
+   Never by editing it. Records guidance is blunt about this: an entry is not
+   deleted or overwritten, and a correction has to leave all of the original
+   readable. So the filed form stays exactly as filed and this opens a new one,
+   carrying the same details, that says which it replaces. The office sees one
+   row, marked Corrected; the superseded form stays on file. */
+function correctHist(i){
+  var f = DB.forms[i]; if(!f) return;
+  if(!f.formId){
+    toast('This form was filed before corrections existed. Send a new one instead.');
+    return;
+  }
+  var why = prompt('What is being corrected?\n\n'
+    + 'PO ' + (f.po||'') + (f.trailer ? ', trailer ' + f.trailer : '')
+    + '\n\nA reason is not required - leave it blank to skip.', '');
+  if(why === null) return;                       /* cancelled, nothing happens */
+  resetForm(false);
+  FORM_ID = formIdNew();
+  FORM_SUPERSEDES = f.formId;
+  FORM_REASON = String(why || '').trim() || 'corrected, no reason given';
+  [['f_datein','datein'],['f_timein','timein'],['f_appt','appt'],['f_po','po'],
+   ['f_tractor','tractor'],['f_trailer','trailer'],['f_carrier','carrier'],
+   ['f_vendor','vendor'],['f_initials','initials'],['f_driver','driver'],
+   ['f_sealtrailer','sealtrailer'],['f_sealbol','sealbol'],['f_reefset','reefset'],
+   ['f_reefact','reefact'],['f_verified','verified']].forEach(function(p){
+    var el = $(p[0]); if(el && f[p[1]] != null) el.value = f[p[1]];
+  });
+  $('f_photoid').checked = !!f.photoid; $('f_locked').checked = !!f.locked;
+  setPick('sealtype', f.sealtype); setPick('sealcond', f.sealcond); setPick('fuel', f.fuel);
+  formDraftSave();
+  go('form');
+  toast('Correcting PO ' + (f.po||'') + '. The filed one stays on record.');
+}
 function renderHist(){
   var host = $('hist'); if(!host) return;
   if(!DB.forms.length){ host.innerHTML='<div class="empty">No saved forms yet.</div>'; return; }
@@ -1878,6 +2000,8 @@ function renderHist(){
             +     ' onclick="emailHist('+r.i+')">\u2709</button>'
             +   '<button class="hbtn" title="Share" aria-label="Share PO '+esc(f.po)+'"'
             +     ' onclick="shareHist('+r.i+')">\u21e7</button>'
+            +   '<button class="hbtn" title="Correct" aria-label="Correct PO '+esc(f.po)+'"'
+            +     ' onclick="correctHist('+r.i+')">\u270e</button>'
             +   '<button class="hbtn del" title="Delete" aria-label="Delete PO '+esc(f.po)+'"'
             +     ' onclick="delHist('+r.i+')">\u2715</button>'
             + '</div></div>';

@@ -267,7 +267,12 @@ function doSignOut(){ if(CLOUD.ready||CLOUD.user) firebase.auth().signOut(); }
 function formCloudPush(d){
   if(!CLOUD.ready || !CLOUD.user || !d) return;
   d.createdBy = CLOUD.user.email;
-  CLOUD.db.collection('forms').add(d)
+  /* .doc(id).set(), never .add(). The form carries its own name now, so a
+     second press of Submit - or a retry the offline cache makes on its own,
+     which asks for a fresh auto-id every attempt - writes over the same
+     document instead of standing a second truck in the queue. */
+  var id = d.formId || (CLOUD.db.collection('forms').doc().id);
+  CLOUD.db.collection('forms').doc(id).set(d)
     .catch(function(e){ toast('Could not send to the office: '+e.message); });
 }
 /* the admin panel's settings, shared the way the addresses already were */

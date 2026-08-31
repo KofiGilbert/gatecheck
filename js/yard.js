@@ -447,6 +447,7 @@ function ycOpenSlot(slot){
    #yardsheet/0800 brings back the same check rather than an empty sheet. */
 function ycRestoreSlot(slot){
   if(!YC) ycLoadDraft();
+  if(typeof ycEmailLabel === 'function') ycEmailLabel();
   if(YC_VIEW === slot) return;
   /* Only skip when there is work in progress for this slot. A blank draft
      already carries the current slot's time, so without the row check the
@@ -879,7 +880,10 @@ function ycFileName(d){ return 'YardCheck_'+(d.date||'').replace(/-/g,'')+'_'+(d
 /* ---------- save / email / share ---------- */
 function ycSave(){
   var d = ycData();
-  if(window.CLOUD && CLOUD.ready){
+  /* the officer's own copy is kept whatever the panel says; the team's copy is
+     what the App switch governs */
+  var toTeam = (typeof admGoes === 'function') ? admGoes('yard', 'app') : true;
+  if(window.CLOUD && CLOUD.ready && toTeam){
     d.createdBy = CLOUD.user.email;
     CLOUD.db.collection('yardchecks').add(d).catch(function(e){ toast('Could not save: '+e.message); });
     toast('Yard check saved ✔. Visible to the whole team.');
@@ -889,7 +893,17 @@ function ycSave(){
     toast('Yard check saved ✔ ('+DB.yardchecks.length+' on file)');
   }
 }
-function ycSendData(d){
+/* Whether a yard check goes by email is the admin panel's business, exactly as
+   it is for the seal form. It never asked: admGoes was wired for 'form' and
+   nothing else, so the panel's Yard check and Daily activity report switches
+   were six controls of which two did anything. Turning email off changed
+   nothing, and the filed check then offered to send it "again" whether or not
+   anything had ever been sent. */
+function ycEmails(){
+  return (typeof admGoes === 'function') ? admGoes('yard', 'email') : true;
+}
+function ycSendData(d, manual){
+  if(!manual && !ycEmails()) return;
   var esc_n = d.rows.filter(function(r){return r.escalate.length;}).length;
   var svc = getMailerUrl();
   drawYardPaper(d, function(cv){
@@ -921,7 +935,14 @@ function ycSendData(d){
     }
   });
 }
-function ycEmail(){ ycSendData(ycData()); }
+/* pressed on purpose, so it sends whatever the panel says about automatic
+   delivery */
+function ycEmail(){ ycSendData(ycData(), true); }
+/* and it says which it is doing: "again" is only true if one already went */
+function ycEmailLabel(){
+  var b = $('yc_email'); if(!b) return;
+  b.innerHTML = '\uD83D\uDCE7 Email this record' + (ycEmails() ? ' again' : '');
+}
 function ycShare(){
   drawYardPaper(ycData(), function(cv){
     cv.toBlob(function(blob){

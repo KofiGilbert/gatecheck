@@ -24,8 +24,11 @@ async function fillForm(page) {
     if ($('f_carrier')) $('f_carrier').value = 'TBROS';
   });
 }
+/* A form is written to its own id now, never through .add() - which is what
+   turned four presses of Submit into four Dennis Johns, and what Firestore
+   duplicates on an offline retry. Count the writes that land on a form. */
 const sentToTeam = (page) => page.evaluate(
-  () => (window.__fb.added || []).filter(a => a.name === 'forms').length);
+  () => (window.__fb.written || []).filter(w => /^f_/.test(w.id)).length);
 
 /* The app knows which of the three an address is the moment it signs in. The
    panel is the admin's, the way the yard is the officer's and the schedule is

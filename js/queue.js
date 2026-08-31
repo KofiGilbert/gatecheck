@@ -22,11 +22,20 @@ function qWindowMs(){
 
 function queueForms(){
   var cutoff = Date.now() - qWindowMs();
+  /* A correction is a new form that names the one it replaces - the filed
+     record is never edited, which is the whole point of a record somebody may
+     have to produce one day. The office reads the current one; the superseded
+     one stays on file and out of the line. */
+  var gone = {};
+  (DB.forms || []).forEach(function(f){ if(f && f.supersedes) gone[f.supersedes] = 1; });
   return (DB.forms || []).filter(function(f){
-    var t = Date.parse(f && f.ts || '');
+    if(!f || gone[f.formId]) return false;
+    var t = Date.parse(f.ts || '');
     return isFinite(t) && t >= cutoff;
   });
 }
+/* what a corrected row says it is */
+function queueCorrected(f){ return !!(f && f.supersedes); }
 /* Three places a driver can be, not two. "Serve" was an imperative sitting on
    an action that ended the service rather than starting it, which is why
    pressing it felt like being told the job was already done. Serve keeps the
@@ -194,7 +203,8 @@ function queueRowHTML(f, pos){
     +   queuePosHTML(pos, next)
     +   '<div class="dbmain qbody">'
     +     '<span class="dbtext">'
-    +       '<span class="dbconf">Waiting since ' + esc(queueClock(f.ts)) + '</span>'
+    +       '<span class="dbconf">' + (queueCorrected(f) ? 'Corrected \u00b7 ' : '')
+    +         'Waiting since ' + esc(queueClock(f.ts)) + '</span>'
     +       '<span class="dbdate">' + esc(queueWho(f))
     +         (flag ? '<i class="qseal">SEAL ' + esc(flag) + '</i>' : '') + '</span>'
     +     '</span>'

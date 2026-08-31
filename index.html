@@ -2144,9 +2144,9 @@
         <input type="text" id="f_po" inputmode="numeric" style="flex:1.5" placeholder="80xxxxx">
       </div>
       <div class="hint">Driver has no PO? Pick <b>N/A</b> and fill the form manually.</div>
-      <label class="f">Trailer Number</label><input type="text" id="f_trailer">
       <label class="f">Tractor Number</label><input type="text" id="f_tractor">
       <div class="hint">Used for the NPG gate log only. It is not printed on the form sent to the receiving office.</div>
+      <label class="f">Trailer Number</label><input type="text" id="f_trailer">
       <label class="f">Carrier Name</label><input type="text" id="f_carrier" list="dl_carrier" autocomplete="off" aria-autocomplete="both">
       <label class="f">Vendor (reference)</label><input type="text" id="f_vendor" list="dl_vendor" autocomplete="off" aria-autocomplete="both">
     </div>
@@ -2201,7 +2201,7 @@
     <div class="card">
       <div id="preview"></div>
       <div id="actions" style="display:none">
-        <button class="btn" onclick="pushForm()">Submit</button>
+        <button class="btn" id="f_submit" onclick="pushForm()">Submit</button>
       </div>
       <button class="btn sec" onclick="resetForm(true)">Start a new blank form</button>
     </div>
@@ -2262,7 +2262,7 @@
     <button class="btn" onclick="ycSubmit()">&#9989; Submit to receiving office</button>
   </div>
   <div class="card viewonly">
-    <button class="btn" onclick="ycEmail()">&#128231; Email this record again</button>
+    <button class="btn" id="yc_email" onclick="ycEmail()">&#128231; Email this record</button>
     <button class="btn sec" onclick="ycShare()">&#128228; Share another way</button>
   </div>
 </section>

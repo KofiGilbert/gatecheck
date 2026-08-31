@@ -265,8 +265,11 @@ function darPaperHTML(d){
 }
 function darSubmit(){
   if(!DAR) return;
+  /* the panel's Daily activity report switches were read by nothing at all */
+  var toEmail = (typeof admGoes === 'function') ? admGoes('dar', 'email') : true;
+  var toTeam  = (typeof admGoes === 'function') ? admGoes('dar', 'app')   : false;
   var to = getManagerEmail();
-  if(!to){ toast('No manager email in Settings yet'); go('settings'); return; }
+  if(toEmail && !to){ toast('No manager email in Settings yet'); go('settings'); return; }
   if(!DAR.handover.trim() &&
      !confirm('No handover officer named. Submit the report anyway?')) return;
   var d = darData();
@@ -275,8 +278,9 @@ function darSubmit(){
   if(DB.dars.length > 40) DB.dars.length = 40;
   darPersist();
   if(typeof beep==='function') beep();
-  if(window.darCloudAdd) darCloudAdd(d);
-  darSend(d);
+  if(toTeam && window.darCloudAdd) darCloudAdd(d);
+  if(toEmail) darSend(d);
+  else toast('Daily activity report saved.');
 }
 function darData(){
   return { kind:'dar', ts:new Date().toISOString(),
