@@ -102,9 +102,15 @@ function beep(kind){
        shift is no longer the one that gets swallowed */
     if(_ac.state === 'suspended') _ac.resume();
     if(kind === 'tap'){
-      /* short, quiet, and falling slightly: a tick, not a note. It has to sit
-         under a hundred of them an hour without being noticed. */
-      tone(1500, 0, { dur:0.035, peak:0.055, type:'triangle', to:1100 });
+      /* A tock, not a beep. Measured against the save tone rather than judged
+         by ear: this renders at peak 0.106 and RMS 0.0215, about three fifths
+         of the save tone's loudness in a third of its length. The first
+         attempt was 1500Hz at peak 0.055 for 35ms - three times quieter and
+         five times shorter than the save tone, with barely twenty
+         milliseconds of real signal, and it could not reliably be heard at
+         all. The drop from 900 to 380Hz is what gives it body; a flat tone up
+         at 1500 is thin and reads as a beep. */
+      tone(900, 0, { dur:0.055, peak:0.11, type:'triangle', to:380 });
       return;
     }
     var notes = kind === 'notify' ? [[660, 0], [990, 0.13]]
