@@ -15,8 +15,8 @@
    follows the device.
 */
 
-var PREFS = { theme:'system', size:'normal', sound:true, awake:false, handocr:true,
-              popup:false };
+var PREFS = { theme:'system', size:'normal', sound:true, tap:true, awake:false,
+              handocr:true, popup:false };
 
 function prefsLoad(){
   try{
@@ -27,6 +27,7 @@ function prefsLoad(){
         if(p.theme) PREFS.theme = p.theme;
         if(p.size)  PREFS.size  = p.size;
         if(typeof p.sound === 'boolean') PREFS.sound = p.sound;
+        if(typeof p.tap === 'boolean') PREFS.tap = p.tap;
         if(typeof p.awake === 'boolean') PREFS.awake = p.awake;
         if(typeof p.handocr === 'boolean') PREFS.handocr = p.handocr;
         if(typeof p.popup === 'boolean') PREFS.popup = p.popup;
@@ -63,6 +64,7 @@ function prefsSet(k, v){
     }catch(e){}
   }
   if(k === 'sound' && v) beep('notify');
+  if(k === 'tap' && v) beep('tap');
 }
 
 var SIZE_SCALE = { normal:1, large:1.12, larger:1.25 };
@@ -89,35 +91,64 @@ function prefsDark(){
    for a stop control - and the switch in Settings is the stop control anyway. */
 var _ac = null;
 function beep(kind){
-  if(!PREFS.sound) return;
+  /* the tap has its own switch: it happens on every press, which is a very
+     different thing to agree to than a tone when a form goes */
+  if(!(kind === 'tap' ? PREFS.tap : PREFS.sound)) return;
   try{
     _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
     /* a browser will not make a sound until the person has touched the page;
-       the first tap of the session is what wakes this up */
+       the first tap of the session is what wakes this up - and now that every
+       press ticks, that really is the first press, so the first save tone of a
+       shift is no longer the one that gets swallowed */
     if(_ac.state === 'suspended') _ac.resume();
+    if(kind === 'tap'){
+      /* short, quiet, and falling slightly: a tick, not a note. It has to sit
+         under a hundred of them an hour without being noticed. */
+      tone(1500, 0, { dur:0.035, peak:0.055, type:'triangle', to:1100 });
+      return;
+    }
     var notes = kind === 'notify' ? [[660, 0], [990, 0.13]]
               : kind === false    ? [[320, 0]]
                                   : [[880, 0]];
     notes.forEach(function(n){ tone(n[0], n[1]); });
   }catch(e){}
   /* a phone that can buzz, buzzes too; an iPad simply will not, and that is
-     fine - the sound is the part that works everywhere */
+     fine - the sound is the part that works everywhere. Never on a tap: a buzz
+     on every press would be intolerable inside a shift. */
   try{
-    if(navigator.vibrate) navigator.vibrate(
+    if(navigator.vibrate && kind !== 'tap') navigator.vibrate(
       kind === false ? [60,40,60] : kind === 'notify' ? [30,60,30] : 25);
   }catch(e){}
 }
-function tone(hz, at){
+function tone(hz, at, o2){
+  o2 = o2 || {};
+  var dur = o2.dur || 0.18, peak = o2.peak || 0.16;
   var t = _ac.currentTime + at;
   var o = _ac.createOscillator(), g = _ac.createGain();
-  o.type = 'sine';
-  o.frequency.value = hz;
+  o.type = o2.type || 'sine';
+  o.frequency.setValueAtTime(hz, t);
+  /* a tick that drops a little reads as a click rather than a beep */
+  if(o2.to) o.frequency.exponentialRampToValueAtTime(o2.to, t + dur);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(_ac.destination);
-  o.start(t); o.stop(t + 0.2);
+  o.start(t); o.stop(t + dur + 0.02);
 }
+/* ---- the tick, on anything that is actually a control ----
+   One listener rather than a handler on each button. Most of this app's
+   buttons are drawn as strings by the render functions, so anything that had
+   to be added per element would be missing from the first button somebody
+   added next month. pointerdown rather than click, because the whole point is
+   that the press feels answered - waiting for click puts the sound after the
+   screen has already changed. */
+var TAPPABLE = 'button, a[href], [role="switch"], [role="button"], summary';
+document.addEventListener('pointerdown', function(e){
+  if(!PREFS.tap) return;
+  var el = e.target && e.target.closest ? e.target.closest(TAPPABLE) : null;
+  if(!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+  beep('tap');
+}, true);
 
 /* ---- the screen stays on while the officer is working ---- */
 var _wake = null;
@@ -208,6 +239,9 @@ function prefsRender(){
     + prefsSwitch('sound', 'Sounds',
         'A short tone when a form goes, and two notes when the bell has '
         + 'something new. Off silences both.')
+    + prefsSwitch('tap', 'Tap sounds',
+        'A quiet tick when you press something, so the tablet answers you. '
+        + 'Separate from the tones above.')
     + (canWake
         ? prefsSwitch('awake', 'Keep the screen awake',
             'While Checkpoint is open. Uses more battery.')
