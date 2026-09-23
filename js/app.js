@@ -1192,7 +1192,7 @@ function orderCardHTML(o, withBtn){
   return '<div class="card ordercard">'
     + '<div style="display:flex;justify-content:space-between;align-items:baseline">'
     + '<div style="font-size:21px;font-weight:800">'+esc(o.order)+'</div>'
-    + '<div style="font-weight:700;color:var(--blue)">'+esc(fmtDate(o.date))+'</div></div>'
+    + '<div class="odate'+(isoDate(o.date) && isoDate(o.date) < isoToday() ? ' old' : '')+'">'+esc(fmtDate(o.date))+'</div></div>'
     + '<div style="margin:6px 0 8px">'+pills+'</div>'
     + '<div class="kv"><span class="k">Vendor</span><span class="v">'+esc(o.vendor)+'</span></div>'
     + '<div class="kv"><span class="k">Appt Time</span><span class="v">'+esc(o.time)+'</span></div>'
